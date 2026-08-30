@@ -1,0 +1,257 @@
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+
+import type {
+  Collection,
+  Comparison,
+  Entity,
+  EntityAnnotation,
+  EntityId,
+  EntityType,
+  Membership,
+  QueueState,
+  RatingEvent,
+  RatingScale,
+} from '../domain/types';
+import type { AppSettings } from './settings';
+
+export const DB_NAME = 'music-ratings';
+export const DB_VERSION = 2;
+
+/**
+ * Everything the app knows lives here, on this device, in the user's browser.
+ * The shape is deliberately flat and id-addressed so the sync layer can treat
+ * every store as an unordered bag of records with `updatedAt` and tombstones.
+ */
+export interface LedgerDB extends DBSchema {
+  entities: {
+    key: EntityId;
+    value: Entity;
+    indexes: { byType: EntityType; byUpdated: number };
+  };
+  memberships: {
+    key: string;
+    value: Membership;
+    indexes: { byParent: EntityId; byChild: EntityId };
+  };
+  ratings: {
+    key: string;
+    value: RatingEvent;
+    indexes: { byEntity: EntityId; byAt: number; byType: EntityType };
+  };
+  comparisons: {
+    key: string;
+    value: Comparison;
+    indexes: { byType: EntityType; byAt: number };
+  };
+  queueStates: { key: EntityId; value: QueueState };
+  annotations: { key: EntityId; value: EntityAnnotation };
+  collections: { key: string; value: Collection };
+  scales: { key: string; value: RatingScale };
+  /** Free-form singletons: settings, sync bookkeeping, provider cursors. */
+  meta: { key: string; value: unknown };
+}
+
+export type StoreName =
+  | 'entities'
+  | 'memberships'
+  | 'ratings'
+  | 'comparisons'
+  | 'queueStates'
+  | 'annotations'
+  | 'collections'
+  | 'scales'
+  | 'meta';
+
+/** Stores whose records take part in sync. `meta` is handled separately. */
+export const SYNCED_STORES = [
+  'entities',
+  'memberships',
+  'ratings',
+  'comparisons',
+  'queueStates',
+  'annotations',
+  'collections',
+  'scales',
+] as const satisfies readonly StoreName[];
+
+export type SyncedStore = (typeof SYNCED_STORES)[number];
+
+export const META_SETTINGS = 'settings';
+export const META_SYNC = 'sync';
+export const META_SPOTIFY = 'spotify';
+export const META_CURSORS = 'cursors';
+
+/* -------------------------------------------------------------------------- */
+
+let dbp: Promise<IDBPDatabase<LedgerDB>> | null = null;
+let blockedNotice: ((message: string) => void) | null = null;
+
+export function onDatabaseBlocked(handler: (message: string) => void): void {
+  blockedNotice = handler;
+}
+
+export function db(): Promise<IDBPDatabase<LedgerDB>> {
+  if (!dbp) {
+    dbp = openDB<LedgerDB>(DB_NAME, DB_VERSION, {
+      upgrade(database, oldVersion) {
+        if (oldVersion < 1) {
+          const entities = database.createObjectStore('entities', { keyPath: 'id' });
+          entities.createIndex('byType', 'type');
+          entities.createIndex('byUpdated', 'updatedAt');
+
+          const memberships = database.createObjectStore('memberships', { keyPath: 'id' });
+          memberships.createIndex('byParent', 'parentId');
+          memberships.createIndex('byChild', 'childId');
+
+          const ratings = database.createObjectStore('ratings', { keyPath: 'id' });
+          ratings.createIndex('byEntity', 'entityId');
+          ratings.createIndex('byAt', 'at');
+          ratings.createIndex('byType', 'entityType');
+
+          const comparisons = database.createObjectStore('comparisons', { keyPath: 'id' });
+          comparisons.createIndex('byType', 'entityType');
+          comparisons.createIndex('byAt', 'at');
+
+          database.createObjectStore('queueStates', { keyPath: 'id' });
+          database.createObjectStore('annotations', { keyPath: 'id' });
+          database.createObjectStore('collections', { keyPath: 'id' });
+          database.createObjectStore('meta');
+        }
+        if (oldVersion < 2) {
+          // v2 introduced user-defined rating scales as first-class records.
+          database.createObjectStore('scales', { keyPath: 'id' });
+        }
+      },
+      blocked() {
+        blockedNotice?.(
+          'Another tab is using an older version of this app. Close it and reload to continue.',
+        );
+      },
+      blocking() {
+        // A newer version wants in. Let go so the other tab can upgrade.
+        void db().then((instance) => instance.close());
+        dbp = null;
+      },
+      terminated() {
+        dbp = null;
+      },
+    });
+  }
+  return dbp;
+}
+
+/** For tests and for "erase everything" in settings. */
+export async function closeDatabase(): Promise<void> {
+  if (!dbp) return;
+  const instance = await dbp;
+  instance.close();
+  dbp = null;
+}
+
+/**
+ * Svelte 5 `$state` proxies cannot be structured-cloned into IndexedDB, and
+ * neither can class instances that sneak in from provider mappers. This is the
+ * one gate every write passes through.
+ */
+export function raw<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Generic record access                                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface SyncRecord {
+  id: string;
+  updatedAt: number;
+  deleted?: number;
+}
+
+export async function putRecord<S extends SyncedStore>(
+  store: S,
+  value: LedgerDB[S]['value'],
+): Promise<void> {
+  const database = await db();
+  await database.put(store, raw(value));
+}
+
+export async function putRecords<S extends SyncedStore>(
+  store: S,
+  values: readonly LedgerDB[S]['value'][],
+): Promise<void> {
+  if (values.length === 0) return;
+  const database = await db();
+  const tx = database.transaction(store, 'readwrite');
+  await Promise.all([...values.map((v) => tx.store.put(raw(v))), tx.done]);
+}
+
+/** Live records only: tombstones are an implementation detail of sync. */
+export async function allLive<S extends SyncedStore>(store: S): Promise<LedgerDB[S]['value'][]> {
+  const database = await db();
+  const rows = (await database.getAll(store)) as LedgerDB[S]['value'][];
+  return rows.filter((r) => !(r as SyncRecord).deleted);
+}
+
+/** Everything, tombstones included. Only sync and export should call this. */
+export async function allForSync<S extends SyncedStore>(store: S): Promise<LedgerDB[S]['value'][]> {
+  const database = await db();
+  return (await database.getAll(store)) as LedgerDB[S]['value'][];
+}
+
+export async function getRecord<S extends SyncedStore>(
+  store: S,
+  key: LedgerDB[S]['key'],
+): Promise<LedgerDB[S]['value'] | undefined> {
+  const database = await db();
+  const found = (await database.get(store, key)) as LedgerDB[S]['value'] | undefined;
+  if (found && (found as SyncRecord).deleted) return undefined;
+  return found;
+}
+
+/**
+ * Deletion writes a tombstone rather than removing the row, so a delete made
+ * offline on one device still wins against a stale copy on another.
+ */
+export async function tombstone<S extends SyncedStore>(
+  store: S,
+  key: LedgerDB[S]['key'],
+  now = Date.now(),
+): Promise<void> {
+  const database = await db();
+  const existing = (await database.get(store, key)) as SyncRecord | undefined;
+  if (!existing) return;
+  await database.put(store, raw({ ...existing, deleted: now, updatedAt: now }) as never);
+}
+
+export async function clearStore(store: StoreName): Promise<void> {
+  const database = await db();
+  await database.clear(store);
+}
+
+export async function readMeta<T>(key: string): Promise<T | undefined> {
+  const database = await db();
+  return (await database.get('meta', key)) as T | undefined;
+}
+
+export async function writeMeta<T>(key: string, value: T): Promise<void> {
+  const database = await db();
+  await database.put('meta', raw(value) as unknown, key);
+}
+
+export async function readSettings(): Promise<Partial<AppSettings> | undefined> {
+  return readMeta<Partial<AppSettings>>(META_SETTINGS);
+}
+
+/** Approximate on-device footprint, for the diagnostics view. */
+export async function storageEstimate(): Promise<{ usage: number; quota: number } | null> {
+  if (!navigator.storage?.estimate) return null;
+  const estimate = await navigator.storage.estimate();
+  return { usage: estimate.usage ?? 0, quota: estimate.quota ?? 0 };
+}
+
+export async function countAll(): Promise<Record<StoreName, number>> {
+  const database = await db();
+  const names: StoreName[] = [...SYNCED_STORES, 'meta'];
+  const entries = await Promise.all(names.map(async (n) => [n, await database.count(n)] as const));
+  return Object.fromEntries(entries) as Record<StoreName, number>;
+}

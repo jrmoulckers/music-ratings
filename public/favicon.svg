@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ledger">
+  <rect width="64" height="64" fill="#1a1a1a" />
+  <g stroke="#efe9dd" stroke-width="1.5" shape-rendering="crispEdges">
+    <path d="M6 6h5M6 6v5M58 6h-5M58 6v5M6 58h5M6 58v-5M58 58h-5M58 58v-5" />
+  </g>
+  <g shape-rendering="crispEdges">
+    <rect x="24" y="13" width="2" height="38" fill="#efe9dd" />
+    <g fill="#efe9dd">
+      <rect x="20" y="13" width="10" height="1.5" />
+      <rect x="20" y="19" width="10" height="1.5" />
+      <rect x="20" y="25" width="10" height="1.5" />
+      <rect x="20" y="37" width="10" height="1.5" />
+      <rect x="20" y="43" width="10" height="1.5" />
+      <rect x="20" y="49.5" width="10" height="1.5" />
+    </g>
+    <rect x="18" y="30" width="30" height="4" fill="#c23a2a" />
+  </g>
+</svg>

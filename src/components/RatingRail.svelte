@@ -1,0 +1,417 @@
+<script lang="ts">
+  import {
+    denormalize,
+    detentValues,
+    detentIndex,
+    formatMark,
+    formatRaw,
+    normalizedForDetent,
+  } from '../lib/domain/scales';
+  import type { RatingScale } from '../lib/domain/types';
+
+  /**
+   * The rail.
+   *
+   * One physical object with detents cut by the current scale. A judgement is
+   * seated into a detent and stays lit where it was left. This is the app's
+   * signature gesture and every rating control in the product is this one.
+   *
+   * There is exactly one representation: the detents are real buttons, and the
+   * spine, cuts and ink run through them. Nothing here is decorative twin of
+   * something else.
+   */
+
+  interface Props {
+    scale: RatingScale;
+    /** Canonical 0..100, or null when nothing has been seated yet. */
+    value: number | null;
+    /** Fires while a detent is merely under the pointer. */
+    onpreview?: (normalized: number) => void;
+    /** Fires when a detent is seated. */
+    oncommit?: (normalized: number) => void;
+    label?: string;
+    orientation?: 'vertical' | 'horizontal';
+    disabled?: boolean;
+    /** Prints the scale's own marks in the index column beside the detents. */
+    showMarks?: boolean;
+  }
+
+  let {
+    scale,
+    value,
+    onpreview,
+    oncommit,
+    label = 'Rating',
+    orientation = 'vertical',
+    disabled = false,
+    showMarks = true,
+  }: Props = $props();
+
+  let hovered = $state<number | null>(null);
+
+  const detents = $derived(detentValues(scale));
+  const seated = $derived(value == null ? null : detentIndex(scale, value));
+  const active = $derived(hovered ?? seated);
+  const currentRaw = $derived(value == null ? null : denormalize(scale, value));
+
+  function markFor(index: number): string {
+    const raw = detents[index];
+    if (raw === undefined) return '';
+    const mark = formatMark(scale, raw);
+    return mark || formatRaw(scale, raw);
+  }
+
+  function labelFor(index: number): string {
+    const raw = detents[index];
+    if (raw === undefined) return '';
+    return `${formatRaw(scale, raw)} on ${scale.label}`;
+  }
+
+  function seat(index: number, commit: boolean): void {
+    const normalized = normalizedForDetent(scale, index);
+    if (commit) {
+      hovered = null;
+      oncommit?.(normalized);
+    } else {
+      hovered = index;
+      onpreview?.(normalized);
+    }
+  }
+
+  /**
+   * The whole rail is one tab stop. Arrows walk the detents, digits seat a known
+   * verdict outright, Home and End reach the ends.
+   */
+  function onKeyDown(event: KeyboardEvent): void {
+    if (disabled) return;
+    const count = detents.length;
+    const current = seated ?? Math.floor((count - 1) / 2);
+    let next: number | null = null;
+    switch (event.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = Math.min(count - 1, current + 1);
+        break;
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = Math.max(0, current - 1);
+        break;
+      case 'PageUp':
+        next = Math.min(count - 1, current + Math.max(1, Math.round(count / 5)));
+        break;
+      case 'PageDown':
+        next = Math.max(0, current - Math.max(1, Math.round(count / 5)));
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = count - 1;
+        break;
+      default:
+        if (/^[0-9]$/.test(event.key)) {
+          const typed = Number(event.key);
+          const raw = typed === 0 && scale.max >= 10 ? 10 : typed;
+          const clamped = Math.max(scale.min, Math.min(scale.max, raw));
+          const index = detents.findIndex((d: number) => Math.abs(d - clamped) < scale.step / 2);
+          if (index >= 0) next = index;
+        }
+    }
+    if (next === null) return;
+    event.preventDefault();
+    seat(next, true);
+  }
+
+  const seatedPercent = $derived.by(() => {
+    if (active == null || detents.length === 0) return null;
+    // The ink fills whole cells, so the level lands on the cut, not beside it.
+    return ((active + 1) / detents.length) * 100;
+  });
+</script>
+
+<div
+  class="rail rail--{orientation}"
+  class:rail--marks={showMarks}
+  role="slider"
+  tabindex={disabled ? -1 : 0}
+  aria-label={label}
+  aria-valuemin={scale.min}
+  aria-valuemax={scale.max}
+  aria-valuenow={currentRaw ?? undefined}
+  aria-valuetext={value == null
+    ? 'Not yet rated'
+    : `${formatRaw(scale, denormalize(scale, value))} on ${scale.label}`}
+  aria-orientation={orientation}
+  aria-disabled={disabled}
+  onkeydown={onKeyDown}
+  onmouseleave={() => (hovered = null)}
+>
+  <div class="rail__body">
+    <div class="rail__spine" aria-hidden="true"></div>
+    {#if seatedPercent !== null}
+      <div class="rail__ink" aria-hidden="true" style:--seated="{seatedPercent}%"></div>
+    {/if}
+
+    {#if orientation === 'horizontal'}
+      {#if active !== null}
+        <span
+          class="rail__reading"
+          aria-hidden="true"
+          style:--at="{((active + 0.5) / detents.length) * 100}%"
+        >
+          {markFor(active)}
+        </span>
+      {:else}
+        <span class="rail__hint apparatus" aria-hidden="true">Seat a judgement</span>
+      {/if}
+    {/if}
+
+    {#each detents as _detent, index (index)}
+      <button
+        type="button"
+        class="rail__detent"
+        class:is-seated={seated === index}
+        class:is-active={active === index}
+        class:is-below={active !== null && index < active}
+        tabindex="-1"
+        aria-pressed={seated === index}
+        aria-label={labelFor(index)}
+        {disabled}
+        onclick={() => seat(index, true)}
+        onmouseenter={() => (hovered = index)}
+      >
+        <span class="rail__cut" aria-hidden="true"></span>
+        {#if showMarks}
+          <span class="rail__mark">{markFor(index)}</span>
+        {/if}
+      </button>
+    {/each}
+  </div>
+</div>
+
+<style>
+  .rail {
+    display: block;
+  }
+  .rail:focus-visible {
+    outline: var(--rule-weight) solid var(--rubric);
+    outline-offset: 5px;
+  }
+
+  .rail__body {
+    position: relative;
+    display: flex;
+    /* The rail is one bar. It never wraps: on a narrow screen the detents
+       narrow with it, because a rail broken into two rows is not a rail. */
+    flex-wrap: nowrap;
+    border: var(--rule-weight) solid var(--rule-faint);
+  }
+  .rail--vertical .rail__body {
+    flex-direction: column-reverse;
+    width: 100%;
+    background: var(--paper-sunk);
+  }
+  /* Standing up, the rail keeps a hand's width. On a phone it takes the column,
+     because a narrow strip beside dead space is not a rail either. */
+  @media (min-width: 48rem) {
+    .rail--vertical .rail__body {
+      max-width: 13rem;
+    }
+  }
+  .rail--horizontal .rail__body {
+    flex-direction: row;
+    width: 100%;
+    min-height: 3.5rem;
+    background: var(--paper-sunk);
+  }
+
+  /* The spine: one ruled line the whole length of the object. */
+  .rail__spine {
+    position: absolute;
+    background: var(--rule);
+    pointer-events: none;
+  }
+  .rail--vertical .rail__spine {
+    top: 0;
+    bottom: 0;
+    left: 2.25rem;
+    width: var(--rule-weight);
+  }
+  .rail--horizontal .rail__spine {
+    left: 0;
+    right: 0;
+    bottom: 1.35rem;
+    height: var(--rule-weight);
+  }
+
+  /* Everything up to the seated detent is inked, so the rail reads as filled to
+     a level rather than a dot floating on a line. */
+  .rail__ink {
+    position: absolute;
+    background: var(--rubric);
+    pointer-events: none;
+    transition:
+      width var(--dur-2) var(--ease),
+      height var(--dur-2) var(--ease);
+  }
+  .rail--vertical .rail__ink {
+    left: calc(2.25rem - 1px);
+    width: 3px;
+    bottom: 0;
+    height: var(--seated);
+  }
+  .rail--horizontal .rail__ink {
+    bottom: calc(1.35rem - 1px);
+    height: 3px;
+    left: 0;
+    width: var(--seated);
+  }
+
+  .rail__detent {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    color: var(--ink-quiet);
+    transition:
+      background-color var(--dur-1) var(--ease),
+      color var(--dur-1) var(--ease);
+  }
+  .rail__detent:disabled {
+    cursor: default;
+  }
+  .rail--vertical .rail__detent {
+    justify-content: flex-start;
+    min-height: 2.25rem;
+    padding: 0 var(--s3);
+  }
+  /* Laid down, the rail is a bar with cuts across its spine — not a row of
+     cells. Nothing divides one detent from the next except its own cut. */
+  .rail--horizontal .rail__detent {
+    flex: 1 1 0;
+    position: relative;
+    display: block;
+    min-height: 3.5rem;
+    padding: 0;
+    border-left: 0;
+  }
+
+  /* The detent itself: a cut across the spine. */
+  .rail__cut {
+    display: block;
+    background: var(--rule);
+    transition:
+      background-color var(--dur-1) var(--ease),
+      width var(--dur-1) var(--ease),
+      height var(--dur-1) var(--ease);
+  }
+  /* Standing up, each detent is a graduation ruled clear across the object. */
+  .rail--vertical .rail__cut {
+    position: absolute;
+    left: 1.75rem;
+    right: var(--s3);
+    height: var(--rule-weight);
+  }
+  .rail--horizontal .rail__cut {
+    position: absolute;
+    left: 50%;
+    bottom: calc(1.35rem - 0.42rem);
+    transform: translateX(-50%);
+    width: var(--rule-weight);
+    height: 0.85rem;
+  }
+
+  .rail__detent.is-below .rail__cut,
+  .rail__detent.is-active .rail__cut {
+    background: var(--rubric);
+  }
+  .rail--vertical .rail__detent.is-active .rail__cut {
+    left: 1.25rem;
+    height: 3px;
+  }
+  .rail--horizontal .rail__detent.is-active .rail__cut {
+    width: 3px;
+    height: 1.7rem;
+    bottom: calc(1.35rem - 0.85rem);
+  }
+
+  /* The index column: the scale's own marks, hanging beside the cuts. */
+  .rail__mark {
+    min-width: 1.25rem;
+    text-align: center;
+    transition: color var(--dur-1) var(--ease);
+  }
+  .rail--vertical .rail__mark {
+    order: -1;
+    text-align: right;
+    margin-right: 2.25rem;
+  }
+  .rail--horizontal .rail__mark {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.3rem;
+    min-width: 0;
+  }
+
+  /* Ink fills the rail up to the seated detent, so a rating reads as a level
+     the object is filled to rather than a dot resting on a line. */
+  .rail__detent.is-below,
+  .rail__detent.is-active {
+    background: color-mix(in srgb, var(--rubric) 11%, transparent);
+  }
+
+  /* The read-out rides above the detent under the hand, so the rail answers
+     before the judgement is committed. */
+  .rail__reading {
+    position: absolute;
+    left: var(--at);
+    top: 0.3rem;
+    transform: translateX(-50%);
+    font-family: var(--serif);
+    font-size: 1.35rem;
+    line-height: 1;
+    color: var(--rubric-ink);
+    pointer-events: none;
+    white-space: nowrap;
+    transition: left var(--dur-2) var(--ease);
+  }
+  .rail__hint {
+    position: absolute;
+    left: var(--s3);
+    top: 0.6rem;
+    color: var(--ink-faint);
+    pointer-events: none;
+  }
+
+  .rail__detent:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--rubric) 20%, transparent);
+    color: var(--ink);
+  }
+  .rail__detent.is-seated {
+    color: var(--rubric-ink);
+  }
+  .rail__detent.is-seated .rail__mark {
+    font-weight: 700;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rail__ink,
+    .rail__cut,
+    .rail__mark,
+    .rail__reading,
+    .rail__detent {
+      transition: none;
+    }
+  }
+</style>

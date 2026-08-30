@@ -1,0 +1,959 @@
+/*
+  Ledger — the built world.
+
+  Three values, no more: iron ink, unbleached paper, and a rubric vermilion that
+  never appears as a large fill. Nothing here has a corner radius. State is
+  printed, not shaded: a hairline at rest, filled when pressed, bracketed on
+  focus, struck through when spent.
+*/
+
+/* -------------------------------------------------------------------------- */
+/* Tokens                                                                     */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  /* Paper and ink. */
+  --paper: #f1ece2;
+  --paper-sunk: #e8e2d5;
+  --paper-raised: #f7f3ea;
+  --ink: #1a1a1a;
+  --ink-quiet: #55534e;
+  --ink-faint: #7d7a72;
+  --rule: #b3aea2;
+  --rule-faint: #cdc8bb;
+
+  /* The one accent. Marks and fills use --rubric; text uses --rubric-ink,
+     which is darkened so small caps still clear 4.5:1 on paper. */
+  --rubric: #c23a2a;
+  --rubric-ink: #a32a1c;
+  --rubric-wash: #f3e3df;
+  /* What can be set on a solid rubric fill and still clear 4.5:1. */
+  --on-rubric: #fdfbf6;
+
+  /* One device pixel, whatever the display. */
+  --hairline: 1px;
+  --rule-weight: 1px;
+
+  /* Spacing is a set, not a scale generator. */
+  --s1: 0.25rem;
+  --s2: 0.5rem;
+  --s3: 0.75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+  --s7: 3rem;
+  --s8: 4.5rem;
+
+  --measure: 68ch;
+  --margin-col: 13rem;
+  --rail-w: 15rem;
+
+  --serif: 'Libre Caslon Text', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --sans:
+    'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --dur-1: 90ms;
+  --dur-2: 160ms;
+  --dur-3: 260ms;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  --z-rail: 20;
+  --z-overlay: 60;
+  --z-toast: 80;
+}
+
+@media (min-resolution: 2dppx) {
+  :root {
+    --hairline: 0.5px;
+  }
+}
+@media (min-resolution: 3dppx) {
+  :root {
+    --hairline: 0.34px;
+  }
+}
+
+/* A proof pull on black, not an inverted page. Ink becomes the ground, the
+   paper becomes the mark, and the rubric is lifted so it still reads. */
+[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #14140f;
+  --paper-sunk: #0d0d0a;
+  --paper-raised: #1c1c16;
+  --ink: #ece7da;
+  --ink-quiet: #a9a496;
+  --ink-faint: #7f7b6f;
+  --rule: #4a473e;
+  --rule-faint: #33312a;
+  --rubric: #e0604a;
+  --rubric-ink: #ef8a76;
+  --rubric-wash: #2b1c18;
+  --on-rubric: #14140f;
+}
+
+[data-density='compact'] {
+  --s4: 0.75rem;
+  --s5: 1rem;
+  --s6: 1.5rem;
+  --s7: 2rem;
+  --s8: 3rem;
+}
+
+[data-contrast='high'] {
+  --ink-quiet: var(--ink);
+  --ink-faint: #46443f;
+  --rule: #6d695f;
+  --rule-faint: #8d887c;
+}
+[data-theme='dark'][data-contrast='high'] {
+  --ink-faint: #cfcabb;
+  --rule: #8b8779;
+  --rule-faint: #6a675c;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reset                                                                      */
+/* -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.62;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  overflow-wrap: break-word;
+}
+
+/* The paper has a tooth. It is barely there, and it never sits under text at a
+   strength that could reduce contrast. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+  background-image: radial-gradient(circle at 1px 1px, var(--rule-faint) 0.5px, transparent 0);
+  background-size: 4px 4px;
+}
+[data-theme='dark'] body::before {
+  opacity: 0.22;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: var(--rule);
+}
+a:hover {
+  text-decoration-color: var(--rubric);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+::selection {
+  background: var(--rubric-wash);
+  color: var(--ink);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Motion                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/* 0.001ms rather than 0 so transitionend still fires and nothing waits forever. */
+@media (prefers-reduced-motion: reduce) {
+  [data-motion='system'] *,
+  [data-motion='system'] *::before,
+  [data-motion='system'] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+[data-motion='reduce'] *,
+[data-motion='reduce'] *::before,
+[data-motion='reduce'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Typography                                                                 */
+/* -------------------------------------------------------------------------- */
+
+.display {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(2rem, 1.3rem + 3vw, 3.4rem);
+  line-height: 1.06;
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+}
+
+.title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(1.4rem, 1.1rem + 1.3vw, 2rem);
+  line-height: 1.16;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-family: var(--serif);
+  font-size: 1.125rem;
+  line-height: 1.4;
+  letter-spacing: -0.006em;
+}
+
+.prose {
+  max-width: var(--measure);
+  font-size: 1rem;
+}
+.prose p + p {
+  margin-top: var(--s4);
+}
+
+/* The apparatus: everything that labels, keys, or annotates. Small caps in the
+   grotesque, never used for running text. */
+.apparatus {
+  font-family: var(--sans);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  color: var(--ink-quiet);
+}
+.apparatus--rubric {
+  color: var(--rubric-ink);
+}
+
+.note {
+  font-family: var(--serif);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--ink-quiet);
+}
+
+/* Fine print: caveats, provenance, the reason a thing is unavailable. */
+.note--small {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.figure {
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* A figure that is the point of its block, not an annotation on one. */
+.figure--large {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.machine {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+}
+
+.italic {
+  font-style: italic;
+}
+
+.struck {
+  text-decoration: line-through;
+  text-decoration-color: var(--rubric);
+  text-decoration-thickness: 1px;
+  color: var(--ink-faint);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Rules and register marks                                                   */
+/* -------------------------------------------------------------------------- */
+
+.rule {
+  border: 0;
+  border-top: var(--rule-weight) solid var(--rule);
+  margin: 0;
+}
+.rule--faint {
+  border-top-color: var(--rule-faint);
+}
+
+/* A ruled line carrying the register cross at its centre — the mark this whole
+   world is set against. */
+.registered-rule {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--s3);
+}
+.registered-rule::before,
+.registered-rule::after {
+  content: '';
+  border-top: var(--rule-weight) solid var(--rule);
+}
+.registered-rule > .register-mark {
+  color: var(--rubric);
+}
+
+.register-mark {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  color: var(--rubric);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Layout                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+}
+
+@media (max-width: 60rem) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 4.25rem;
+  }
+}
+
+.sheet {
+  min-width: 0;
+  padding: var(--s6) var(--s6) var(--s8);
+}
+@media (max-width: 48rem) {
+  .sheet {
+    padding: var(--s5) var(--s4) var(--s7);
+  }
+}
+
+/* Short measure inside a wide annotation margin: the apparatus hangs where a
+   printed reference edition would put it. */
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--margin-col);
+  gap: var(--s6);
+  align-items: start;
+}
+@media (max-width: 68rem) {
+  .setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.margin {
+  position: sticky;
+  top: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  padding-left: var(--s4);
+  border-left: var(--rule-weight) solid var(--rule-faint);
+}
+@media (max-width: 68rem) {
+  .margin {
+    position: static;
+    border-left: 0;
+    padding-left: 0;
+    border-top: var(--rule-weight) solid var(--rule-faint);
+    padding-top: var(--s4);
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.stack--tight {
+  gap: var(--s2);
+}
+.stack--loose {
+  gap: var(--s6);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.row--between {
+  justify-content: space-between;
+}
+.row--tight {
+  gap: var(--s2);
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+  gap: var(--s5);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Section heads                                                              */
+/* -------------------------------------------------------------------------- */
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding-bottom: var(--s2);
+  border-bottom: var(--rule-weight) solid var(--rule);
+  margin-bottom: var(--s4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Controls                                                                   */
+/* -------------------------------------------------------------------------- */
+
+.btn {
+  --btn-ink: var(--ink);
+  --btn-edge: var(--ink);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 0.55rem 1.1rem;
+  min-height: 2.5rem;
+  border: var(--rule-weight) solid var(--btn-edge);
+  border-radius: 0;
+  background: transparent;
+  color: var(--btn-ink);
+  font-family: var(--sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+.btn:hover:not(:disabled) {
+  background: var(--rubric-wash);
+}
+/* Pressed is a filled impression, the way a hand press leaves one. */
+.btn:active:not(:disabled) {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.btn:disabled {
+  color: var(--ink-faint);
+  border-color: var(--rule-faint);
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  --btn-edge: var(--rubric);
+  --btn-ink: var(--rubric-ink);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--rubric-wash);
+}
+.btn--primary:active:not(:disabled),
+.btn--primary[aria-pressed='true'] {
+  background: var(--rubric);
+  border-color: var(--rubric);
+  color: #fbf7ee;
+}
+
+.btn--quiet {
+  border-color: transparent;
+  padding-inline: var(--s2);
+}
+.btn--quiet:hover:not(:disabled) {
+  border-color: var(--rule);
+  background: transparent;
+}
+
+.btn--small {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.625rem;
+}
+
+.btn--wide {
+  width: 100%;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  min-height: 2.5rem;
+  background: var(--paper-raised);
+  border: var(--rule-weight) solid var(--rule);
+  border-radius: 0;
+  font-family: var(--serif);
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+.select {
+  font-family: var(--sans);
+  font-size: 0.8125rem;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-quiet) 50%),
+    linear-gradient(135deg, var(--ink-quiet) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 55%,
+    calc(100% - 10px) 55%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+}
+.textarea {
+  min-height: 6rem;
+  resize: vertical;
+  line-height: 1.55;
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
+.input:hover,
+.textarea:hover,
+.select:hover {
+  border-color: var(--ink-quiet);
+}
+
+/* Focus is bracketed, not glowing: two rules stand off the element like the
+   square brackets a compositor sets around a correction. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: var(--rule-weight) solid var(--rubric);
+  outline-offset: 3px;
+}
+.bracketed:focus-visible,
+.bracketed:focus-within {
+  outline: none;
+  box-shadow:
+    -4px 0 0 -3px var(--rubric),
+    4px 0 0 -3px var(--rubric);
+}
+
+.check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  cursor: pointer;
+  padding: var(--s1) 0;
+}
+.check input {
+  appearance: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+  margin-top: 0.28rem;
+  border: var(--rule-weight) solid var(--ink-quiet);
+  background: var(--paper-raised);
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+}
+.check input:checked {
+  border-color: var(--rubric);
+}
+.check input:checked::after {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  background: var(--rubric);
+}
+/* A chosen option is a cut seated across the box, not a dot. No radius anywhere. */
+.check input[type='radio']:checked::after {
+  width: 0.7rem;
+  height: 3px;
+}
+.check input:disabled {
+  border-color: var(--rule-faint);
+  cursor: not-allowed;
+}
+
+/* A switch is a two-stop rail, so it belongs to the same object as everything
+   else here rather than being a pill from another world. */
+.switch {
+  appearance: none;
+  width: 2.6rem;
+  height: 1.15rem;
+  flex: none;
+  position: relative;
+  border: var(--rule-weight) solid var(--ink-quiet);
+  background: var(--paper-raised);
+  cursor: pointer;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  width: 1rem;
+  background: var(--ink-quiet);
+  transition: transform var(--dur-2) var(--ease);
+}
+.switch:checked {
+  border-color: var(--rubric);
+}
+.switch:checked::after {
+  background: var(--rubric);
+  transform: translateX(1.35rem);
+}
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* A slider is the rail again, shrunk: a spine with a cut riding along it. The
+   browser's own thumb belongs to another product's palette entirely. */
+.slider {
+  appearance: none;
+  width: 100%;
+  height: 1.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: var(--rule-weight);
+  background: var(--rule);
+}
+.slider::-moz-range-track {
+  height: var(--rule-weight);
+  background: var(--rule);
+}
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 3px;
+  height: 1.1rem;
+  margin-top: -0.55rem;
+  background: var(--rubric);
+  border: 0;
+  border-radius: 0;
+}
+.slider::-moz-range-thumb {
+  width: 3px;
+  height: 1.1rem;
+  background: var(--rubric);
+  border: 0;
+  border-radius: 0;
+}
+.slider::-moz-range-progress {
+  height: var(--rule-weight);
+  background: var(--rubric);
+}
+.slider:focus-visible {
+  outline: var(--rule-weight) solid var(--rubric);
+  outline-offset: 3px;
+}
+.slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Plates: artwork is tipped in, with a printed border, never bled            */
+/* -------------------------------------------------------------------------- */
+
+.plate {
+  position: relative;
+  display: block;
+  flex: none;
+  background: var(--paper-sunk);
+  border: var(--rule-weight) solid var(--rule);
+  padding: 3px;
+  overflow: hidden;
+}
+.plate img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.plate--sm {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+.plate--md {
+  width: 5rem;
+  height: 5rem;
+}
+.plate--lg {
+  width: min(15rem, 40vw);
+  height: min(15rem, 40vw);
+}
+/* On a phone the plate yields to the thing being decided. */
+@media (max-width: 48rem) {
+  .plate--lg {
+    width: min(9rem, 32vw);
+    height: min(9rem, 32vw);
+  }
+}
+/* A plate with no image is a *reserved* plate, not a hole: it prints the
+   registration crosshair the image would have been aligned to. */
+.plate__empty {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-content: center;
+}
+.plate__empty::before,
+.plate__empty::after {
+  content: '';
+  position: absolute;
+  background: var(--rule);
+}
+.plate__empty::before {
+  left: 14%;
+  right: 14%;
+  top: 50%;
+  height: var(--rule-weight);
+}
+.plate__empty::after {
+  top: 14%;
+  bottom: 14%;
+  left: 50%;
+  width: var(--rule-weight);
+}
+.plate__initials {
+  position: relative;
+  background: var(--paper-sunk);
+  padding: 0 0.3em;
+  color: var(--ink-faint);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Entries: the list row is a catalogue line, not a card                      */
+/* -------------------------------------------------------------------------- */
+
+.entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s3) var(--s2);
+  border: 0;
+  border-bottom: var(--rule-weight) solid var(--rule-faint);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.entry:hover {
+  background: var(--paper-raised);
+}
+.entry[aria-current='true'] {
+  background: var(--rubric-wash);
+}
+.entry__position {
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+  min-width: 2.25rem;
+  text-align: right;
+}
+.entry__name {
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.3;
+}
+.entry__sub {
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  color: var(--ink-quiet);
+  line-height: 1.4;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Panels: bounded by rules and corner marks, never by shadow or radius       */
+/* -------------------------------------------------------------------------- */
+
+.panel {
+  position: relative;
+  border: var(--rule-weight) solid var(--rule);
+  background: var(--paper-raised);
+  padding: var(--s4);
+}
+.panel--sunk {
+  background: var(--paper-sunk);
+}
+.panel--rubric {
+  border-color: var(--rubric);
+}
+
+.corner-marks::before,
+.corner-marks::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: var(--rule-weight) solid var(--rubric);
+  pointer-events: none;
+}
+.corner-marks::before {
+  top: -1px;
+  left: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.corner-marks::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Utility                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.skip-link {
+  position: absolute;
+  left: var(--s4);
+  top: -4rem;
+  z-index: var(--z-toast);
+  padding: var(--s2) var(--s4);
+  background: var(--paper-raised);
+  border: var(--rule-weight) solid var(--rubric);
+  transition: top var(--dur-2) var(--ease);
+}
+.skip-link:focus {
+  top: var(--s4);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.scroll-x {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.divider-dotted {
+  border: 0;
+  border-top: var(--rule-weight) dotted var(--rubric);
+  margin: 0;
+}
+
+.pending {
+  color: var(--ink-faint);
+}
+
+.tag {
+  font-family: var(--sans);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  padding: 0.1rem 0.4rem;
+  border: var(--rule-weight) solid var(--rule);
+  color: var(--ink-quiet);
+  white-space: nowrap;
+}
+.tag--rubric {
+  border-color: var(--rubric);
+  color: var(--rubric-ink);
+}

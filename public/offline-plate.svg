@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Artwork unavailable offline">
+  <rect width="120" height="120" fill="#e7e0d3" />
+  <g stroke="#a09a8d" stroke-width="1" shape-rendering="crispEdges" fill="none">
+    <path d="M8 8h10M8 8v10M112 8h-10M112 8v10M8 112h10M8 112v-10M112 112h-10M112 112v-10" />
+  </g>
+  <g stroke="#a09a8d" stroke-width="1" shape-rendering="crispEdges">
+    <path d="M30 90 L90 30M30 30 L90 90" opacity="0.35" />
+  </g>
+</svg>
