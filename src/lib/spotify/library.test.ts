@@ -182,6 +182,22 @@ describe('February 2026 development-mode API changes', () => {
     await expect(new SpotifyClient({ config }).playlistTracks('p1')).resolves.toEqual([]);
   });
 
+  it('asks for ten albums per artist page, the ceiling the schema sets', async () => {
+    respondWith({ items: [], next: null });
+    await new SpotifyClient({ config }).artistAlbums('ar1');
+
+    const url = requestedUrl();
+    expect(url.pathname).toBe('/v1/artists/ar1/albums');
+    expect(url.searchParams.get('limit')).toBe('10');
+  });
+
+  it('still pages saved tracks fifty at a time, where fifty is allowed', async () => {
+    respondWith({ items: [], next: null });
+    await new SpotifyClient({ config }).savedTracks();
+
+    expect(requestedUrl().searchParams.get('limit')).toBe('50');
+  });
+
   it('maps playlist items under the new `item` key', async () => {
     const result = mapPlaylistItems({ id: 'p1', name: 'Evening', items: { total: 1 } }, [
       { item: { id: 't1', name: 'Inner City Blues' }, added_at: '2026-01-02T00:00:00Z' },

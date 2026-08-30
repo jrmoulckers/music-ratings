@@ -108,6 +108,14 @@ export const RECENTLY_PLAYED_MAX = 50;
  */
 export const SEARCH_LIMIT_MAX = 10;
 
+/**
+ * `/artists/{id}/albums` carries the same reduced ceiling as search. The
+ * February 2026 changelog does not mention it, but the published schema sets
+ * `maximum: 10`, so asking for the old page size fails the same way. Paging
+ * still collects everything; it just walks in smaller steps.
+ */
+export const ARTIST_ALBUMS_LIMIT_MAX = 10;
+
 export const AUDIOBOOK_MARKETS = ['US', 'GB', 'CA', 'IE', 'NZ', 'AU'] as const;
 
 export const DEVELOPMENT_MODE_USER_LIMIT = 5;

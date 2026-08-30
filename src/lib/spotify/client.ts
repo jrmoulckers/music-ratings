@@ -6,7 +6,12 @@ import {
   type SpotifyConfig,
   type SpotifyTokens,
 } from './auth';
-import { RECENTLY_PLAYED_MAX, SEARCH_LIMIT_MAX, type TopTerm } from './capabilities';
+import {
+  ARTIST_ALBUMS_LIMIT_MAX,
+  RECENTLY_PLAYED_MAX,
+  SEARCH_LIMIT_MAX,
+  type TopTerm,
+} from './capabilities';
 
 const API = 'https://api.spotify.com/v1';
 
@@ -325,7 +330,11 @@ export class SpotifyClient {
   artistAlbums(id: string, options?: RequestOptions & { max?: number }) {
     return this.collect<SpotifyAlbum>(
       `/artists/${id}/albums`,
-      { include_groups: 'album,single,compilation', market: this.market },
+      {
+        include_groups: 'album,single,compilation',
+        market: this.market,
+        limit: ARTIST_ALBUMS_LIMIT_MAX,
+      },
       options,
     );
   }
