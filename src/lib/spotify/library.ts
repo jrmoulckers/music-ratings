@@ -3,6 +3,7 @@ import type { Entity, EntityType, Membership } from '../domain/types';
 import { entityId } from '../domain/ids';
 import { META_CURSORS, readMeta, writeMeta } from '../storage/db';
 import { replaceChildren, saveMemberships, upsertEntities } from '../storage/repo';
+import { SEARCH_LIMIT_MAX } from './capabilities';
 import { SpotifyApiError, type SpotifyClient } from './client';
 import {
   mapAlbum,
@@ -356,7 +357,7 @@ export async function searchCatalogue(
 ): Promise<MapResult> {
   const searchTypes = searchTypesFor(types);
   if (!query.trim() || searchTypes.length === 0) return { entities: [], memberships: [] };
-  const response = await client.search(query, searchTypes, 20);
+  const response = await client.search(query, searchTypes, SEARCH_LIMIT_MAX);
   const parts: MapResult[] = [];
 
   for (const artist of response.artists?.items ?? []) {

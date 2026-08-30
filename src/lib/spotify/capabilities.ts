@@ -71,6 +71,16 @@ export const UNAVAILABLE_FEATURES: { name: string; reason: string }[] = [
     reason:
       'Deprecated in the current reference. Popular tracks are read from the artist\u2019s albums instead.',
   },
+  {
+    name: 'Contents of playlists you do not own',
+    reason:
+      'Since February 2026 Spotify returns only metadata for playlists you neither own nor collaborate on, so their tracks cannot be read or rolled up.',
+  },
+  {
+    name: 'Popularity, follower counts and available markets',
+    reason:
+      'Removed from Spotify responses in February 2026. This app never scored on them, so nothing is lost.',
+  },
 ];
 
 export const TOP_ITEM_TYPES: EntityType[] = ['artist', 'track'];
@@ -87,6 +97,16 @@ export const TERM_LABEL: Record<TopTerm, string> = {
 
 /** Recently played is tracks only, and never returns more than fifty. */
 export const RECENTLY_PLAYED_MAX = 50;
+
+/**
+ * Spotify cut the search page size for development-mode apps in February 2026:
+ * `limit` went from a maximum of 50 to a maximum of 10, and anything larger is
+ * refused outright with `400 Invalid limit`. Extended-quota apps still allow 50,
+ * but ten is valid under both, so the app asks for ten and never negotiates.
+ *
+ * https://developer.spotify.com/documentation/web-api/references/changes/february-2026
+ */
+export const SEARCH_LIMIT_MAX = 10;
 
 export const AUDIOBOOK_MARKETS = ['US', 'GB', 'CA', 'IE', 'NZ', 'AU'] as const;
 

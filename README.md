@@ -129,9 +129,10 @@ or your playback.
 ## API limitations you should know about
 
 Music Ratings deliberately does not use, work around, or simulate the Spotify endpoints
-that were withdrawn from new applications on **27 November 2024**. Where a feature
-would have depended on one, the app says so rather than approximating it. The
-**Data health** screen lists these at runtime.
+that were withdrawn from new applications on **27 November 2024**, nor those removed
+from Development Mode apps in **February 2026**. Where a feature would have depended
+on one, the app says so rather than approximating it. The **Data health** screen lists
+these at runtime.
 
 | Not available                                               | Consequence here                                                                                         |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -143,6 +144,16 @@ would have depended on one, the app says so rather than approximating it. The
 
 Other honest limits:
 
+- **Search returns at most 10 results per entity type.** Spotify cut the search page
+  size from 50 to 10 for Development Mode apps in
+  [February 2026](https://developer.spotify.com/documentation/web-api/references/changes/february-2026);
+  asking for more is refused outright.
+- **Contents of playlists you neither own nor collaborate on are no longer readable.**
+  Since February 2026 Spotify returns only metadata for them, so such a playlist can
+  still be rated on its own but has no track breakdown to roll up.
+- **Popularity, follower counts, labels and available-markets lists are gone** from
+  Spotify responses. Music Ratings never scored on them, so nothing about your
+  results changes.
 - **Recently played is capped at 50 items** by Spotify, and covers tracks only.
   Music Ratings stores each fetch so history accumulates over time on your device.
 - **Audiobooks are available in the US, UK, Canada, Ireland, New Zealand and

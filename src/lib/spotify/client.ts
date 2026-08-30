@@ -6,7 +6,7 @@ import {
   type SpotifyConfig,
   type SpotifyTokens,
 } from './auth';
-import { RECENTLY_PLAYED_MAX, type TopTerm } from './capabilities';
+import { RECENTLY_PLAYED_MAX, SEARCH_LIMIT_MAX, type TopTerm } from './capabilities';
 
 const API = 'https://api.spotify.com/v1';
 
@@ -219,10 +219,25 @@ export class SpotifyClient {
     return this.get<SpotifyUser>('/me', {}, options);
   }
 
-  search(query: string, types: readonly string[], limit = 20, options?: RequestOptions) {
+  /**
+   * `limit` is clamped rather than trusted: Spotify refuses anything above ten
+   * with `400 Invalid limit`, and a search that 400s looks to the user like the
+   * catalogue simply does not contain what they typed.
+   */
+  search(
+    query: string,
+    types: readonly string[],
+    limit = SEARCH_LIMIT_MAX,
+    options?: RequestOptions,
+  ) {
     return this.get<SearchResponse>(
       '/search',
-      { q: query, type: types.join(','), limit, market: this.market },
+      {
+        q: query,
+        type: types.join(','),
+        limit: Math.max(1, Math.min(Math.trunc(limit), SEARCH_LIMIT_MAX)),
+        market: this.market,
+      },
       options,
     );
   }
@@ -281,16 +296,26 @@ export class SpotifyClient {
   }
 
   /**
-   * `/items` is the newer address but Spotify restricts it to playlists you own
-   * or collaborate on, which would silently drop every playlist you merely
-   * follow. `/tracks` still answers for all of them.
+   * Spotify removed `/playlists/{id}/tracks` for development-mode apps in
+   * February 2026 and renamed it to `/playlists/{id}/items`. Extended-quota apps
+   * still answer on the old address, so a 404 falls back rather than losing
+   * every playlist's contents on that tier.
+   *
+   * Either way Spotify now withholds the contents of playlists the user neither
+   * owns nor collaborates on. That reads as a forbidden or empty response, and
+   * the caller treats it as "no contents" rather than as a failure.
    */
-  playlistTracks(id: string, options?: RequestOptions & { max?: number }) {
-    return this.collect<PlaylistItem>(
-      `/playlists/${id}/tracks`,
-      { market: this.market, additional_types: 'track' },
-      options,
-    );
+  async playlistTracks(id: string, options?: RequestOptions & { max?: number }) {
+    const params = { market: this.market, additional_types: 'track' };
+    try {
+      return await this.collect<PlaylistItem>(`/playlists/${id}/items`, params, options);
+    } catch (error) {
+      if (error instanceof SpotifyApiError && error.status === 404) {
+        return this.collect<PlaylistItem>(`/playlists/${id}/tracks`, params, options);
+      }
+      if (error instanceof SpotifyApiError && error.kind === 'forbidden') return [];
+      throw error;
+    }
   }
 
   artist(id: string, options?: RequestOptions) {
@@ -368,11 +393,16 @@ export interface SpotifyImage {
   height?: number | null;
 }
 
+/**
+ * Spotify removed `popularity`, `followers`, `available_markets`, `album_group`,
+ * `label` and the user's `country`, `email`, `product` and `explicit_content` in
+ * February 2026. None of them are declared here, because declaring a field the
+ * API no longer sends invites code that quietly depends on `undefined`.
+ */
 export interface SpotifyUser {
   id: string;
   display_name?: string | null;
   images?: SpotifyImage[];
-  product?: string;
   external_urls?: { spotify?: string };
 }
 
@@ -381,7 +411,6 @@ export interface SpotifyArtist {
   name: string;
   genres?: string[];
   images?: SpotifyImage[];
-  popularity?: number;
   external_urls?: { spotify?: string };
 }
 
@@ -389,7 +418,6 @@ export interface SpotifyAlbum {
   id: string;
   name: string;
   album_type?: string;
-  album_group?: string;
   release_date?: string;
   release_date_precision?: string;
   total_tracks?: number;
@@ -423,6 +451,9 @@ export interface SpotifyPlaylist {
   description?: string | null;
   images?: SpotifyImage[] | null;
   owner?: { id: string; display_name?: string | null };
+  /** Renamed from `tracks` in February 2026; absent for playlists you do not own. */
+  items?: { total?: number };
+  /** The pre-2026 name, still sent to extended-quota apps. */
   tracks?: { total?: number };
   public?: boolean | null;
   external_urls?: { spotify?: string };
@@ -431,7 +462,10 @@ export interface SpotifyPlaylist {
 export interface PlaylistItem {
   added_at?: string;
   is_local?: boolean;
-  track: SpotifyTrack | null;
+  /** Renamed from `track` in February 2026. */
+  item?: SpotifyTrack | null;
+  /** The pre-2026 name, still sent to extended-quota apps. */
+  track?: SpotifyTrack | null;
 }
 
 export interface PlayHistory {

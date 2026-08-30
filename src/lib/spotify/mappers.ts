@@ -195,39 +195,43 @@ export function mapPlaylist(playlist: SpotifyPlaylist, via = 'playlist', now = D
   Object.assign(entity, artworkOf(playlist.images));
   if (playlist.owner?.display_name) entity.subtitle = `compiled by ${playlist.owner.display_name}`;
   if (playlist.description) entity.description = stripTags(playlist.description);
-  if (playlist.tracks?.total !== undefined) entity.totalChildren = playlist.tracks.total;
+  const total = playlist.items?.total ?? playlist.tracks?.total;
+  if (total !== undefined) entity.totalChildren = total;
   if (playlist.external_urls?.spotify) entity.externalUrl = playlist.external_urls.spotify;
   return entity;
 }
 
 export function mapPlaylistItems(
   playlist: SpotifyPlaylist,
-  items: readonly { track: SpotifyTrack | null; is_local?: boolean; added_at?: string }[],
+  items: readonly {
+    item?: SpotifyTrack | null;
+    track?: SpotifyTrack | null;
+    is_local?: boolean;
+    added_at?: string;
+  }[],
   now = Date.now(),
 ): MapResult {
   const parent = mapPlaylist(playlist, 'playlist', now);
   const entities: Entity[] = [parent];
   const memberships: Membership[] = [];
   let position = 0;
-  for (const item of items) {
+  for (const entry of items) {
+    // February 2026 renamed this field from `track` to `item`; extended-quota
+    // apps still send the old name, so both are read.
+    const track = entry.item ?? entry.track;
     // Removed tracks arrive as nulls, and local files cannot be identified.
     // The index still advances so later positions stay truthful.
-    if (!item.track?.id || item.is_local) {
+    if (!track?.id || entry.is_local) {
       position += 1;
       continue;
     }
-    const mapped = mapTrack(item.track, 'playlist track', now);
+    const mapped = mapTrack(track, 'playlist track', now);
     entities.push(...mapped.entities);
     memberships.push(...mapped.memberships);
-    const edge = link(
-      parent.id,
-      entityId('track', PROVIDER, item.track.id),
-      'playlist',
-      'track',
-      now,
-      { position },
-    );
-    if (item.added_at) edge.addedAt = Date.parse(item.added_at);
+    const edge = link(parent.id, entityId('track', PROVIDER, track.id), 'playlist', 'track', now, {
+      position,
+    });
+    if (entry.added_at) edge.addedAt = Date.parse(entry.added_at);
     memberships.push(edge);
     position += 1;
   }

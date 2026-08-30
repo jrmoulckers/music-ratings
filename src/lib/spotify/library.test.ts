@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SpotifyApiError, SpotifyClient } from './client';
 import { searchCatalogue, searchTypesFor } from './library';
+import { mapPlaylistItems } from './mappers';
 import type { SpotifyConfig } from './auth';
 
 /**
@@ -20,9 +21,8 @@ const TOKEN_KEY = 'music-ratings:spotify-token';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-function respondWith(body: unknown, init: { status?: number } = {}) {
-  const status = init.status ?? 200;
-  fetchMock.mockResolvedValue({
+function response(body: unknown, status = 200): Response {
+  return {
     ok: status >= 200 && status < 300,
     status,
     headers: new Headers(),
@@ -30,12 +30,20 @@ function respondWith(body: unknown, init: { status?: number } = {}) {
     clone() {
       return this;
     },
-  } as unknown as Response);
+  } as unknown as Response;
+}
+
+function respondWith(body: unknown, init: { status?: number } = {}) {
+  fetchMock.mockResolvedValue(response(body, init.status ?? 200));
 }
 
 function requestedUrl(): URL {
   expect(fetchMock).toHaveBeenCalled();
   return new URL(String(fetchMock.mock.calls[0]?.[0]));
+}
+
+function requestedUrls(): string[] {
+  return fetchMock.mock.calls.map((call) => new URL(String(call[0])).pathname);
 }
 
 beforeEach(() => {
@@ -123,6 +131,83 @@ describe('SpotifyClient.search', () => {
 
     await expect(failure).rejects.toBeInstanceOf(SpotifyApiError);
     await expect(failure).rejects.toThrow(/Spotify returned 400\./);
+  });
+});
+
+describe('February 2026 development-mode API changes', () => {
+  it('asks for at most ten search results, the new maximum', async () => {
+    respondWith({ artists: { items: [] } });
+    await searchCatalogue(new SpotifyClient({ config }), 'marvin gaye', ['artist', 'album']);
+
+    // Spotify cut the search page size from 50 to 10 and refuses anything
+    // larger with "Invalid limit", which reads as an empty catalogue.
+    expect(requestedUrl().searchParams.get('limit')).toBe('10');
+  });
+
+  it('clamps a caller that asks for the old page size', async () => {
+    respondWith({ artists: { items: [] } });
+    await new SpotifyClient({ config }).search('marvin gaye', ['artist'], 50);
+
+    expect(requestedUrl().searchParams.get('limit')).toBe('10');
+  });
+
+  it('never asks for fewer than one result', async () => {
+    respondWith({ artists: { items: [] } });
+    await new SpotifyClient({ config }).search('marvin gaye', ['artist'], 0);
+
+    expect(requestedUrl().searchParams.get('limit')).toBe('1');
+  });
+
+  it('reads playlist contents from /items, which replaced /tracks', async () => {
+    respondWith({ items: [], next: null });
+    await new SpotifyClient({ config }).playlistTracks('p1');
+
+    expect(requestedUrl().pathname).toBe('/v1/playlists/p1/items');
+  });
+
+  it('falls back to /tracks when an extended-quota app has no /items', async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({ error: { message: 'Not found' } }, 404))
+      .mockResolvedValueOnce(response({ items: [], next: null }, 200));
+
+    await new SpotifyClient({ config }).playlistTracks('p1');
+
+    expect(requestedUrls()).toEqual(['/v1/playlists/p1/items', '/v1/playlists/p1/tracks']);
+  });
+
+  it('treats a withheld playlist as empty rather than as a failure', async () => {
+    // Spotify now returns only metadata for playlists the user does not own.
+    respondWith({ error: { message: 'Insufficient client scope' } }, { status: 403 });
+
+    await expect(new SpotifyClient({ config }).playlistTracks('p1')).resolves.toEqual([]);
+  });
+
+  it('maps playlist items under the new `item` key', async () => {
+    const result = mapPlaylistItems({ id: 'p1', name: 'Evening', items: { total: 1 } }, [
+      { item: { id: 't1', name: 'Inner City Blues' }, added_at: '2026-01-02T00:00:00Z' },
+    ]);
+
+    expect(result.entities.map((e) => e.name)).toContain('Inner City Blues');
+    expect(result.entities[0]?.totalChildren).toBe(1);
+  });
+
+  it('still maps the legacy `track` key for extended-quota apps', async () => {
+    const result = mapPlaylistItems({ id: 'p1', name: 'Evening', tracks: { total: 1 } }, [
+      { track: { id: 't1', name: 'Inner City Blues' } },
+    ]);
+
+    expect(result.entities.map((e) => e.name)).toContain('Inner City Blues');
+    expect(result.entities[0]?.totalChildren).toBe(1);
+  });
+
+  it('keeps positions truthful when an item has no readable track', async () => {
+    const result = mapPlaylistItems({ id: 'p1', name: 'Evening' }, [
+      { item: null },
+      { item: { id: 't2', name: 'Right On' } },
+    ]);
+
+    const edge = result.memberships.find((m) => m.parentType === 'playlist');
+    expect(edge?.position).toBe(1);
   });
 });
 
