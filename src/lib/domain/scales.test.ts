@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_SCALES,
   DEFAULT_SCALE_ID,
+  EQUIVALENCE_BANDS,
+  EQUIVALENCE_MAX_ROWS,
+  RANGE_SEPARATOR,
   ScaleError,
   clampNormalized,
   convertValue,
@@ -16,6 +19,7 @@ import {
   formatComputedOn,
   formatNormalizedOn,
   formatRaw,
+  markIcon,
   migrateRating,
   normalize,
   normalizedForDetent,
@@ -164,9 +168,25 @@ describe('formatting', () => {
     expect(formatRaw(scale('decimal-10'), 7.25)).toBe('7.3');
   });
 
-  it('prints thumbs as arrows', () => {
-    expect(formatNormalizedOn(scale('thumbs'), 100)).toBe('↑');
-    expect(formatNormalizedOn(scale('thumbs'), 0)).toBe('↓');
+  it('spells thumbs as words and names an icon to draw them with', () => {
+    const thumbs = scale('thumbs');
+    // No arrows: an arrow is a direction, not a verdict.
+    expect(formatNormalizedOn(thumbs, 100)).toBe('Up');
+    expect(formatNormalizedOn(thumbs, 0)).toBe('Down');
+    expect(formatMark(thumbs, 1)).toBe('Up');
+    expect(formatMark(thumbs, 0)).toBe('Down');
+    expect(markIcon(thumbs, 1)).toBe('thumb-up');
+    expect(markIcon(thumbs, 0)).toBe('thumb-down');
+    // Out of range still lands on a real end of the scale.
+    expect(markIcon(thumbs, 9)).toBe('thumb-up');
+    expect(markIcon(thumbs, -4)).toBe('thumb-down');
+  });
+
+  it('names no icon for scales that spell their marks', () => {
+    for (const s of BUILTIN_SCALES) {
+      if (s.id === 'thumbs') continue;
+      for (const value of detentValues(s)) expect(markIcon(s, value)).toBeUndefined();
+    }
   });
 });
 
@@ -234,8 +254,69 @@ describe('cross-scale equivalence', () => {
     const rows = equivalenceRows(tiers, [stars, ten]);
     expect(rows).toHaveLength(6);
     expect(rows.map((r) => r.label)).toEqual(['F', 'D', 'C', 'B', 'A', 'S']);
-    expect(rows[5]?.on).toEqual(['5★', '10']);
-    expect(rows[0]?.on).toEqual(['1★', '1']);
+    expect(rows.every((r) => !r.banded)).toBe(true);
+    expect(rows[5]?.on.map((c) => c.label)).toEqual(['5★', '10']);
+    expect(rows[0]?.on.map((c) => c.label)).toEqual(['1★', '1']);
+  });
+
+  it('bands a hundred-point scale into ranges instead of a hundred rows', () => {
+    const rows = equivalenceRows(hundred, [stars, tiers]);
+    expect(rows).toHaveLength(EQUIVALENCE_BANDS);
+    expect(rows.every((r) => r.banded)).toBe(true);
+    expect(rows[0]?.label).toBe(`1${RANGE_SEPARATOR}10`);
+    expect(rows[9]?.label).toBe(`91${RANGE_SEPARATOR}100`);
+    // Bands tile the scale exactly: nothing sampled away, nothing counted twice.
+    expect(rows.map((r) => [r.from, r.to])).toEqual([
+      [1, 10],
+      [11, 20],
+      [21, 30],
+      [31, 40],
+      [41, 50],
+      [51, 60],
+      [61, 70],
+      [71, 80],
+      [81, 90],
+      [91, 100],
+    ]);
+  });
+
+  it('bands the decimal scale on the round boundaries a reader expects', () => {
+    const rows = equivalenceRows(decimal, [ten]);
+    expect(rows).toHaveLength(EQUIVALENCE_BANDS);
+    expect(rows[0]?.label).toBe(`0.0${RANGE_SEPARATOR}1.0`);
+    expect(rows[1]?.label).toBe(`1.1${RANGE_SEPARATOR}2.0`);
+    expect(rows[9]?.label).toBe(`9.1${RANGE_SEPARATOR}10.0`);
+    expect(rows.at(-1)?.to).toBe(decimal.max);
+  });
+
+  it('collapses a cell to one value when both ends of a band read alike', () => {
+    const rows = equivalenceRows(hundred, [stars, decimal]);
+    const first = rows[0];
+    // 1 through 10 are all one star, so the star column says so once...
+    expect(first?.on[0]).toMatchObject({ label: '1★', ranged: false });
+    // ...but the decimal scale genuinely moves across the band, so it ranges.
+    expect(first?.on[1]).toMatchObject({
+      label: `0.1${RANGE_SEPARATOR}1.0`,
+      ranged: true,
+    });
+  });
+
+  it('enumerates every detent of a scale coarse enough to read', () => {
+    for (const s of [ten, stars, halves, tiers, scale('thumbs')]) {
+      expect(detentCount(s)).toBeLessThanOrEqual(EQUIVALENCE_MAX_ROWS);
+      expect(equivalenceRows(s, [hundred])).toHaveLength(detentCount(s));
+    }
+  });
+
+  it('hands the view an icon to draw wherever a thumb is the reading', () => {
+    const rows = equivalenceRows(scale('thumbs'), [hundred]);
+    expect(rows.map((r) => r.head.ends[0]?.icon)).toEqual(['thumb-down', 'thumb-up']);
+    expect(rows.map((r) => r.label)).toEqual(['Down', 'Up']);
+    // Read the other way, a whole band of the hundred-point scale is one thumb.
+    const banded = equivalenceRows(hundred, [scale('thumbs')]);
+    expect(banded[0]?.on[0]).toMatchObject({ label: 'Down', ranged: false });
+    expect(banded[0]?.on[0]?.ends[0]?.icon).toBe('thumb-down');
+    expect(banded.at(-1)?.on[0]?.ends[0]?.icon).toBe('thumb-up');
   });
 });
 
@@ -255,7 +336,7 @@ describe('computed scores', () => {
 
   it('rounds to a real label on ordinal scales, which have no fractions', () => {
     expect(formatComputedOn(scale('tiers'), 62.5)).toBe(formatNormalizedOn(scale('tiers'), 62.5));
-    expect(formatComputedOn(scale('thumbs'), 90)).toBe('↑');
+    expect(formatComputedOn(scale('thumbs'), 90)).toBe('Up');
   });
 
   it('never prints outside the scale', () => {

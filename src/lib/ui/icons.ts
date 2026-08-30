@@ -37,6 +37,8 @@ export const ICON_PATHS = {
   refresh: 'M20 6v5h-5M4 18v-5h5M19 11a7 7 0 00-12.3-3.5M5 13a7 7 0 0012.3 3.5',
   versus: 'M3 5h7v14H3zM14 5h7v14h-7zM12 9v6',
   pin: 'M9 3h6l-1 6 4 4H6l4-4z M12 13v8',
+  'thumb-up': 'M3 11H7V21H3ZM7 11L10.5 3H12L13 5L12 9H18L19.5 11L17.7 21H7Z',
+  'thumb-down': 'M3 3H7V13H3ZM7 13L10.5 21H12L13 19L12 15H18L19.5 13L17.7 3H7Z',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

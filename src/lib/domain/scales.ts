@@ -22,6 +22,47 @@ import type { RatingScale, ScaleKind } from './types';
 export const NORMALIZED_MIN = 0;
 export const NORMALIZED_MAX = 100;
 
+/**
+ * Rows the equivalence table will enumerate one detent at a time before it
+ * bands them into ranges instead, and how many bands it collapses to.
+ */
+export const EQUIVALENCE_MAX_ROWS = 16;
+export const EQUIVALENCE_BANDS = 10;
+
+/** Prints between the two ends of a range, e.g. `1 — 100`. */
+export const RANGE_SEPARATOR = ' — ';
+
+/** One position on a scale: its text, plus an icon key when it is drawn. */
+export interface ScaleReading {
+  text: string;
+  icon?: string;
+}
+
+/** A cell of the equivalence table: one position, or a range between two. */
+export interface EquivalenceReading {
+  /** The whole cell as text — `3★`, or `0.1 — 1.0`. Also its accessible name. */
+  label: string;
+  /** One end for a single position, two for a range. */
+  ends: ScaleReading[];
+  ranged: boolean;
+}
+
+export interface EquivalenceRow {
+  key: string;
+  /** Lowest raw value in the row. Kept for callers keying on a single value. */
+  value: number;
+  from: number;
+  to: number;
+  /** Midpoint of the row on the canonical axis. */
+  normalized: number;
+  /** True when this row stands for a range rather than one detent. */
+  banded: boolean;
+  /** Text of the row heading. */
+  label: string;
+  head: EquivalenceReading;
+  on: EquivalenceReading[];
+}
+
 export const BUILTIN_SCALES: readonly RatingScale[] = [
   { id: 'stars-5', kind: 'stars', label: '5 stars', min: 1, max: 5, step: 1, builtin: true },
   {
@@ -54,7 +95,9 @@ export const BUILTIN_SCALES: readonly RatingScale[] = [
     max: 1,
     step: 1,
     labels: ['Down', 'Up'],
-    marks: ['↓', '↑'],
+    // Drawn, not spelled: an arrow is a direction, a thumb is a verdict. The
+    // words in `labels` carry the meaning wherever an icon cannot be drawn.
+    markIcons: ['thumb-down', 'thumb-up'],
     // A thumb is a coarse signal, not a verdict on perfection: "I like this"
     // sits well up the axis without claiming the top of it.
     anchors: [20, 80],
@@ -266,16 +309,30 @@ export function formatRaw(scale: RatingScale, value: number): string {
 /** The short mark printed in the margin. Falls back to the formatted value. */
 export function formatMark(scale: RatingScale, value: number): string {
   if (scale.marks?.length) {
-    const idx = Math.min(
-      scale.marks.length - 1,
-      Math.max(0, Math.round((clampRaw(scale, value) - scale.min) / scale.step)),
-    );
-    return scale.marks[idx] ?? formatRaw(scale, value);
+    return scale.marks[markIndex(scale, value, scale.marks.length)] ?? formatRaw(scale, value);
   }
   if (scale.kind === 'stars' || scale.kind === 'half-stars') {
     return `${formatRaw(scale, value)}★`;
   }
   return formatRaw(scale, value);
+}
+
+function markIndex(scale: RatingScale, value: number, length: number): number {
+  return Math.min(
+    length - 1,
+    Math.max(0, Math.round((clampRaw(scale, value) - scale.min) / scale.step)),
+  );
+}
+
+/**
+ * The icon key for a drawn mark, if this scale has one at that position.
+ *
+ * Returns a plain string rather than a UI type: the domain names the picture,
+ * the view layer owns the drawing.
+ */
+export function markIcon(scale: RatingScale, value: number): string | undefined {
+  if (!scale.markIcons?.length) return undefined;
+  return scale.markIcons[markIndex(scale, value, scale.markIcons.length)];
 }
 
 /** How a canonical value reads on a given scale, e.g. `7` or `B+` or `3.5★`. */
@@ -329,20 +386,83 @@ export function convertValue(from: RatingScale, value: number, to: RatingScale):
  * How every position on `scale` reads on each of `others`. Drives the
  * equivalence table in settings, so the conversion rules are inspectable
  * rather than something a user has to take on trust.
+ *
+ * A hundred-point scale has a hundred detents, and printing one row each says
+ * nothing a reader could not infer: 1 through 10 are all one star. Scales finer
+ * than `EQUIVALENCE_MAX_ROWS` are therefore banded into contiguous ranges, and
+ * every reading — the band's own heading and each scale it is read against —
+ * collapses to a single value when both ends agree and prints as a range when
+ * they do not. Nothing is sampled away: the bands tile the scale exactly, so
+ * the table still accounts for every position.
+ *
+ * This is a presentation decision about an explanatory table. Rating controls
+ * enumerate every detent, because there you are choosing one.
  */
 export function equivalenceRows(
   scale: RatingScale,
   others: readonly RatingScale[],
-): { value: number; normalized: number; label: string; on: string[] }[] {
-  return detentValues(scale).map((value) => {
-    const normalized = normalize(scale, value);
+): EquivalenceRow[] {
+  const values = detentValues(scale);
+  const spans =
+    values.length > EQUIVALENCE_MAX_ROWS
+      ? bandSpans(values.length, EQUIVALENCE_BANDS)
+      : values.map((_, index): [number, number] => [index, index]);
+
+  return spans.map(([lo, hi]) => {
+    const from = values[lo] ?? scale.min;
+    const to = values[hi] ?? scale.max;
+    const fromNormalized = normalize(scale, from);
+    const toNormalized = normalize(scale, to);
+    const head = reading(readAt(scale, from), readAt(scale, to));
     return {
-      value,
-      normalized,
-      label: formatMark(scale, value),
-      on: others.map((other) => formatNormalizedOn(other, normalized)),
+      key: `${from}:${to}`,
+      value: from,
+      from,
+      to,
+      normalized: (fromNormalized + toNormalized) / 2,
+      banded: hi > lo,
+      label: head.label,
+      head,
+      on: others.map((other) =>
+        reading(
+          readAt(other, denormalize(other, fromNormalized)),
+          readAt(other, denormalize(other, toNormalized)),
+        ),
+      ),
     };
   });
+}
+
+function readAt(scale: RatingScale, value: number): ScaleReading {
+  const icon = markIcon(scale, value);
+  const text = formatMark(scale, value);
+  return icon ? { text, icon } : { text };
+}
+
+function reading(low: ScaleReading, high: ScaleReading): EquivalenceReading {
+  if (low.text === high.text && low.icon === high.icon) {
+    return { label: low.text, ends: [low], ranged: false };
+  }
+  return { label: `${low.text}${RANGE_SEPARATOR}${high.text}`, ends: [low, high], ranged: true };
+}
+
+/**
+ * `count` detents split into `bands` contiguous groups, as evenly as they
+ * divide. The remainder goes to the earliest bands, which is what lands
+ * 0.0–10.0 on the round `0.1 — 1.0`, `1.1 — 2.0` boundaries a reader expects.
+ */
+function bandSpans(count: number, bands: number): [number, number][] {
+  const size = Math.floor(count / bands);
+  let remainder = count % bands;
+  const spans: [number, number][] = [];
+  let start = 0;
+  for (let i = 0; i < bands && start < count; i += 1) {
+    const length = size + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder -= 1;
+    spans.push([start, start + length - 1]);
+    start += length;
+  }
+  return spans;
 }
 
 /**

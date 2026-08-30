@@ -4,8 +4,8 @@
   import { href } from '../lib/app/router';
   import {
     allScales,
-    entityLabel,
     entityLabelCap,
+    ENTITY_MEANING,
     loadAll,
     settings,
     updateSettings,
@@ -38,6 +38,7 @@
   import { markDataChanged } from '../lib/storage/changes';
   import { dateAndTime, relative } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
+  import ScaleReadingCell from '../components/ScaleReadingCell.svelte';
 
   /**
    * Settings.
@@ -157,7 +158,7 @@
       <h2 id="s-rating" class="group__head title">What you rate, and how</h2>
 
       <div class="field">
-        <span class="label">Kinds of thing</span>
+        <span class="label">Kinds of things</span>
         <ul class="opts">
           {#each ENTITY_TYPES as type (type)}
             <li>
@@ -168,7 +169,10 @@
                   onchange={() => void toggleType(type)}
                 />
                 <span>
-                  <span class="opts__name">{entityLabel(type, true)}</span>
+                  <span class="opts__name">{entityLabelCap(type, true)}</span>
+                  {#if ENTITY_MEANING[type]}
+                    <span class="note note--small">{ENTITY_MEANING[type]}</span>
+                  {/if}
                   {#if ENTITY_SUPPORT[type].note}
                     <span class="note note--small">{ENTITY_SUPPORT[type].note}</span>
                   {/if}
@@ -177,6 +181,10 @@
             </li>
           {/each}
         </ul>
+        <p class="note note--small">
+          A single usually appears twice — once as a release, and once as the track inside it. You
+          can rate either, and the release counts its track towards its computed score.
+        </p>
       </div>
 
       <label class="field">
@@ -201,7 +209,7 @@
         <ul class="opts">
           {#each $settings.enabledTypes as type (type)}
             <li class="opts__row">
-              <span class="opts__name">{entityLabel(type, true)}</span>
+              <span class="opts__name">{entityLabelCap(type, true)}</span>
               <select
                 class="select select--small"
                 value={$settings.scaleByType[type] ?? ''}
@@ -241,11 +249,13 @@
               </tr>
             </thead>
             <tbody>
-              {#each equivalence as row (row.value)}
+              {#each equivalence as row (row.key)}
                 <tr>
-                  <th scope="row">{row.label}</th>
+                  <th scope="row">
+                    <ScaleReadingCell reading={row.head} />
+                  </th>
                   {#each row.on as cell, index (otherScales[index]?.id ?? index)}
-                    <td class="figure">{cell}</td>
+                    <td class="figure"><ScaleReadingCell reading={cell} /></td>
                   {/each}
                 </tr>
               {/each}

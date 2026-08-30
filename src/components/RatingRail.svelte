@@ -5,9 +5,12 @@
     detentIndex,
     formatMark,
     formatRaw,
+    markIcon,
     normalizedForDetent,
   } from '../lib/domain/scales';
   import type { RatingScale } from '../lib/domain/types';
+  import Icon from '../lib/ui/Icon.svelte';
+  import { ICON_PATHS, type IconName } from '../lib/ui/icons';
 
   /**
    * The rail.
@@ -59,6 +62,14 @@
     if (raw === undefined) return '';
     const mark = formatMark(scale, raw);
     return mark || formatRaw(scale, raw);
+  }
+
+  /** Scales that draw their marks — thumbs — hand back a glyph instead of a word. */
+  function iconFor(index: number): IconName | null {
+    const raw = detents[index];
+    if (raw === undefined) return null;
+    const name = markIcon(scale, raw);
+    return name && name in ICON_PATHS ? (name as IconName) : null;
   }
 
   function labelFor(index: number): string {
@@ -159,7 +170,11 @@
           aria-hidden="true"
           style:--at="{((active + 0.5) / detents.length) * 100}%"
         >
-          {markFor(active)}
+          {#if iconFor(active)}
+            <Icon name={iconFor(active)!} size={18} />
+          {:else}
+            {markFor(active)}
+          {/if}
         </span>
       {:else}
         <span class="rail__hint label" aria-hidden="true">Your rating</span>
@@ -182,7 +197,13 @@
       >
         <span class="rail__cut" aria-hidden="true"></span>
         {#if showMarks}
-          <span class="rail__mark">{markFor(index)}</span>
+          <span class="rail__mark">
+            {#if iconFor(index)}
+              <Icon name={iconFor(index)!} size={15} />
+            {:else}
+              {markFor(index)}
+            {/if}
+          </span>
         {/if}
       </button>
     {/each}
@@ -350,6 +371,12 @@
     min-width: 1.25rem;
     text-align: center;
     transition: color var(--dur-1) var(--ease);
+  }
+  /* A drawn mark still sits in the text flow, so the column's alignment holds. */
+  .rail__mark :global(.icon),
+  .rail__reading :global(.icon) {
+    display: inline-block;
+    vertical-align: -0.15em;
   }
   .rail--vertical .rail__mark {
     order: -1;

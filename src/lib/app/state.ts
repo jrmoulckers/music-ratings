@@ -262,3 +262,16 @@ export function entityLabelCap(type: EntityType, plural = false): string {
   const word = entityLabel(type, plural);
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
+
+/**
+ * What each kind of thing actually is, for the places a user is choosing which
+ * ones to rate. Only the three that carry the whole catalogue need explaining;
+ * the rest are named plainly enough, and their notes cover what Spotify will
+ * and will not hand over.
+ */
+export const ENTITY_MEANING: Partial<Record<EntityType, string>> = {
+  artist: 'The performers and creators themselves — Radiohead, for instance.',
+  album:
+    'Anything published as a package: albums, EPs, singles, compilations and reissues. Rating a release judges the whole thing.',
+  track: 'One playable recording inside a release — a single song on an album, rated on its own.',
+};

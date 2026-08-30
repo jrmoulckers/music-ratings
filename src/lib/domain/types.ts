@@ -163,6 +163,13 @@ export interface RatingScale {
   /** Short marks printed in the margin, e.g. tier letters. Same order as `labels`. */
   marks?: string[];
   /**
+   * Icon keys for scales whose marks are drawn rather than spelled — a thumb is
+   * a picture, not a character. Same order as `labels`. The UI resolves these
+   * against its icon set; `labels` remains the text and the accessible name, so
+   * nothing here is load-bearing for meaning.
+   */
+  markIcons?: string[];
+  /**
    * Where each detent sits on the canonical 0..100 axis, lowest first. Same
    * length as the detent list.
    *
