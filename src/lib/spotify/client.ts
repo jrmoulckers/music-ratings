@@ -50,14 +50,16 @@ async function freshToken(config: SpotifyConfig): Promise<string> {
 
 export class SpotifyClient {
   private readonly config: SpotifyConfig;
-  private readonly market: string;
+  private readonly market: string | undefined;
   private readonly onBackoff: ((seconds: number) => void) | undefined;
 
   constructor(options: SpotifyClientOptions) {
     this.config = options.config;
-    // from_token asks Spotify to use the signed-in user's own country, which is
-    // more reliable than reading the deprecated country field off the profile.
-    this.market = options.market ?? 'from_token';
+    // Left unset, Spotify resolves the market from the user's own access token,
+    // which is what we want. `from_token` used to say that explicitly but is no
+    // longer accepted and now fails the request outright with "Invalid market
+    // code", so an unset market is both the correct and the safer default.
+    this.market = options.market;
     this.onBackoff = options.onBackoff;
   }
 
@@ -149,7 +151,21 @@ export class SpotifyClient {
       throw new SpotifyApiError('Spotify is having trouble right now.', response.status, 'server');
     }
     if (!response.ok) {
-      throw new SpotifyApiError(`Spotify returned ${response.status}.`, response.status, 'other');
+      // Spotify explains itself in the body ("Invalid market code", "Bad
+      // request"). Swallowing that leaves a bare status code and nothing to act
+      // on, so pass the reason through when there is one.
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: { message?: string } | string;
+      };
+      const detail =
+        typeof body.error === 'string' ? body.error : (body.error?.message ?? '').trim();
+      throw new SpotifyApiError(
+        detail
+          ? `Spotify returned ${response.status}: ${detail}`
+          : `Spotify returned ${response.status}.`,
+        response.status,
+        'other',
+      );
     }
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;

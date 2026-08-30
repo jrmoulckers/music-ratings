@@ -21,6 +21,7 @@ import {
   getRecord,
   putRecord,
   putRecords,
+  raw,
   tombstone,
   type SyncedStore,
 } from './db';
@@ -62,7 +63,7 @@ export async function upsertEntities(entities: readonly Entity[]): Promise<void>
         : incoming,
     );
   }
-  await Promise.all([...merged.map((e) => tx.store.put(e)), tx.done]);
+  await Promise.all([...merged.map((e) => tx.store.put(raw(e))), tx.done]);
   markDataChanged();
 }
 
@@ -107,10 +108,10 @@ export async function replaceChildren(
   const writes: Promise<unknown>[] = [];
   for (const old of existing) {
     if (!keep.has(old.id) && !old.deleted) {
-      writes.push(tx.store.put({ ...old, deleted: now, updatedAt: now }));
+      writes.push(tx.store.put(raw({ ...old, deleted: now, updatedAt: now })));
     }
   }
-  for (const m of memberships) writes.push(tx.store.put({ ...m, deleted: undefined }));
+  for (const m of memberships) writes.push(tx.store.put(raw({ ...m, deleted: undefined })));
   await Promise.all([...writes, tx.done]);
   markDataChanged();
 }

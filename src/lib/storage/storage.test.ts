@@ -197,6 +197,27 @@ describe('entities and containment', () => {
     expect(stored?.artworkUrl).toBe('art.jpg');
   });
 
+  it('writes brand-new records through the clone gate', async () => {
+    // A Spotify search result reaches the repo wrapped in Svelte's reactive
+    // proxy, which IndexedDB refuses to structured-clone. New records used to
+    // be written straight through, so adopting a search result threw
+    // DataCloneError instead of saving.
+    const fresh = makeEntity('artist', 'fresh');
+    const hostile = Object.assign({}, fresh, { notCloneable: () => 'boom' });
+    await upsertEntities([hostile as unknown as typeof fresh]);
+    expect((await getEntity(fresh.id))?.name).toBe(fresh.name);
+  });
+
+  it('writes memberships through the clone gate', async () => {
+    const playlist = makeEntity('playlist', 'p2');
+    const track = makeEntity('track', 't2');
+    await upsertEntities([playlist, track]);
+    const edge = link(playlist, track, { position: 0 });
+    const hostile = Object.assign({}, edge, { notCloneable: () => 'boom' });
+    await replaceChildren(playlist.id, [hostile as unknown as typeof edge]);
+    expect(await listMemberships()).toHaveLength(1);
+  });
+
   it('tombstones links that disappeared from a playlist, keeping the rest', async () => {
     const playlist = makeEntity('playlist', 'p');
     const kept = makeEntity('track', 'kept');

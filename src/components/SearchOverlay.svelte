@@ -26,12 +26,13 @@
   let input = $state<HTMLInputElement | null>(null);
   let picked = $state<Entity | null>(null);
   let running = $state(false);
-  let searched = $state(false);
   let error = $state<string | null>(null);
   let remote = $state<{ entities: Entity[]; memberships: Membership[] }>({
     entities: [],
     memberships: [],
   });
+  /** The term `remote` and `error` belong to, so neither outlives its query. */
+  let resultsFor = $state<string | null>(null);
   let busy = $state(false);
 
   $effect(() => {
@@ -54,13 +55,22 @@
       .slice(0, 40);
   });
 
+  // Editing the term invalidates the last answer rather than leaving it on
+  // screen, so results and errors always belong to what is in the box.
+  const current = $derived(resultsFor === needle);
+  const searched = $derived(current && resultsFor !== null);
+  const failure = $derived(current ? error : null);
+
   // Anything Spotify returned that is genuinely new; the rest is already listed above.
-  const fresh = $derived(remote.entities.filter((entity) => !$graph.has(entity.id)).slice(0, 20));
+  const fresh = $derived(
+    current ? remote.entities.filter((entity) => !$graph.has(entity.id)).slice(0, 20) : [],
+  );
 
   async function searchSpotify() {
     if (!needle || running) return;
     running = true;
     error = null;
+    const asked = needle;
     try {
       const client = new SpotifyClient({
         config: spotifyConfig(),
@@ -68,10 +78,13 @@
           notify(`Spotify asked us to wait ${seconds}s. Holding off, then retrying.`),
       });
       remote = await searchCatalogue(client, term, $settings.enabledTypes);
-      searched = true;
     } catch (caught) {
+      remote = { entities: [], memberships: [] };
       error = caught instanceof Error ? caught.message : 'The search failed.';
     } finally {
+      // Attribute the outcome to the term that was asked for, not to whatever
+      // has been typed since, so a slow answer cannot overwrite a newer one.
+      resultsFor = asked;
       running = false;
     }
   }
@@ -221,8 +234,17 @@
             <p class="note panel__hint">Nothing in your library matches that.</p>
           {/if}
 
-          {#if error}
-            <p class="note note--warn panel__group">{error}</p>
+          {#if failure}
+            <p class="note note--warn panel__group">{failure}</p>
+            <button
+              type="button"
+              class="btn btn--small panel__retry"
+              disabled={running}
+              onclick={() => void searchSpotify()}
+            >
+              <Icon name="refresh" size={14} />
+              {running ? 'Searching Spotify…' : 'Try Spotify again'}
+            </button>
           {:else if fresh.length > 0}
             <p class="label panel__group">From Spotify</p>
             <ul class="rows">
@@ -333,6 +355,9 @@
     margin-bottom: var(--s2);
   }
   .panel__group:first-child {
+    margin-top: var(--s2);
+  }
+  .panel__retry {
     margin-top: var(--s2);
   }
 

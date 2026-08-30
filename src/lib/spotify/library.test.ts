@@ -1,0 +1,159 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SpotifyApiError, SpotifyClient } from './client';
+import { searchCatalogue, searchTypesFor } from './library';
+import type { SpotifyConfig } from './auth';
+
+/**
+ * These cover the request Spotify actually receives, not just the shape of our
+ * own helpers. Catalogue search shipped broken because nothing here asserted
+ * the outgoing URL: `/search` answers with plural keys but only accepts
+ * singular `type` values, and it rejects the `market=from_token` form outright.
+ * Both faults are invisible from the response-mapping side.
+ */
+
+const config: SpotifyConfig = {
+  clientId: 'test-client',
+  redirectUri: 'http://127.0.0.1:5173/callback',
+};
+
+const TOKEN_KEY = 'music-ratings:spotify-token';
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
+function respondWith(body: unknown, init: { status?: number } = {}) {
+  const status = init.status ?? 200;
+  fetchMock.mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(),
+    json: async () => body,
+    clone() {
+      return this;
+    },
+  } as unknown as Response);
+}
+
+function requestedUrl(): URL {
+  expect(fetchMock).toHaveBeenCalled();
+  return new URL(String(fetchMock.mock.calls[0]?.[0]));
+}
+
+beforeEach(() => {
+  localStorage.setItem(
+    TOKEN_KEY,
+    JSON.stringify({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ['user-read-private'],
+    }),
+  );
+  fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+});
+
+afterEach(() => {
+  localStorage.clear();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('searchTypesFor', () => {
+  it('uses the singular names /search accepts, never the plural response keys', () => {
+    expect(searchTypesFor(['artist', 'album', 'track', 'playlist'])).toEqual([
+      'artist',
+      'album',
+      'track',
+      'playlist',
+    ]);
+  });
+
+  it('searches audiobooks for chapters, since chapters are not separately indexed', () => {
+    expect(searchTypesFor(['chapter'])).toEqual(['audiobook']);
+  });
+
+  it('collapses audiobook and chapter onto one type rather than repeating it', () => {
+    expect(searchTypesFor(['audiobook', 'chapter'])).toEqual(['audiobook']);
+  });
+
+  it('covers every enabled type without inventing one', () => {
+    expect(searchTypesFor(['show', 'episode'])).toEqual(['show', 'episode']);
+    expect(searchTypesFor([])).toEqual([]);
+  });
+});
+
+describe('SpotifyClient.search', () => {
+  it('sends singular types, so Spotify does not reject the whole request', async () => {
+    respondWith({ artists: { items: [] } });
+    const client = new SpotifyClient({ config });
+    await client.search('nightbus', ['artist', 'album'], 20);
+
+    const url = requestedUrl();
+    expect(url.pathname).toBe('/v1/search');
+    expect(url.searchParams.get('type')).toBe('artist,album');
+    expect(url.searchParams.get('q')).toBe('nightbus');
+  });
+
+  it('omits market by default, letting the user token supply the country', async () => {
+    respondWith({ artists: { items: [] } });
+    await new SpotifyClient({ config }).search('nightbus', ['artist'], 20);
+
+    // `from_token` is no longer accepted and fails with "Invalid market code".
+    expect(requestedUrl().searchParams.has('market')).toBe(false);
+  });
+
+  it('still honours an explicit market when one is chosen', async () => {
+    respondWith({ artists: { items: [] } });
+    await new SpotifyClient({ config, market: 'GB' }).search('nightbus', ['artist'], 20);
+
+    expect(requestedUrl().searchParams.get('market')).toBe('GB');
+  });
+
+  it("passes Spotify's own explanation through instead of a bare status", async () => {
+    respondWith({ error: { status: 400, message: 'Invalid market code' } }, { status: 400 });
+
+    await expect(new SpotifyClient({ config }).search('x', ['artist'], 20)).rejects.toThrow(
+      /400: Invalid market code/,
+    );
+  });
+
+  it('reports a bare status when Spotify explains nothing', async () => {
+    respondWith({}, { status: 400 });
+    const failure = new SpotifyClient({ config }).search('x', ['artist'], 20);
+
+    await expect(failure).rejects.toBeInstanceOf(SpotifyApiError);
+    await expect(failure).rejects.toThrow(/Spotify returned 400\./);
+  });
+});
+
+describe('searchCatalogue', () => {
+  it('asks for the singular types matching the enabled entity types', async () => {
+    respondWith({ artists: { items: [] }, albums: { items: [] } });
+    await searchCatalogue(new SpotifyClient({ config }), 'kestrel', ['artist', 'album']);
+
+    expect(requestedUrl().searchParams.get('type')).toBe('artist,album');
+  });
+
+  it('maps the plural response keys back into domain entities', async () => {
+    respondWith({
+      artists: {
+        items: [{ id: 'a1', name: 'Kestrel Harbour', images: [], genres: [], popularity: 40 }],
+      },
+    });
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'kestrel', ['artist']);
+
+    expect(result.entities).toHaveLength(1);
+    expect(result.entities[0]?.name).toBe('Kestrel Harbour');
+    expect(result.entities[0]?.type).toBe('artist');
+  });
+
+  it('does not reach the network when nothing is enabled', async () => {
+    await searchCatalogue(new SpotifyClient({ config }), 'kestrel', []);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not reach the network for a blank query', async () => {
+    await searchCatalogue(new SpotifyClient({ config }), '   ', ['artist']);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

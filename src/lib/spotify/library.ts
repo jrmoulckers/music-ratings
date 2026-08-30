@@ -354,8 +354,9 @@ export async function searchCatalogue(
   query: string,
   types: readonly EntityType[],
 ): Promise<MapResult> {
-  if (!query.trim() || types.length === 0) return { entities: [], memberships: [] };
-  const response = await client.search(query, types.map(pluralise), 20);
+  const searchTypes = searchTypesFor(types);
+  if (!query.trim() || searchTypes.length === 0) return { entities: [], memberships: [] };
+  const response = await client.search(query, searchTypes, 20);
   const parts: MapResult[] = [];
 
   for (const artist of response.artists?.items ?? []) {
@@ -383,8 +384,33 @@ export async function searchCatalogue(
   return mergeResults(...parts);
 }
 
-function pluralise(type: EntityType): string {
-  return type === 'chapter' ? 'audiobook' : `${type}s`;
+/**
+ * `/search` takes singular type names — `artist,album`, never `artists,albums`
+ * — even though it answers with plural keys. Sending the plural form fails the
+ * whole request with a 400, so the two vocabularies are mapped explicitly here
+ * rather than derived from each other.
+ *
+ * Chapters are not searchable on their own; Spotify only indexes the audiobook.
+ * That collapses two enabled types onto one search type, hence the dedupe.
+ */
+const SEARCH_TYPES: Readonly<Record<EntityType, string | null>> = {
+  artist: 'artist',
+  album: 'album',
+  track: 'track',
+  playlist: 'playlist',
+  show: 'show',
+  episode: 'episode',
+  audiobook: 'audiobook',
+  chapter: 'audiobook',
+};
+
+export function searchTypesFor(types: readonly EntityType[]): string[] {
+  const out: string[] = [];
+  for (const type of types) {
+    const mapped = SEARCH_TYPES[type];
+    if (mapped && !out.includes(mapped)) out.push(mapped);
+  }
+  return out;
 }
 
 function describe(error: unknown): string {

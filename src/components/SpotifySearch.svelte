@@ -33,18 +33,26 @@
     term = initialTerm;
   });
   let running = $state(false);
-  let searched = $state(false);
   let found = $state<{ entities: Entity[]; memberships: Membership[] }>({
     entities: [],
     memberships: [],
   });
   let error = $state<string | null>(null);
+  /** The term `found` and `error` belong to, so neither outlives its query. */
+  let resultsFor = $state<string | null>(null);
   let lastResult: { entities: Entity[]; memberships: Membership[] } | null = null;
 
+  const needle = $derived(term.trim());
+  const current = $derived(resultsFor === needle);
+  const searched = $derived(current && resultsFor !== null);
+  const failure = $derived(current ? error : null);
+  const results = $derived(current ? found.entities : []);
+
   async function run() {
-    if (!term.trim() || running) return;
+    if (!needle || running) return;
     running = true;
     error = null;
+    const asked = needle;
     try {
       const client = new SpotifyClient({
         config: spotifyConfig(),
@@ -54,10 +62,14 @@
       const result = await searchCatalogue(client, term, $settings.enabledTypes);
       lastResult = result;
       found = result;
-      searched = true;
     } catch (caught) {
+      lastResult = null;
+      found = { entities: [], memberships: [] };
       error = caught instanceof Error ? caught.message : 'The search failed.';
     } finally {
+      // Attribute the outcome to the term that was asked for, so editing the
+      // box clears the last answer instead of leaving it to look current.
+      resultsFor = asked;
       running = false;
     }
   }
@@ -113,13 +125,13 @@
       </button>
     </form>
 
-    {#if error}
-      <p class="note note--warn">{error}</p>
-    {:else if searched && found.entities.length === 0}
+    {#if failure}
+      <p class="note note--warn">{failure}</p>
+    {:else if searched && results.length === 0}
       <p class="note">Spotify returned nothing for that, in the types you have enabled.</p>
-    {:else if found.entities.length > 0}
+    {:else if results.length > 0}
       <ul class="find__rows">
-        {#each found.entities.slice(0, 20) as entity (entity.id)}
+        {#each results.slice(0, 20) as entity (entity.id)}
           {@const already = $graph.has(entity.id)}
           <li>
             <Artwork src={entity.artworkThumbUrl} name={entity.name} size="sm" />
