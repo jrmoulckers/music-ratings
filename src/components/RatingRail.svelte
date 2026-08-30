@@ -80,7 +80,7 @@
 
   /**
    * The whole rail is one tab stop. Arrows walk the detents, digits pick a known
-   * verdict outright, Home and End reach the ends.
+   * value outright, Home and End reach the ends.
    */
   function onKeyDown(event: KeyboardEvent): void {
     if (disabled) return;

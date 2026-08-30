@@ -57,7 +57,7 @@
 
   {#if currentRow}
     <div class="queue__body">
-      <div class="queue__station">
+      <div class="queue__panel">
         <RatePanel
           entity={currentRow.entity}
           suggestion={currentRow.suggestion}
@@ -155,7 +155,7 @@
       grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
       gap: 0;
     }
-    .queue__station {
+    .queue__panel {
       padding-right: var(--s6);
     }
     .line {

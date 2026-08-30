@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { judgeDuel } from '../lib/app/actions';
+  import { submitComparison } from '../lib/app/actions';
   import { explicitRatings, rankings, scaleForType, scores } from '../lib/app/state';
   import { rankingConfidence } from '../lib/domain/elo';
   import { formatComputedOn, formatNormalizedOn } from '../lib/domain/scales';
@@ -55,7 +55,7 @@
     busy = true;
     tip = outcome === 'a' ? 'a' : outcome === 'b' ? 'b' : 'level';
     try {
-      await judgeDuel(a, b, outcome, reason);
+      await submitComparison(a, b, outcome, reason);
       onafter?.();
     } finally {
       busy = false;

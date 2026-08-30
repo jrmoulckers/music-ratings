@@ -339,7 +339,7 @@ table {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Rules and register marks                                                   */
+/* Rules                                                                      */
 /* -------------------------------------------------------------------------- */
 
 .rule {
@@ -349,30 +349,6 @@ table {
 }
 .rule--faint {
   border-top-color: var(--border-faint);
-}
-
-/* A ruled line carrying the register cross at its centre — the mark this whole
-   world is set against. */
-.registered-rule {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: var(--s3);
-}
-.registered-rule::before,
-.registered-rule::after {
-  content: '';
-  border-top: var(--rule-weight) solid var(--border);
-}
-.registered-rule > .register-mark {
-  color: var(--accent);
-}
-
-.register-mark {
-  width: 11px;
-  height: 11px;
-  flex: none;
-  color: var(--accent);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -752,7 +728,7 @@ table {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Plates: artwork is tipped in, with a printed border, never bled            */
+/* Artwork: bounded by a border, never bled                                   */
 /* -------------------------------------------------------------------------- */
 
 .art {

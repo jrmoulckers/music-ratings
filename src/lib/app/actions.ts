@@ -116,7 +116,7 @@ export async function setStandingNote(entityId: EntityId, note: string): Promise
 
 /* -------------------------------------------------------------------------- */
 
-export async function judgeDuel(
+export async function submitComparison(
   a: Entity,
   b: Entity,
   outcome: Comparison['outcome'],

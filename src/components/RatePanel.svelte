@@ -13,7 +13,7 @@
   import RatingRail from './RatingRail.svelte';
 
   /**
-   * The rating station.
+   * The rating panel.
    *
    * One item, its evidence, and the rail. The reasons it is in front of you are
    * printed before the controls, because a queue that will not say why it chose
@@ -96,7 +96,7 @@
 <svelte:window onkeydown={onKey} />
 
 <article
-  class="station"
+  class="panel"
   class:is-dragging={dragOffset !== 0}
   style:--drag="{dragOffset}px"
   use:swipe={{
@@ -106,7 +106,7 @@
     onEnd: () => (dragOffset = 0),
   }}
 >
-  <header class="station__head">
+  <header class="panel__head">
     <Artwork
       src={entity.artworkUrl}
       thumb={entity.artworkThumbUrl}
@@ -114,15 +114,15 @@
       size="md"
       priority
     />
-    <div class="station__id">
-      <h2 class="station__name title">{entity.name}</h2>
+    <div class="panel__id">
+      <h2 class="panel__name title">{entity.name}</h2>
       {#if entity.subtitle}<p class="note">{entity.subtitle}</p>{/if}
       <p class="label">{entity.type}</p>
     </div>
   </header>
 
   {#if suggestion}
-    <ul class="station__reasons">
+    <ul class="panel__reasons">
       {#each suggestion.reasons.slice(0, 3) as reason (reason.source)}
         <li>
           <span class="label label--accent">{suggestionSourceLabel(reason.source)}</span>
@@ -133,12 +133,12 @@
   {/if}
 
   {#if existing}
-    <p class="station__prior note">
+    <p class="panel__prior note">
       You last rated this {relative(existing.at)}. Seating a new value keeps the old one in the
       record.
     </p>
   {:else if breakdown?.rollup !== null && breakdown?.rollup !== undefined}
-    <p class="station__prior note">
+    <p class="panel__prior note">
       Never rated directly. Its contents currently compute to {formatComputedOn(
         scale,
         breakdown.rollup,
@@ -146,7 +146,7 @@
     </p>
   {/if}
 
-  <div class="station__rail">
+  <div class="panel__rail">
     <RatingRail
       {scale}
       value={shown}
@@ -158,7 +158,7 @@
     />
   </div>
 
-  <div class="station__aside">
+  <div class="panel__aside">
     <label class="field">
       <span class="label">Note (optional)</span>
       <textarea
@@ -169,7 +169,7 @@
       ></textarea>
     </label>
 
-    <fieldset class="station__confidence">
+    <fieldset class="panel__confidence">
       <legend class="label">How sure are you?</legend>
       <div class="row row--tight">
         {#each ['low', 'medium', 'high'] as const as level (level)}
@@ -187,7 +187,7 @@
     </fieldset>
   </div>
 
-  <footer class="station__actions">
+  <footer class="panel__actions">
     <button type="button" class="btn btn--small" onclick={() => void run(() => skip(entity))}>
       <Icon name="arrow-right" size={13} /> Skip <kbd>S</kbd>
     </button>
@@ -205,7 +205,7 @@
 </article>
 
 <style>
-  .station {
+  .panel {
     position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 16rem;
@@ -225,11 +225,11 @@
     transform: translateX(var(--drag, 0));
     touch-action: pan-y;
   }
-  .station.is-dragging {
+  .panel.is-dragging {
     transition: none;
   }
 
-  .station__head {
+  .panel__head {
     grid-area: head;
     display: flex;
     align-items: center;
@@ -237,62 +237,62 @@
     padding-bottom: var(--s4);
     border-bottom: var(--rule-weight) solid var(--border);
   }
-  .station__id {
+  .panel__id {
     min-width: 0;
   }
-  .station__name {
+  .panel__name {
     font-size: clamp(1.375rem, 1.1rem + 1.1vw, 1.875rem);
   }
 
-  .station__reasons {
+  .panel__reasons {
     grid-area: reasons;
     display: flex;
     flex-direction: column;
     gap: var(--s2);
   }
   /* Narrow: the label sits directly on its line, tight, not a wrapped column. */
-  .station__reasons li {
+  .panel__reasons li {
     display: grid;
     gap: 0;
   }
   @media (min-width: 48rem) {
-    .station__reasons {
+    .panel__reasons {
       gap: var(--s1);
     }
-    .station__reasons li {
+    .panel__reasons li {
       grid-template-columns: 11rem minmax(0, 1fr);
       gap: var(--s3);
       align-items: baseline;
     }
   }
 
-  .station__prior {
+  .panel__prior {
     grid-area: prior;
     max-width: 52ch;
   }
 
-  .station__rail {
+  .panel__rail {
     grid-area: rail;
   }
 
-  .station__aside {
+  .panel__aside {
     grid-area: aside;
     display: flex;
     gap: var(--s6);
     align-items: flex-end;
     flex-wrap: wrap;
   }
-  .station__aside > :global(.field) {
+  .panel__aside > :global(.field) {
     flex: 1 1 18rem;
     min-width: 0;
   }
 
-  .station__confidence {
+  .panel__confidence {
     border: 0;
     padding: 0;
     margin: 0;
   }
-  .station__confidence legend {
+  .panel__confidence legend {
     padding: 0 0 var(--s2);
   }
   .btn.is-on {
@@ -301,7 +301,7 @@
     color: var(--on-accent);
   }
 
-  .station__actions {
+  .panel__actions {
     grid-area: actions;
     display: flex;
     gap: var(--s2);
@@ -319,7 +319,7 @@
   }
 
   @media (max-width: 58rem) {
-    .station {
+    .panel {
       grid-template-columns: minmax(0, 1fr);
       grid-template-areas:
         'head'
