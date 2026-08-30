@@ -12,7 +12,9 @@ import type {
   RatingScale,
 } from '../domain/types';
 
-export const SNAPSHOT_KIND = 'music-ratings/ledger';
+export const SNAPSHOT_KIND = 'music-ratings/snapshot';
+/** What the kind field said before the app was renamed; still restorable. */
+const LEGACY_SNAPSHOT_KIND = 'music-ratings/ledger';
 export const SNAPSHOT_VERSION = 1;
 
 /**
@@ -146,7 +148,7 @@ export function validateSnapshot(data: unknown): Snapshot {
     throw new SnapshotError('That file does not contain a backup.');
   }
   const candidate = data as Partial<Snapshot>;
-  if (candidate.kind !== SNAPSHOT_KIND) {
+  if (candidate.kind !== SNAPSHOT_KIND && String(candidate.kind) !== LEGACY_SNAPSHOT_KIND) {
     throw new SnapshotError(
       'That backup was written by a different app. Only files saved by this one can be restored.',
     );
@@ -182,7 +184,7 @@ export function migrateSnapshot(snapshot: Snapshot): Snapshot {
 
 export function snapshotFileName(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `ledger-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+  return `music-ratings-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
 }
 
 export function serializeSnapshot(snapshot: Snapshot): string {

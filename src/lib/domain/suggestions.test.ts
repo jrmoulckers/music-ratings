@@ -7,6 +7,8 @@ import { defaultRollupConfigByType } from './rollup';
 import {
   DEFAULT_SUGGESTION_WEIGHTS,
   EMPTY_SIGNALS,
+  TIER_INFERRED,
+  TIER_JUST_PLAYED,
   emptySuggestionWeights,
   scoreSuggestions,
   suggestionSourceLabel,
@@ -66,6 +68,64 @@ describe('suggestion sourcing', () => {
     expect(out[0]!.entityId).toBe(track.id);
     expect(out[0]!.reasons[0]!.source).toBe('recentlyPlayed');
     expect(out[0]!.reasons[0]!.detail).toMatch(/played/i);
+  });
+
+  it('puts anything you actually played ahead of anything merely inferred', () => {
+    // The inferred item is deliberately stacked with every other reason the
+    // engine has, so it wins on raw score. It must still come second.
+    const played = makeEntity('track', 'played');
+    const inferredAlbum = makeEntity('album', 'inferred-album');
+    const inferred = makeEntity('track', 'inferred');
+    const rated = makeEntity('album', 'rated');
+
+    const out = scoreSuggestions(
+      input({
+        entities: [played, inferredAlbum, inferred, rated],
+        memberships: [link(inferredAlbum, inferred), link(rated, inferred)],
+        ratings: [rate(rated, 90, { at: T0 - 400 * DAY })],
+        signals: {
+          // One play, at the very bottom of the window and ten days stale, so
+          // its own score is as weak as a play can be.
+          recentlyPlayed: [{ entityId: played.id, at: T0 - 30 * DAY, index: 49 }],
+          top: [
+            { entityId: inferred.id, term: 'short', rank: 0, of: 50 },
+            { entityId: inferred.id, term: 'medium', rank: 0, of: 50 },
+            { entityId: inferred.id, term: 'long', rank: 0, of: 50 },
+          ],
+          saved: [{ entityId: inferred.id, savedAt: T0 - DAY }],
+        },
+        overrides: { pinnedIds: new Set([inferred.id]) },
+      }),
+    );
+
+    const playedRow = out.find((s) => s.entityId === played.id);
+    const inferredRow = out.find((s) => s.entityId === inferred.id);
+    expect(playedRow).toBeDefined();
+    expect(inferredRow).toBeDefined();
+    // The inference really does score higher…
+    expect(inferredRow!.score).toBeGreaterThan(playedRow!.score);
+    // …and still loses, because a real play sits in a band above it.
+    expect(playedRow!.tier).toBe(TIER_JUST_PLAYED);
+    expect(inferredRow!.tier).toBe(TIER_INFERRED);
+    expect(out[0]!.entityId).toBe(played.id);
+  });
+
+  it('orders plays among themselves by how recent and prominent they were', () => {
+    const older = makeEntity('track', 'older');
+    const newer = makeEntity('track', 'newer');
+    const out = scoreSuggestions(
+      input({
+        entities: [older, newer],
+        signals: {
+          recentlyPlayed: [
+            { entityId: newer.id, at: T0 - 3600_000, index: 0 },
+            { entityId: older.id, at: T0 - 20 * DAY, index: 40 },
+          ],
+        },
+      }),
+    );
+    expect(out.map((s) => s.entityId)).toEqual([newer.id, older.id]);
+    expect(out.every((s) => s.tier === TIER_JUST_PLAYED)).toBe(true);
   });
 
   it('never suggests something with no reason at all', () => {

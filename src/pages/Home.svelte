@@ -13,21 +13,20 @@
   } from '../lib/app/state';
   import { installApp, pwa } from '../lib/app/pwa';
   import { formatScore } from '../lib/domain/ratings';
-  import { suggestionSourceLabel } from '../lib/domain/suggestions';
+  import { suggestionSourceLabel, TIER_JUST_PLAYED } from '../lib/domain/suggestions';
+  import { openSearch } from '../lib/app/search-overlay';
   import { syncState } from '../lib/storage/autosync';
   import { relative } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import Empty from '../components/Empty.svelte';
-  import Plate from '../components/Plate.svelte';
-  import QueueSpine, { type Stop } from '../components/QueueSpine.svelte';
-  import SpecimenNote from '../components/SpecimenNote.svelte';
+  import Artwork from '../components/Artwork.svelte';
 
   /**
-   * The desk.
+   * Home.
    *
-   * The queue is the spine of this page, not a list beside it. What is seated on
-   * the rail sits to its left; the record of what has been served sits to its
-   * right. Nothing about the next decision is hidden behind a summary.
+   * What to rate next, and what you have rated lately. Things you actually
+   * played come first and are labelled as such, because a suggestion you can
+   * trace back to your own listening is worth more than one that was inferred.
    */
 
   interface Props {
@@ -36,9 +35,6 @@
 
   let { online }: Props = $props();
 
-  /** Which detent the reader has picked off the rail, if not the seated one. */
-  let picked = $state<string | undefined>(undefined);
-
   const queued = $derived(
     $suggestions.slice(0, 6).flatMap((suggestion) => {
       const entity = $graph.entity(suggestion.entityId);
@@ -46,23 +42,19 @@
     }),
   );
 
-  const shown = $derived(
-    queued.find((row) => row.suggestion.entityId === picked)?.suggestion ?? queued[0]?.suggestion,
+  /** Everything you genuinely played recently, in priority order. */
+  const justPlayed = $derived(
+    $suggestions
+      .filter((suggestion) => suggestion.tier === TIER_JUST_PLAYED)
+      .flatMap((suggestion) => {
+        const entity = $graph.entity(suggestion.entityId);
+        return entity ? [{ suggestion, entity }] : [];
+      }),
   );
+
+  const shown = $derived(queued[0]?.suggestion);
   const shownEntity = $derived(shown ? $graph.entity(shown.entityId) : undefined);
-
-  /** Served stops keep their place on the rail; they are struck, not removed. */
-  const served = $derived(
-    $recentActivity.slice(0, 3).flatMap((event) => {
-      const entity = $graph.entity(event.entityId);
-      return entity ? [{ id: `served:${event.id}`, name: entity.name, served: true }] : [];
-    }),
-  );
-
-  const stops = $derived<Stop[]>([
-    ...[...served].reverse(),
-    ...queued.map((row) => ({ id: row.entity.id, name: row.entity.name, served: false })),
-  ]);
+  const shownIsPlayed = $derived(shown?.tier === TIER_JUST_PLAYED);
 
   const ratedTotal = $derived($explicitRatings.size);
   const comparisonTotal = $derived($world.comparisons.filter((c) => !c.deleted).length);
@@ -98,27 +90,31 @@
 
 <div class="sheet setting">
   <div class="stack stack--loose">
-    <header class="desk__head">
-      <h1 class="display">The desk</h1>
+    <header class="home__head">
+      <h1 class="display">Home</h1>
       <p class="note">
-        {ratedTotal.toLocaleString()} ratings · {comparisonTotal.toLocaleString()} weigh-ins · {todayCount}
-        today
+        What to rate next, and what you have rated lately. {ratedTotal.toLocaleString()} ratings · {comparisonTotal.toLocaleString()}
+        comparisons · {todayCount} today
       </p>
-      {#if $settings.demoMode}
-        <div class="desk__stamp"><SpecimenNote /></div>
-      {/if}
+      <button type="button" class="home__find" onclick={() => openSearch()}>
+        <Icon name="search" size={16} />
+        <span>Search for something to rate</span>
+        <kbd class="home__key">/</kbd>
+      </button>
     </header>
 
-    <div class="desk">
-      <section class="desk__now" aria-labelledby="next-head">
+    <div class="home">
+      <section class="home__now" aria-labelledby="next-head">
         <div class="head">
-          <h2 id="next-head" class="title">On the rail</h2>
-          <a class="apparatus" href={href('/queue')}>Open the queue</a>
+          <h2 id="next-head" class="title">
+            {shownIsPlayed ? 'You just played this' : 'Next to rate'}
+          </h2>
+          <a class="label" href={href('/rate')}>Open the queue</a>
         </div>
 
         {#if shownEntity && shown}
-          <a class="next" href={entityHref(shownEntity.id)}>
-            <Plate
+          <a class="next" class:next--played={shownIsPlayed} href={entityHref(shownEntity.id)}>
+            <Artwork
               src={shownEntity.artworkUrl}
               thumb={shownEntity.artworkThumbUrl}
               name={shownEntity.name}
@@ -126,15 +122,13 @@
               priority
             />
             <div class="next__body">
-              <p class="apparatus">{entityLabel(shownEntity.type)}</p>
+              <p class="label">{entityLabel(shownEntity.type)}</p>
               <p class="next__name display">{shownEntity.name}</p>
               {#if shownEntity.subtitle}<p class="note">{shownEntity.subtitle}</p>{/if}
               <ul class="next__reasons">
                 {#each shown.reasons.slice(0, 2) as reason (reason.source)}
                   <li>
-                    <span class="apparatus apparatus--rubric"
-                      >{suggestionSourceLabel(reason.source)}</span
-                    >
+                    <span class="label label--accent">{suggestionSourceLabel(reason.source)}</span>
                     <span class="note">{reason.detail}</span>
                   </li>
                 {/each}
@@ -142,43 +136,57 @@
             </div>
           </a>
 
-          <a class="btn btn--primary desk__seat" href={href('/queue')}>
-            <Icon name="queue" size={15} /> Seat a grade
+          <a class="btn btn--primary home__seat" href={href('/rate')}>
+            <Icon name="queue" size={15} /> Rate this
           </a>
-          <a class="btn desk__alt" href={href('/duel')}>
-            <Icon name="balance" size={15} /> Weigh two up instead
+          <a class="btn home__alt" href={href('/compare')}>
+            <Icon name="versus" size={15} /> Compare two instead
           </a>
         {:else}
           <Empty
             title="Nothing waiting"
-            body="Either everything enabled has been rated recently, or there is no catalogue yet. Connect Spotify, load the demo catalogue, or widen what you rate."
+            body="Either everything you have enabled was rated recently, or there is nothing in your library yet. Connect Spotify, or search for something to rate."
           >
             {#snippet action()}
-              <a class="btn btn--primary" href={href('/settings')}>Open settings</a>
+              <button type="button" class="btn btn--primary" onclick={() => openSearch()}>
+                Search for something to rate
+              </button>
             {/snippet}
           </Empty>
         {/if}
       </section>
 
-      {#if stops.length > 0}
-        <div class="desk__spine">
-          <QueueSpine
-            {stops}
-            selectedId={shown?.entityId}
-            remaining={$suggestions.length}
-            onselect={(id) => (picked = id)}
-          />
-        </div>
-      {/if}
+      <section class="home__record" aria-labelledby="recent-head">
+        {#if justPlayed.length > 0}
+          <div class="head">
+            <h2 class="title">Recently played, not yet rated</h2>
+            <span class="label">First in the queue</span>
+          </div>
+          <ul class="played">
+            {#each justPlayed.slice(0, 5) as row (row.entity.id)}
+              <li>
+                <a class="played__row" href={entityHref(row.entity.id)}>
+                  <Artwork src={row.entity.artworkThumbUrl} name={row.entity.name} size="sm" />
+                  <span class="played__id">
+                    <span class="played__name">{row.entity.name}</span>
+                    <span class="note note--small">
+                      {row.suggestion.reasons.find((r) => r.source === 'recentlyPlayed')?.detail ??
+                        'From your listening history'}
+                    </span>
+                  </span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
 
-      <section class="desk__record" aria-labelledby="recent-head">
-        <div class="head">
-          <h2 id="recent-head" class="title">Lately</h2>
-          <a class="apparatus" href={href('/timeline')}>The whole record</a>
+        <div class="head" class:head--spaced={justPlayed.length > 0}>
+          <h2 id="recent-head" class="title">Recently rated</h2>
+          <a class="label" href={href('/history')}>Full history</a>
         </div>
         {#if $recentActivity.length > 0}
           <ul class="lately">
-            {#each $recentActivity.slice(0, 9) as event (event.id)}
+            {#each $recentActivity.slice(0, justPlayed.length > 0 ? 5 : 9) as event (event.id)}
               {@const entity = $graph.entity(event.entityId)}
               <li>
                 <a class="lately__row" href={entityHref(event.entityId)}>
@@ -188,13 +196,13 @@
                   <span class="lately__name"
                     >{entity?.name ?? 'Item no longer in the catalogue'}</span
                   >
-                  <span class="apparatus">{relative(event.at)}</span>
+                  <span class="label">{relative(event.at)}</span>
                 </a>
               </li>
             {/each}
           </ul>
         {:else}
-          <p class="note">Nothing seated yet. The first grade you seat appears here.</p>
+          <p class="note">Nothing rated yet. Your first rating appears here.</p>
         {/if}
       </section>
     </div>
@@ -202,13 +210,13 @@
 
   <aside class="margin">
     <div class="stack stack--tight">
-      <h2 class="apparatus">State of the record</h2>
+      <h2 class="label">Sync status</h2>
       <p class="note">{syncLine}</p>
-      <a class="apparatus" href={href('/diagnostics')}>Data health</a>
+      <a class="label" href={href('/diagnostics')}>Data health</a>
     </div>
 
     <div class="stack stack--tight">
-      <h2 class="apparatus">Coverage</h2>
+      <h2 class="label">Coverage</h2>
       {#each $coverageByType as row (row.type)}
         <div class="cover">
           <span class="cover__label">{entityLabel(row.type, true)}</span>
@@ -219,13 +227,13 @@
         </div>
       {/each}
       {#if $coverageByType.every((row) => row.total === 0)}
-        <p class="note">No catalogue loaded yet.</p>
+        <p class="note">Nothing in your library yet.</p>
       {/if}
     </div>
 
     {#if $settings.goalsEnabled}
       <div class="stack stack--tight">
-        <h2 class="apparatus">Today</h2>
+        <h2 class="label">Today</h2>
         <p class="figure figure--large">{todayCount} / {$settings.dailyGoal}</p>
         <p class="note">
           A target you set yourself. Turn it off in Settings if it starts feeling like homework.
@@ -235,8 +243,8 @@
 
     {#if $pwa.installable}
       <div class="stack stack--tight">
-        <h2 class="apparatus">Install</h2>
-        <p class="note">Keep the ledger in its own window, and open it offline.</p>
+        <h2 class="label">Install</h2>
+        <p class="note">Keep this in its own window, and open it offline.</p>
         <button type="button" class="btn btn--small" onclick={() => void installApp()}>
           Install the app
         </button>
@@ -246,51 +254,58 @@
 </div>
 
 <style>
-  .desk__head {
+  .home__head {
     padding-bottom: var(--s3);
     border-bottom: var(--rule-weight) solid var(--ink);
   }
-  .desk__stamp {
-    margin-top: var(--s3);
+
+  .home__find {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    width: 100%;
+    margin-top: var(--s4);
+    padding: var(--s3) var(--s4);
+    background: var(--surface-raised);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
+    color: var(--ink-quiet);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease),
+      color var(--dur-1) var(--ease);
+  }
+  .home__find:hover {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+  .home__find span {
+    flex: 1;
+  }
+  .home__key {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    padding: 2px 6px;
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--ink-faint);
   }
 
-  /* Twinned columns either side of the rail, which runs the desk's full height. */
-  .desk {
+  /* Two plain columns: what to do next on the left, what has happened on the
+     right. They stack on narrow screens. */
+  .home {
     display: grid;
-    grid-template-columns: 1.9rem minmax(0, 1fr);
-    grid-template-areas:
-      'spine now'
-      'spine record';
-    column-gap: 0;
-    row-gap: var(--s6);
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s6);
     align-items: start;
-  }
-  .desk__now {
-    grid-area: now;
-    padding-left: var(--s4);
-  }
-  .desk__record {
-    grid-area: record;
-    padding-left: var(--s4);
-  }
-  .desk__spine {
-    grid-area: spine;
-    align-self: stretch;
-    height: 100%;
   }
 
   @media (min-width: 64rem) {
-    .desk {
-      grid-template-columns: minmax(0, 1fr) 2.75rem minmax(0, 1fr);
-      grid-template-areas: 'now spine record';
-      min-height: min(30rem, calc(100vh - 22rem));
-    }
-    .desk__now {
-      padding-left: 0;
-      padding-right: var(--s5);
-    }
-    .desk__record {
-      padding-left: var(--s5);
+    .home {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: var(--s7);
     }
   }
 
@@ -299,14 +314,20 @@
     gap: var(--s4);
     align-items: flex-start;
     padding: var(--s4);
-    background: var(--paper-raised);
-    border: var(--rule-weight) solid var(--rule);
+    background: var(--surface-raised);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
     text-decoration: none;
     color: inherit;
     transition: border-color var(--dur-1) var(--ease);
   }
   .next:hover {
     border-color: var(--ink);
+  }
+  /* Something you genuinely played is marked on its rule, not slabbed down one
+     edge: the reason list underneath already says why it is here. */
+  .next--played {
+    border-top-color: var(--accent);
   }
   .next__body {
     min-width: 0;
@@ -324,7 +345,7 @@
     gap: var(--s1);
     margin-top: var(--s2);
     padding-top: var(--s3);
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
   }
   .next__reasons li {
     display: flex;
@@ -332,58 +353,55 @@
     gap: 2px;
   }
 
-  /*
-   * The primary action is not a button beside the rail; it is a length of the
-   * same rubric ink running into it. Its edge lands exactly on the line and it
-   * carries its own bracketed detent there, so the grade seats at a mark of its
-   * own rather than appearing to dock at whichever stop it happens to pass.
-   */
-  .desk__seat {
-    position: relative;
+  .home__seat {
     margin-top: var(--s4);
-    margin-left: calc((var(--s4) + 1.9rem) * -1);
-    width: calc(100% + var(--s4) + 1.9rem);
+    width: 100%;
     justify-content: center;
-    background: var(--rubric);
-    border-color: var(--rubric);
-    color: var(--on-rubric);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
   }
-  .desk__seat:hover:not(:disabled) {
-    background: var(--rubric-ink);
-    border-color: var(--rubric-ink);
-    color: var(--on-rubric);
+  .home__seat:hover:not(:disabled) {
+    background: var(--accent-ink);
+    border-color: var(--accent-ink);
+    color: var(--on-accent);
   }
-  .desk__seat::before,
-  .desk__seat::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    width: 0.5rem;
-    height: var(--rule-weight);
-    background: var(--rubric);
-  }
-  .desk__seat::before {
-    top: -0.4rem;
-  }
-  .desk__seat::after {
-    bottom: -0.4rem;
-  }
-  .desk__alt {
+  .home__alt {
     margin-top: var(--s2);
     width: 100%;
     justify-content: center;
   }
-  @media (min-width: 64rem) {
-    .desk__seat {
-      margin-left: 0;
-      margin-right: calc(var(--s5) * -1);
-      width: calc(100% + var(--s5));
-    }
-    .desk__seat::before,
-    .desk__seat::after {
-      left: auto;
-      right: -0.5rem;
-    }
+
+  .played {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: var(--s5);
+  }
+  .played__row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--s3);
+    align-items: center;
+    padding: var(--s2) 0;
+    border-bottom: var(--rule-weight) solid var(--border-faint);
+    text-decoration: none;
+    color: inherit;
+  }
+  .played__row:hover {
+    background: var(--surface-raised);
+  }
+  .played__id {
+    min-width: 0;
+  }
+  .played__name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .head--spaced {
+    margin-top: var(--s5);
   }
 
   .lately {
@@ -396,15 +414,15 @@
     gap: var(--s3);
     align-items: baseline;
     padding: var(--s2) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
     text-decoration: none;
     color: inherit;
   }
   .lately__row:hover {
-    background: var(--paper-raised);
+    background: var(--surface-raised);
   }
   .lately__mark {
-    color: var(--rubric-ink);
+    color: var(--accent-ink);
   }
   .lately__name {
     overflow: hidden;
@@ -424,13 +442,14 @@
   }
   .cover__bar {
     height: 6px;
-    background: var(--paper-sunk);
-    border: var(--rule-weight) solid var(--rule-faint);
+    background: var(--surface-sunk);
+    border: var(--rule-weight) solid var(--border-faint);
+    border-radius: var(--radius-sm);
   }
   .cover__fill {
     display: block;
     height: 100%;
-    background: var(--rubric);
+    background: var(--accent);
   }
   .cover__figure {
     font-size: 0.6875rem;

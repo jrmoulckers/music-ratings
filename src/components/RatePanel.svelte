@@ -9,7 +9,7 @@
   import { wideEnoughForRail } from '../lib/ui/media';
   import Icon from '../lib/ui/Icon.svelte';
   import { relative } from '../lib/ui/format';
-  import Plate from './Plate.svelte';
+  import Artwork from './Artwork.svelte';
   import RatingRail from './RatingRail.svelte';
 
   /**
@@ -107,7 +107,7 @@
   }}
 >
   <header class="station__head">
-    <Plate
+    <Artwork
       src={entity.artworkUrl}
       thumb={entity.artworkThumbUrl}
       name={entity.name}
@@ -117,7 +117,7 @@
     <div class="station__id">
       <h2 class="station__name title">{entity.name}</h2>
       {#if entity.subtitle}<p class="note">{entity.subtitle}</p>{/if}
-      <p class="apparatus">{entity.type}</p>
+      <p class="label">{entity.type}</p>
     </div>
   </header>
 
@@ -125,7 +125,7 @@
     <ul class="station__reasons">
       {#each suggestion.reasons.slice(0, 3) as reason (reason.source)}
         <li>
-          <span class="apparatus apparatus--rubric">{suggestionSourceLabel(reason.source)}</span>
+          <span class="label label--accent">{suggestionSourceLabel(reason.source)}</span>
           <span class="note">{reason.detail}</span>
         </li>
       {/each}
@@ -160,17 +160,17 @@
 
   <div class="station__aside">
     <label class="field">
-      <span class="apparatus">A line about it, if you have one</span>
+      <span class="label">Note (optional)</span>
       <textarea
         class="textarea"
         bind:value={note}
         rows="2"
-        placeholder="Optional. Kept with this judgement forever."
+        placeholder="Optional. Saved with this rating."
       ></textarea>
     </label>
 
     <fieldset class="station__confidence">
-      <legend class="apparatus">How sure are you?</legend>
+      <legend class="label">How sure are you?</legend>
       <div class="row row--tight">
         {#each ['low', 'medium', 'high'] as const as level (level)}
           <button
@@ -219,31 +219,11 @@
     gap: var(--s4) var(--s6);
     align-items: start;
     padding: var(--s5);
-    border: var(--rule-weight) solid var(--rule);
-    background: var(--paper-raised);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
     transform: translateX(var(--drag, 0));
     touch-action: pan-y;
-  }
-  /* Register marks: the station is a plate on the desk, trimmed at its corners. */
-  .station::before,
-  .station::after {
-    content: '';
-    position: absolute;
-    width: 0.7rem;
-    height: 0.7rem;
-    pointer-events: none;
-    border-color: var(--rubric);
-    border-style: solid;
-  }
-  .station::before {
-    top: -1px;
-    left: -1px;
-    border-width: 2px 0 0 2px;
-  }
-  .station::after {
-    bottom: -1px;
-    right: -1px;
-    border-width: 0 2px 2px 0;
   }
   .station.is-dragging {
     transition: none;
@@ -255,7 +235,7 @@
     align-items: center;
     gap: var(--s4);
     padding-bottom: var(--s4);
-    border-bottom: var(--rule-weight) solid var(--rule);
+    border-bottom: var(--rule-weight) solid var(--border);
   }
   .station__id {
     min-width: 0;
@@ -316,9 +296,9 @@
     padding: 0 0 var(--s2);
   }
   .btn.is-on {
-    background: var(--rubric);
-    border-color: var(--rubric);
-    color: #fbf7ee;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
   }
 
   .station__actions {
@@ -327,13 +307,13 @@
     gap: var(--s2);
     flex-wrap: wrap;
     padding-top: var(--s4);
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
   }
 
   kbd {
     font-family: var(--mono);
     font-size: 0.625rem;
-    border: var(--rule-weight) solid var(--rule);
+    border: var(--rule-weight) solid var(--border);
     padding: 0 3px;
     color: var(--ink-faint);
   }

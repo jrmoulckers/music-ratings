@@ -1,17 +1,20 @@
 <script lang="ts">
   import { href } from '../lib/app/router';
+  import { openSearch } from '../lib/app/search-overlay';
   import { graph, settings, suggestions, world } from '../lib/app/state';
+  import { TIER_JUST_PLAYED } from '../lib/domain/suggestions';
   import { clearQueueState } from '../lib/storage/repo';
   import { relative } from '../lib/ui/format';
   import Empty from '../components/Empty.svelte';
-  import RateStation from '../components/RateStation.svelte';
-  import SpecimenNote from '../components/SpecimenNote.svelte';
+  import Icon from '../lib/ui/Icon.svelte';
+  import RatePanel from '../components/RatePanel.svelte';
 
   /**
-   * The queue.
+   * Rate.
    *
-   * Stops on a line. The one being served is in front of you; the ones behind it
-   * stay lit so you can see the work rather than guess at it.
+   * One item at a time, with the reasons it was chosen shown before the
+   * controls. Things you actually played sit at the front of the queue and say
+   * so; everything else is an inference and is labelled as one.
    */
 
   let cursor = $state(0);
@@ -24,6 +27,9 @@
   );
 
   const currentRow = $derived(rows[Math.min(cursor, Math.max(rows.length - 1, 0))]);
+  const playedCount = $derived(
+    $suggestions.filter((suggestion) => suggestion.tier === TIER_JUST_PLAYED).length,
+  );
 
   const setAside = $derived(
     $world.queueStates
@@ -42,20 +48,17 @@
 
 <div class="sheet">
   <header class="head">
-    <h1 class="display">The queue</h1>
-    <p class="apparatus">
-      {rows.length} waiting · {$settings.enabledTypes.length} types enabled · {setAside.length} set aside
+    <h1 class="display">Rate</h1>
+    <p class="label">
+      {rows.length} waiting{playedCount > 0 ? ` · ${playedCount} you just played` : ''} · {$settings
+        .enabledTypes.length} types enabled · {setAside.length} set aside
     </p>
   </header>
-
-  {#if $settings.demoMode}
-    <div class="queue__stamp"><SpecimenNote terse /></div>
-  {/if}
 
   {#if currentRow}
     <div class="queue__body">
       <div class="queue__station">
-        <RateStation
+        <RatePanel
           entity={currentRow.entity}
           suggestion={currentRow.suggestion}
           onafter={afterAction}
@@ -64,13 +67,13 @@
 
       {#if rows.length > 1}
         <section class="line" aria-labelledby="line-head">
-          <h2 id="line-head" class="apparatus">The rail behind it</h2>
+          <h2 id="line-head" class="label">Up next</h2>
           <ol class="line__stops">
             <li class="line__seated">
               <span class="stop stop--seated">
                 <span class="stop__cut" aria-hidden="true"></span>
                 <span class="stop__name">{currentRow.entity.name}</span>
-                <span class="apparatus apparatus--rubric">Seated — on the desk now</span>
+                <span class="label label--accent">Rating this now</span>
               </span>
             </li>
             {#each rows.slice(1, 9) as row, index (row.entity.id)}
@@ -84,7 +87,7 @@
             {/each}
           </ol>
           {#if rows.length > 9}
-            <p class="line__tail apparatus">{rows.length - 9} further stops on the rail</p>
+            <p class="line__tail label">{rows.length - 9} more waiting</p>
           {/if}
           <span class="line__cap" aria-hidden="true"></span>
         </section>
@@ -92,13 +95,16 @@
     </div>
   {:else}
     <Empty
-      title="The queue is clear"
-      body="Nothing is due. That can mean everything enabled has been rated recently, or that no catalogue has been loaded. Weighing two items against each other still works, and always tells you something a single rating cannot."
+      title="Nothing waiting to be rated"
+      body="Either everything you have enabled was rated recently, or there is nothing in your library yet. You can always search for something specific, or compare two things you have already rated."
     >
       {#snippet action()}
         <div class="row">
-          <a class="btn btn--primary" href={href('/duel')}>Weigh two up</a>
-          <a class="btn" href={href('/library')}>Browse the shelf</a>
+          <button type="button" class="btn btn--primary" onclick={() => openSearch()}>
+            <Icon name="search" size={14} /> Search for something to rate
+          </button>
+          <a class="btn" href={href('/compare')}>Compare two</a>
+          <a class="btn" href={href('/library')}>Browse your library</a>
         </div>
       {/snippet}
     </Empty>
@@ -108,13 +114,13 @@
     <section class="aside" aria-labelledby="aside-head">
       <div class="head">
         <h2 id="aside-head" class="title">Set aside</h2>
-        <span class="apparatus">{setAside.length}</span>
+        <span class="label">{setAside.length}</span>
       </div>
       <ul class="aside__rows">
         {#each setAside as row (row.state.id)}
           <li>
             <span class="aside__name">{row.entity?.name}</span>
-            <span class="apparatus">
+            <span class="label">
               {row.state.kind}{row.state.until ? ` until ${relative(row.state.until)}` : ''}
             </span>
             <button
@@ -132,15 +138,12 @@
 </div>
 
 <style>
-  /* The stops behind the seated one hang off the same vermilion rail. */
-  .queue__stamp {
-    margin-bottom: var(--s5);
-  }
+  /* The stops behind the current one hang off the same accent rail. */
 
   /*
-   * Twinned around the rail: the station under judgement on one side, the rail
+   * Twinned around the rail: the item being rated on one side, the queue
    * and everything still on it on the other, so the queue's first viewport
-   * reads the same way the desk does.
+   * reads the same way the home screen does.
    */
   .queue__body {
     display: grid;
@@ -177,14 +180,14 @@
     bottom: 0;
     left: 0;
     width: 2px;
-    background: var(--rubric);
+    background: var(--accent);
   }
   .line__cap {
     margin-top: auto;
     margin-left: -1.6rem;
     width: 0.85rem;
     height: 3px;
-    background: var(--rubric);
+    background: var(--accent);
   }
   .line__stops {
     position: relative;
@@ -208,17 +211,17 @@
     padding: var(--s2) 0;
     background: transparent;
     border: 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
     color: inherit;
     font: inherit;
     cursor: pointer;
   }
   .stop:hover {
-    background: var(--paper-raised);
+    background: var(--surface-raised);
   }
   .stop--seated {
     cursor: default;
-    border-bottom-color: var(--rule);
+    border-bottom-color: var(--border);
   }
   .stop--seated .stop__name {
     font-weight: 600;
@@ -229,17 +232,19 @@
     position: absolute;
     left: -1.6rem;
     top: 1.05rem;
-    width: 1.15rem;
-    height: var(--rule-weight);
-    background: var(--rubric);
-    transition: width var(--dur-1) var(--ease);
-  }
-  .stop:hover .stop__cut {
     width: 1.6rem;
+    height: var(--rule-weight);
+    background: var(--accent);
+    transform: scaleX(0.72);
+    transform-origin: left center;
+    transition: transform var(--dur-1) var(--ease);
+  }
+  .stop:hover .stop__cut,
+  .stop--seated .stop__cut {
+    transform: scaleX(1);
   }
   .stop--seated .stop__cut {
     height: 3px;
-    width: 1.6rem;
   }
 
   .stop__name {
@@ -266,7 +271,7 @@
     gap: var(--s3);
     align-items: center;
     padding: var(--s2) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .aside__name {
     overflow: hidden;
@@ -282,7 +287,7 @@
     .stop .note {
       display: none;
     }
-    .stop--seated .apparatus {
+    .stop--seated .label {
       font-size: 0.5625rem;
     }
   }
@@ -297,7 +302,7 @@
     .stop .note {
       font-size: 0.8125rem;
     }
-    .stop--seated .apparatus {
+    .stop--seated .label {
       font-size: 0.5625rem;
     }
   }

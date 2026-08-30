@@ -1,288 +1,292 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-29T23:06:23-07:00",
-  "title": "Design System: Ledger",
-  "extensions": {
-    "colorMeta": {
-      "rubric": {
-        "role": "primary",
-        "displayName": "Rubric Vermilion",
-        "canonical": "#c23a2a",
-        "dark": "#e0604a",
-        "note": "The one accent. Marks and fills only, never a large surface, never small read text.",
-        "tonalRamp": [
-          "oklch(0.22 0.09 30)",
-          "oklch(0.31 0.12 30)",
-          "oklch(0.41 0.15 30)",
-          "oklch(0.50 0.17 30)",
-          "oklch(0.58 0.175 30)",
-          "oklch(0.69 0.14 30)",
-          "oklch(0.81 0.08 32)",
-          "oklch(0.92 0.03 34)"
-        ]
+  "title": "Design System: Music Ratings",
+  "frontmatter": {
+    "name": "Music Ratings",
+    "description": "A private, auditable record of what you actually think of your own music.",
+    "colors": {
+      "surface": "#f5f5f7",
+      "surface-sunk": "#eaeaee",
+      "surface-raised": "#ffffff",
+      "ink": "#17171b",
+      "ink-quiet": "#54545e",
+      "ink-faint": "#7a7a86",
+      "border": "#d5d5dc",
+      "border-faint": "#e6e6eb",
+      "scrim": "rgb(0 0 0 / 0.45)",
+      "accent": "#cf3f26",
+      "accent-ink": "#b23319",
+      "accent-wash": "#fbeae6",
+      "on-accent": "#ffffff"
+    },
+    "typography": {
+      "display": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "clamp(2rem, 1.3rem + 3vw, 3.4rem)",
+        "fontWeight": 400,
+        "lineHeight": 1.06,
+        "letterSpacing": "-0.018em"
       },
-      "rubric-ink": {
-        "role": "primary",
-        "displayName": "Rubric Ink",
-        "canonical": "#a32a1c",
-        "dark": "#ef8a76",
-        "note": "Darkened cut of the accent for small type; clears 4.5:1 on paper."
+      "title": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "clamp(1.4rem, 1.1rem + 1.3vw, 2rem)",
+        "fontWeight": 400,
+        "lineHeight": 1.16,
+        "letterSpacing": "-0.012em"
       },
-      "on-rubric": {
-        "role": "primary",
-        "displayName": "On-Rubric Bone",
-        "canonical": "#fdfbf6",
-        "dark": "#14140f",
-        "note": "The only foreground permitted on a solid rubric fill."
+      "subtitle": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "1.0625rem",
+        "fontWeight": 400,
+        "lineHeight": 1.4,
+        "letterSpacing": "-0.006em"
       },
-      "rubric-wash": {
-        "role": "primary",
-        "displayName": "Rubric Wash",
-        "canonical": "#f3e3df",
-        "dark": "#2b1c18",
-        "note": "Faint accent tint for hover beds and selection only; never text."
+      "body": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "1rem",
+        "fontWeight": 400,
+        "lineHeight": 1.62,
+        "letterSpacing": "normal"
       },
-      "ink": {
-        "role": "neutral",
-        "displayName": "Iron Ink",
-        "canonical": "#1a1a1a",
-        "dark": "#ece7da",
-        "note": "Body and headline ink. On dark it inverts to bone text; ink becomes the ground.",
-        "tonalRamp": [
-          "oklch(0.20 0.006 80)",
-          "oklch(0.30 0.006 80)",
-          "oklch(0.40 0.007 80)",
-          "oklch(0.50 0.008 80)",
-          "oklch(0.62 0.009 82)",
-          "oklch(0.74 0.010 84)",
-          "oklch(0.85 0.011 86)",
-          "oklch(0.94 0.010 88)"
-        ]
+      "label": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "0.6875rem",
+        "fontWeight": 550,
+        "lineHeight": 1.3,
+        "letterSpacing": "0.13em"
       },
-      "ink-quiet": {
-        "role": "neutral",
-        "displayName": "Quiet Ink",
-        "canonical": "#55534e",
-        "dark": "#a9a496",
-        "note": "Secondary text and apparatus labels. Collapses to full ink under high contrast."
+      "note": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "0.875rem",
+        "fontWeight": 400,
+        "lineHeight": 1.5,
+        "letterSpacing": "normal"
       },
-      "ink-faint": {
-        "role": "neutral",
-        "displayName": "Faint Ink",
-        "canonical": "#7d7a72",
-        "dark": "#7f7b6f",
-        "note": "Fine print, disabled text, plate initials."
+      "figure": {
+        "fontFamily": "'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "fontSize": "1rem",
+        "fontWeight": 500,
+        "letterSpacing": "-0.01em"
       },
-      "paper": {
-        "role": "neutral",
-        "displayName": "Unbleached Paper",
-        "canonical": "#f1ece2",
-        "dark": "#14140f",
-        "note": "The page, and the runtime theme-color.",
-        "tonalRamp": [
-          "oklch(0.16 0.006 90)",
-          "oklch(0.26 0.007 90)",
-          "oklch(0.38 0.008 88)",
-          "oklch(0.52 0.010 86)",
-          "oklch(0.66 0.011 86)",
-          "oklch(0.80 0.012 88)",
-          "oklch(0.90 0.012 90)",
-          "oklch(0.94 0.011 92)"
-        ]
+      "mono": {
+        "fontFamily": "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+        "fontSize": "0.8125rem",
+        "fontWeight": 400,
+        "letterSpacing": "-0.01em"
       },
-      "paper-sunk": {
-        "role": "neutral",
-        "displayName": "Sunk Paper",
-        "canonical": "#e8e2d5",
-        "dark": "#0d0d0a",
-        "note": "One tonal step below the page; sunk panels, plate beds, rail grounds."
-      },
-      "paper-raised": {
-        "role": "neutral",
-        "displayName": "Raised Paper",
-        "canonical": "#f7f3ea",
-        "dark": "#1c1c16",
-        "note": "One tonal step above the page; panels, inputs, hover beds."
-      },
-      "rule": {
-        "role": "neutral",
-        "displayName": "Rule",
-        "canonical": "#b3aea2",
-        "dark": "#4a473e",
-        "note": "The primary hairline weight for borders, dividers and detents.",
-        "tonalRamp": [
-          "oklch(0.34 0.008 86)",
-          "oklch(0.44 0.009 86)",
-          "oklch(0.54 0.010 86)",
-          "oklch(0.64 0.011 86)",
-          "oklch(0.72 0.012 88)",
-          "oklch(0.80 0.012 88)",
-          "oklch(0.87 0.011 90)",
-          "oklch(0.93 0.010 92)"
-        ]
-      },
-      "rule-faint": {
-        "role": "neutral",
-        "displayName": "Faint Rule",
-        "canonical": "#cdc8bb",
-        "dark": "#33312a",
-        "note": "The lighter hairline weight for quiet dividers and inactive detents."
+      "scale": {
+        "micro": "0.5625rem",
+        "tick": "0.625rem",
+        "label": "0.6875rem",
+        "fine": "0.75rem",
+        "small": "0.8125rem",
+        "note": "0.875rem",
+        "compact": "0.9375rem",
+        "base": "1rem",
+        "lead": "1.0625rem",
+        "subhead": "1.125rem",
+        "step1": "1.25rem",
+        "step2": "1.375rem",
+        "step3": "1.5rem",
+        "step4": "1.75rem",
+        "step5": "1.875rem",
+        "step6": "2rem",
+        "step7": "2.75rem",
+        "step8": "3rem",
+        "step9": "3.4rem"
       }
     },
-    "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Page titles and the item under judgement. Caslon serif, fluid clamp." },
-      "title": { "displayName": "Title", "purpose": "Section heads inside a sheet." },
-      "subtitle": { "displayName": "Subtitle", "purpose": "A serif lead line under a title." },
-      "body": { "displayName": "Body", "purpose": "Running serif text, held to a 68ch measure." },
-      "apparatus": { "displayName": "Apparatus", "purpose": "Tracked grotesque small-caps for every label, key, weight and provenance stamp. Never running text." },
-      "note": { "displayName": "Note", "purpose": "Secondary serif prose, reasons and captions; note--small for fine print." },
-      "figure": { "displayName": "Figure", "purpose": "Tabular lining numerals for grades, ranks, counts and weights so columns align." },
-      "machine": { "displayName": "Machine", "purpose": "Monospace for raw identifiers and diagnostic values only." }
+    "rounded": {
+      "sm": "3px",
+      "md": "5px"
     },
-    "shadows": [
-      {
-        "name": "none",
-        "value": "none",
-        "purpose": "The system ships no elevation shadows. Depth is tonal paper weight plus hairline rule. The only box-shadow in the codebase draws the .bracketed focus brackets, not elevation."
+    "spacing": {
+      "s1": "0.25rem",
+      "s2": "0.5rem",
+      "s3": "0.75rem",
+      "s4": "1rem",
+      "s5": "1.5rem",
+      "s6": "2rem",
+      "s7": "3rem",
+      "s8": "4.5rem"
+    },
+    "components": {
+      "button-primary": {
+        "backgroundColor": "{colors.accent}",
+        "textColor": "{colors.on-accent}",
+        "typography": "{typography.label}",
+        "rounded": "{rounded.sm}",
+        "padding": "0.55rem 1.1rem",
+        "height": "2.5rem"
+      },
+      "button-primary-hover": {
+        "backgroundColor": "{colors.accent-ink}",
+        "textColor": "{colors.on-accent}"
+      },
+      "button-default": {
+        "backgroundColor": "transparent",
+        "textColor": "{colors.ink}",
+        "typography": "{typography.label}",
+        "rounded": "{rounded.sm}",
+        "padding": "0.55rem 1.1rem",
+        "height": "2.5rem"
+      },
+      "button-default-hover": {
+        "backgroundColor": "{colors.accent-wash}",
+        "textColor": "{colors.ink}"
+      },
+      "button-default-active": {
+        "backgroundColor": "{colors.ink}",
+        "textColor": "{colors.surface}"
+      },
+      "button-quiet": {
+        "backgroundColor": "transparent",
+        "textColor": "{colors.ink}",
+        "typography": "{typography.label}",
+        "rounded": "{rounded.sm}",
+        "padding": "0.55rem 0.5rem"
+      },
+      "input": {
+        "backgroundColor": "{colors.surface-raised}",
+        "textColor": "{colors.ink}",
+        "rounded": "{rounded.sm}",
+        "padding": "0.55rem 0.7rem",
+        "height": "2.5rem"
+      },
+      "entry": {
+        "backgroundColor": "transparent",
+        "textColor": "{colors.ink}",
+        "rounded": "{rounded.sm}",
+        "padding": "0.75rem 0.5rem"
+      },
+      "panel": {
+        "backgroundColor": "{colors.surface-raised}",
+        "textColor": "{colors.ink}",
+        "rounded": "{rounded.md}",
+        "padding": "1rem"
+      },
+      "panel-sunk": {
+        "backgroundColor": "{colors.surface-sunk}",
+        "textColor": "{colors.ink}",
+        "rounded": "{rounded.md}",
+        "padding": "1rem"
+      },
+      "tag": {
+        "backgroundColor": "transparent",
+        "textColor": "{colors.ink-quiet}",
+        "rounded": "{rounded.sm}",
+        "padding": "0.1rem 0.4rem"
+      },
+      "score-mark-explicit": {
+        "textColor": "{colors.ink}",
+        "typography": "{typography.figure}"
+      },
+      "score-mark-computed": {
+        "textColor": "{colors.ink-quiet}",
+        "typography": "{typography.figure}"
       }
-    ],
-    "motion": [
-      { "name": "dur-1", "value": "90ms", "purpose": "Fast state change: hover beds, colour and border shifts, detent cuts." },
-      { "name": "dur-2", "value": "160ms", "purpose": "The rail inking to a seated level; the balance beam tipping; switch travel." },
-      { "name": "dur-3", "value": "260ms", "purpose": "The longest move in the system; reserved for larger transitions." },
-      { "name": "ease", "value": "cubic-bezier(0.22, 0.61, 0.36, 1)", "purpose": "The single easing curve for every transition." },
-      { "name": "reduced-motion", "value": "0.001ms", "purpose": "Honoured via data-motion; durations collapse to ~0 so transitionend still fires and marks are unchanged." }
-    ],
-    "breakpoints": [
-      { "name": "phone", "value": "48rem", "purpose": "Phone to desk; the rail stands up, plates shrink, key-cap hints hide." },
-      { "name": "bar-to-rail", "value": "60rem", "purpose": "Bottom navigation bar becomes the sticky left contents rail." },
-      { "name": "desk-triptych", "value": "64rem", "purpose": "The desk resolves into now / spine / record as three columns." },
-      { "name": "margin", "value": "68rem", "purpose": "The annotation margin sits beside the measure instead of below it." },
-      { "name": "queue-twin", "value": "76rem", "purpose": "The queue twins the station against the rail behind it." }
-    ],
-    "layoutMetrics": [
-      { "name": "measure", "value": "68ch", "purpose": "Maximum reading measure for serif prose." },
-      { "name": "margin-col", "value": "13rem", "purpose": "Width of the annotation margin that hangs apparatus." },
-      { "name": "rail-w", "value": "15rem", "purpose": "Width of the navigation contents rail." },
-      { "name": "hairline", "value": "1px / 0.5px / 0.34px", "purpose": "One device pixel across 1x / 2x / 3x displays." }
-    ],
-    "densityModes": [
-      { "name": "cozy", "purpose": "Default. The base spacing set s1..s8." },
-      { "name": "compact", "purpose": "Tightens s4..s8 only (s4 1rem to 0.75rem, s8 4.5rem to 3rem). Token-driven via data-density." }
-    ]
-  },
-  "components": [
-    {
-      "name": "Primary Button",
-      "kind": "button",
-      "refersTo": "button-primary",
-      "description": "The rubric-edged action. Hover washes; pressed fills solid vermilion like an inked hand-press.",
-      "html": "<button class='ds-btn-primary' type='button'><svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.35' stroke-linecap='square' aria-hidden='true'><path d='M4 6h11M4 12h11M4 18h7M19 15v6M16 18h6'/></svg>Seat a grade</button>",
-      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:2.5rem;padding:.55rem 1.1rem;background:transparent;color:var(--rubric-ink);border:1px solid var(--rubric);border-radius:0;font-family:var(--sans);font-size:.6875rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;cursor:pointer;transition:background-color 90ms cubic-bezier(0.22,0.61,0.36,1),color 90ms cubic-bezier(0.22,0.61,0.36,1),border-color 90ms cubic-bezier(0.22,0.61,0.36,1)}.ds-btn-primary:hover{background:var(--rubric-wash)}.ds-btn-primary:focus-visible{outline:1px solid var(--rubric);outline-offset:3px}.ds-btn-primary:active{background:var(--rubric);border-color:var(--rubric);color:var(--on-rubric)}"
-    },
-    {
-      "name": "Default Button",
-      "kind": "button",
-      "refersTo": "button-default",
-      "description": "The neutral action on an ink hairline. Pressed fills solid ink with paper text.",
-      "html": "<button class='ds-btn' type='button'>Put it back</button>",
-      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:2.5rem;padding:.55rem 1.1rem;background:transparent;color:var(--ink);border:1px solid var(--ink);border-radius:0;font-family:var(--sans);font-size:.6875rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;cursor:pointer;transition:background-color 90ms cubic-bezier(0.22,0.61,0.36,1),color 90ms cubic-bezier(0.22,0.61,0.36,1),border-color 90ms cubic-bezier(0.22,0.61,0.36,1)}.ds-btn:hover{background:var(--rubric-wash)}.ds-btn:focus-visible{outline:1px solid var(--rubric);outline-offset:3px}.ds-btn:active{background:var(--ink);color:var(--paper);border-color:var(--ink)}"
-    },
-    {
-      "name": "Text Input",
-      "kind": "input",
-      "refersTo": "input",
-      "description": "Raised-paper field on a hairline. Focus is bracketed, not glowing.",
-      "html": "<label class='ds-field'><span class='ds-field__label'>Search the shelf</span><input class='ds-input' type='text' placeholder='Artist, album, playlist or track'></label>",
-      "css": ".ds-field{display:flex;flex-direction:column;gap:.5rem}.ds-field__label{font-family:var(--sans);font-size:.6875rem;font-weight:550;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-quiet)}.ds-input{width:100%;min-height:2.5rem;padding:.55rem .7rem;background:var(--paper-raised);color:var(--ink);border:1px solid var(--rule);border-radius:0;font-family:var(--serif);font-size:.9375rem}.ds-input::placeholder{color:var(--ink-faint);opacity:1}.ds-input:hover{border-color:var(--ink-quiet)}.ds-input:focus-visible{outline:1px solid var(--rubric);outline-offset:3px}"
-    },
-    {
-      "name": "Catalogue Entry Row",
-      "kind": "custom",
-      "refersTo": "entry",
-      "description": "The list primitive: a ruled catalogue line with a rank in the margin, the item in the measure, and its grade on the right. Not a card.",
-      "html": "<a class='ds-entry' href='#'><span class='ds-entry__pos'>7</span><span class='ds-entry__body'><span class='ds-entry__name'>The Cartographers</span><span class='ds-entry__sub'>Album &middot; 1978 &middot; 41:12</span></span><span class='ds-mark'><span class='ds-mark__fig'>8.4</span></span></a>",
-      "css": ".ds-entry{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.75rem;width:100%;padding:.75rem .5rem;border:0;border-bottom:1px solid var(--rule-faint);background:transparent;text-decoration:none;color:inherit;transition:background-color 90ms cubic-bezier(0.22,0.61,0.36,1)}.ds-entry:hover{background:var(--paper-raised)}.ds-entry__pos{min-width:2.25rem;text-align:right;font-family:var(--sans);font-variant-numeric:tabular-nums;font-size:.8125rem;font-weight:600;color:var(--ink-faint)}.ds-entry__body{display:flex;flex-direction:column;gap:1px;min-width:0}.ds-entry__name{font-family:var(--serif);font-size:1rem;line-height:1.3}.ds-entry__sub{font-family:var(--sans);font-size:.75rem;color:var(--ink-quiet)}.ds-entry .ds-mark__fig{font-family:var(--sans);font-variant-numeric:tabular-nums lining-nums;font-size:1.375rem;font-weight:500;letter-spacing:-.02em;color:var(--ink)}"
-    },
-    {
-      "name": "Score Mark",
-      "kind": "custom",
-      "refersTo": "score-mark-explicit",
-      "description": "The margin grade and enforcer of the Two-Mark Rule: an explicit rating is upright ink; a computed rollup is italic quiet ink. They must never look alike.",
-      "html": "<div class='ds-marks'><span class='ds-mark'><span class='ds-mark__fig'>9.0</span><span class='ds-mark__kind'>your rating</span></span><span class='ds-mark'><span class='ds-mark__fig ds-mark__fig--computed'>7.6</span><span class='ds-mark__kind'>computed &middot; provisional</span></span></div>",
-      "css": ".ds-marks{display:flex;gap:2rem}.ds-mark{display:flex;flex-direction:column;align-items:flex-end;gap:1px;text-align:right}.ds-mark__fig{font-family:var(--sans);font-variant-numeric:tabular-nums lining-nums;font-size:1.375rem;font-weight:500;line-height:1;letter-spacing:-.02em;color:var(--ink)}.ds-mark__fig--computed{font-style:italic;font-weight:400;color:var(--ink-quiet)}.ds-mark__kind{font-family:var(--sans);font-size:.5625rem;font-weight:550;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)}"
-    },
-    {
-      "name": "Rating Rail",
-      "kind": "custom",
-      "refersTo": "score-mark-explicit",
-      "description": "The signature object. A ruled spine with detents cut by the scale; a judgement is seated into a detent and the rail inks up to that level and stays lit. Shown seated at 3 of 5.",
-      "html": "<div class='ds-rail' role='img' aria-label='Rated 3 of 5'><span class='ds-rail__spine'></span><span class='ds-rail__ink'></span><span class='ds-rail__detent'><span class='ds-rail__mark'>5</span><span class='ds-rail__cut'></span></span><span class='ds-rail__detent'><span class='ds-rail__mark'>4</span><span class='ds-rail__cut'></span></span><span class='ds-rail__detent is-seated'><span class='ds-rail__mark'>3</span><span class='ds-rail__cut'></span></span><span class='ds-rail__detent is-below'><span class='ds-rail__mark'>2</span><span class='ds-rail__cut'></span></span><span class='ds-rail__detent is-below'><span class='ds-rail__mark'>1</span><span class='ds-rail__cut'></span></span></div>",
-      "css": ".ds-rail{position:relative;display:flex;flex-direction:column;width:11rem;background:var(--paper-sunk);border:1px solid var(--rule-faint)}.ds-rail__spine{position:absolute;top:0;bottom:0;left:2.25rem;width:1px;background:var(--rule);pointer-events:none}.ds-rail__ink{position:absolute;left:calc(2.25rem - 1px);width:3px;bottom:0;height:60%;background:var(--rubric);pointer-events:none}.ds-rail__detent{position:relative;display:flex;align-items:center;min-height:2.25rem;padding:0 .75rem;font-family:var(--sans);font-size:.75rem;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink-quiet)}.ds-rail__mark{order:-1;min-width:1.25rem;margin-right:2.25rem;text-align:right}.ds-rail__cut{position:absolute;left:1.75rem;right:.75rem;height:1px;background:var(--rule)}.ds-rail__detent.is-below,.ds-rail__detent.is-seated{background:color-mix(in srgb,var(--rubric) 11%,transparent)}.ds-rail__detent.is-below .ds-rail__cut,.ds-rail__detent.is-seated .ds-rail__cut{background:var(--rubric);left:1.25rem;height:3px}.ds-rail__detent.is-seated{color:var(--rubric-ink)}.ds-rail__detent.is-seated .ds-rail__mark{font-weight:700}"
-    },
-    {
-      "name": "Panel with Corner Marks",
-      "kind": "card",
-      "refersTo": "panel",
-      "description": "A bounded container: hairline border on raised paper, marked at two opposing corners with rubric brackets. No radius, no shadow.",
-      "html": "<div class='ds-panel'><h3 class='ds-panel__head'>State of the record</h3><p class='ds-panel__body'>Synced to your OneDrive 4 minutes ago.</p></div>",
-      "css": ".ds-panel{position:relative;background:var(--paper-raised);border:1px solid var(--rule);border-radius:0;padding:1rem}.ds-panel::before,.ds-panel::after{content:'';position:absolute;width:7px;height:7px;border:1px solid var(--rubric);pointer-events:none}.ds-panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}.ds-panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}.ds-panel__head{margin:0 0 .5rem;font-family:var(--sans);font-size:.6875rem;font-weight:550;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-quiet)}.ds-panel__body{margin:0;font-family:var(--serif);font-size:.875rem;line-height:1.5;color:var(--ink-quiet)}"
-    },
-    {
-      "name": "Switch",
-      "kind": "custom",
-      "refersTo": "button-primary",
-      "description": "A two-stop rail, shrunk: a hairline track with a rubric cut riding along it. Never a pill or knob.",
-      "html": "<label class='ds-switch-row'><input class='ds-switch' type='checkbox' checked><span class='ds-switch-row__label'>Sync to OneDrive</span></label>",
-      "css": ".ds-switch-row{display:inline-flex;align-items:center;gap:.75rem;cursor:pointer}.ds-switch{appearance:none;-webkit-appearance:none;position:relative;width:2.6rem;height:1.15rem;flex:none;border:1px solid var(--ink-quiet);border-radius:0;background:var(--paper-raised);cursor:pointer}.ds-switch::after{content:'';position:absolute;inset:2px auto 2px 2px;width:1rem;background:var(--ink-quiet);transition:transform 160ms cubic-bezier(0.22,0.61,0.36,1)}.ds-switch:checked{border-color:var(--rubric)}.ds-switch:checked::after{background:var(--rubric);transform:translateX(1.35rem)}.ds-switch:focus-visible{outline:1px solid var(--rubric);outline-offset:3px}.ds-switch-row__label{font-family:var(--serif);font-size:.9375rem;color:var(--ink)}"
-    },
-    {
-      "name": "Tag",
-      "kind": "chip",
-      "refersTo": "tag",
-      "description": "A hairline-bordered rectangle, grotesque, no fill and no radius. The rubric variant switches border and text to the accent.",
-      "html": "<span class='ds-tag'>reissue</span> <span class='ds-tag ds-tag--rubric'>low confidence</span>",
-      "css": ".ds-tag{display:inline-block;padding:.1rem .4rem;border:1px solid var(--rule);border-radius:0;font-family:var(--sans);font-size:.6875rem;letter-spacing:.06em;color:var(--ink-quiet);white-space:nowrap}.ds-tag--rubric{border-color:var(--rubric);color:var(--rubric-ink)}"
     }
-  ],
-  "narrative": {
-    "northStar": "The Reference Edition",
-    "overview": "Ledger is a private reference edition of the reader's own taste — the kind of iron-set, hairline-ruled printed catalogue where every entry has a grade in the margin and every computed number can be traced to the evidence that produced it. It refuses the two shapes this category always ships: the dark album-tile grid and the popularity chart it borrows from. There are no tiles, no artwork bleeds, no glow. There is paper, ink, and rules, and one vermilion the compositor uses sparingly — the rubric — to mark what matters. The world runs on exactly three values: iron ink on unbleached paper, with a single rubric vermilion that never appears as a large fill. State is printed, not shaded: a control is a hairline at rest, filled when pressed, bracketed on focus, and struck through when spent. Depth is tonal, not lifted — three weights of paper (sunk, base, raised) and a hairline rule do the work a shadow would do elsewhere. The signature object is the rail: a ruled spine with cut detents that a judgement is seated into and stays lit where it was left. The same object recurs at every scale — the rating control, the work queue, the section navigation, even the switch and the slider are the rail, shrunk. Type is a two-family printed pairing: a Caslon-style serif for everything read, and a Franklin-style grotesque set as small-caps for the apparatus — the labels, keys, weights and provenance stamps. Numbers are set in tabular figures so columns of grades align. The dark theme is not an inverted page; it is a proof pull on black, where ink becomes the ground, paper becomes the mark, and the rubric is lifted just enough to still read.",
-    "keyCharacteristics": [
-      "Three values only: iron ink, unbleached paper, one rubric vermilion (used on \u226410% of any surface).",
-      "No corner radius anywhere; no shadows; no gradient fills as surface or atmosphere.",
-      "Every border, detent and bracket is drawn at one device pixel by a ruling engine (--hairline steps 1px / 0.5px / 0.34px across 1x/2x/3x displays).",
-      "State is a printed mark — hairline at rest, filled when pressed, bracketed on focus, struck when spent.",
-      "The rail is the one repeated object: rating, queue, navigation, switch and slider are all the same spine with cuts.",
-      "Explicit judgements and computed rollups are always visibly different marks; the two are never conflated."
+  },
+  "overview": {
+    "subtitle": null,
+    "creativeNorthStar": "The instrument, not the album wall.",
+    "philosophy": [
+      "Music Ratings is a private instrument for deciding what you actually think of your own music. It refuses the two shapes this category always ships: the dark album-tile grid, and the popularity chart borrowed from a streaming service. There are no tiles, no artwork bleeds, no glow, no hero. There is a neutral ground, one text colour, hairline rules, and a single warm accent used sparingly to mark the one thing that matters on a screen.",
+      "Depth is tonal, not lifted — three surface weights (sunk, base, raised) and a hairline rule do the work a shadow would do elsewhere. Corners are nearly square (3px / 5px) so a panel reads as a bounded field rather than a card floating on a gradient.",
+      "The signature object is the **rail**: a ruled spine with cut detents that a rating is set into and stays lit where it was left. It is the same object at three sizes — the rating control (vertical on a wide screen, horizontal on a phone), the comparison pair, and the section navigation. Everything that sets a value in this app is a rail, so setting a value always feels the same.",
+      "Type is one family, Libre Franklin, worked hard: near-black headings at a tight measure, small-caps letterspaced labels for the apparatus (kinds, keys, provenance, reasons), and tabular figures so columns of scores align. A monospace face appears only for machine facts — ids, file names, byte counts.",
+      "The dark theme is not an inverted page. It is a genuinely dark neutral (`#141417`) with the accent lifted to `#f4634a` so it still clears contrast against it, and a scrim that is always black in both themes so an overlay pushes the page back rather than washing it out.",
+      "**Key characteristics:**"
     ],
-    "rules": [
-      { "name": "The One Rubric Rule", "body": "There is exactly one accent and it is rationed to marks and fills — never a large calm surface, never a body of text. If a screen looks like it has two accent colours, one of them is wrong.", "section": "colors" },
-      { "name": "The Read-vs-Mark Rule", "body": "--rubric is for things drawn (rails, detents, brackets, fills); --rubric-ink is for things read (small-caps, links, figures). Never set small type in --rubric, and never set a fill in --rubric-ink.", "section": "colors" },
-      { "name": "The Warm-Neutral Rule", "body": "No pure #000 or #fff. Ink is #1a1a1a, paper is #f1ece2; every grey is pulled from those two so the page reads as printed stock, not screen.", "section": "colors" },
-      { "name": "The Apparatus Rule", "body": "Small-caps grotesque is for apparatus only — labels, keys, weights, provenance. If a sentence is meant to be read, it is set in the serif, never in tracked small-caps.", "section": "typography" },
-      { "name": "The Tabular Figure Rule", "body": "Every number that could sit in a column — grades, ranks, counts, weights — is set in tabular lining figures (.figure) so it aligns down the page. Prose numerals stay in the serif.", "section": "typography" },
-      { "name": "The Two-Mark Rule", "body": "An explicit grade (a judgement the reader seated) and a computed grade (a rollup) must never look alike: explicit is upright ink, computed is set in italic quiet ink. Conflating them is the one thing the type system forbids.", "section": "typography" },
-      { "name": "The Printed-Depth Rule", "body": "Never reach for a shadow. To lift something, change its paper weight and rule it; to mark it as focused or special, bracket it or set corner marks. Depth is printed, not cast.", "section": "elevation" },
-      { "name": "The No-Radius Rule", "body": "Nothing rounds. If a component needs a corner, it is a right angle drawn at one hairline. Pills, rounded cards and capsule toggles belong to another product's world.", "section": "shapes" }
+    "keyCharacteristics": []
+  },
+  "colors": {
+    "subtitle": null,
+    "description": "The palette is a neutral ramp plus one accent. There is no secondary colour and no per-genre or per-artist tinting; artwork supplies colour, the interface does not compete with it. | Token              | Light               | Dark                | Use                                            | | ------------------ | ------------------- | ------------------- | ---------------------------------------------- | | `--surface`        | `#f5f5f7`           | `#141417`           | Page ground, navigation rail                   | | `--surface-sunk`   | `#eaeaee`           | `#0e0e10`           | Recessed fields: the rating rail, inset panels | | `--surface-raised` | `#ffffff`           | `#1c1c21`           | Panels that hold a single focused task         | | `--ink`            | `#17171b`           | `#e9e9ee`           | Primary text                                   | | `--ink-quiet`      | `#54545e`           | `#a2a2ae`           | Secondary text; ≥4.5:1 on `--surface`          | | `--ink-faint`      | `#7a7a86`           | `#787883`           | Non-essential text only; never load-bearing    | | `--border`         | `#d5d5dc`           | `#35353d`           | Structural rules                               | | `--border-faint`   | `#e6e6eb`           | `#26262c`           | Rules inside a panel                           | | `--scrim`          | `rgb(0 0 0 / 0.45)` | `rgb(0 0 0 / 0.68)` | Behind overlays, in both themes                | | `--accent`         | `#cf3f26`           | `#f4634a`           | Fills and marks                                | | `--accent-ink`     | `#b23319`           | `#ff8b74`           | Accent **text**, darkened/lightened for 4.5:1  | | `--accent-wash`    | `#fbeae6`           | `#2c1a16`           | Hover ground under a quiet control             | | `--on-accent`      | `#ffffff`           | `#16100e`           | What may sit on a solid accent fill            | Two accent tokens exist because one cannot do both jobs: `--accent` is tuned for fills and 3px marks, `--accent-ink` for small text on the surface. Never set small text in `--accent`. `[data-contrast='high']` collapses `--ink-quiet` into `--ink` and strengthens both border tokens; it is a supported mode, not a fallback.",
+    "groups": [
+      {
+        "role": "Palette",
+        "colors": [
+          {
+            "name": "Ground",
+            "value": "#f5f5f7",
+            "valueRange": null,
+            "format": "hex",
+            "description": "the light page ground. Everything sits on it; it is warm-neutral rather than pure white so `--surface-raised` (#ffffff) can lift a panel without a shadow."
+          },
+          {
+            "name": "Ground, dark",
+            "value": "#141417",
+            "valueRange": null,
+            "format": "hex",
+            "description": "the dark page ground. A genuinely dark neutral, not an inverted page; `--surface-raised` lifts to #1c1c21."
+          },
+          {
+            "name": "Ink",
+            "value": "#17171b",
+            "valueRange": null,
+            "format": "hex",
+            "description": "primary text, and the colour of every explicit rating mark. `--ink-quiet` (#54545e) carries secondary text at ≥4.5:1 and marks computed rollups."
+          },
+          {
+            "name": "Rule",
+            "value": "#d5d5dc",
+            "valueRange": null,
+            "format": "hex",
+            "description": "structural hairlines. `--border-faint` (#e6e6eb) divides rows inside a panel."
+          },
+          {
+            "name": "Accent",
+            "value": "#cf3f26",
+            "valueRange": null,
+            "format": "hex",
+            "description": "fills, detent marks, and the single most important control on a screen — never more than ~10% of a surface."
+          },
+          {
+            "name": "Accent ink",
+            "value": "#b23319",
+            "valueRange": null,
+            "format": "hex",
+            "description": "accent-coloured _text_, darkened to clear 4.5:1 on the ground. In the dark theme both lift, to #f4634a and #ff8b74."
+          }
+        ]
+      }
     ],
+    "rules": []
+  },
+  "typography": {
+    "subtitle": null,
+    "fonts": {},
+    "character": "One family. `--display` is an alias of `--sans` so a future serif can be reintroduced in one line without touching a component.",
+    "hierarchy": [],
+    "rules": []
+  },
+  "elevation": {
+    "subtitle": null,
+    "description": "There are no shadows in this design system. Depth is tonal and structural: three surface weights and a hairline rule carry every level a shadow would carry elsewhere. Overlays are the only true layer: the search overlay and the mobile More sheet sit above `--scrim`, which is black in both themes. Corners stay at 3px / 5px at every level, so raising a surface never rounds it further.",
+    "shadows": [],
+    "rules": []
+  },
+  "components": {
+    "subtitle": null,
+    "components": []
+  },
+  "dosDonts": {
     "dos": [
-      "Do ration the rubric to marks and fills, \u226410% of any surface; reach for --rubric-ink the moment it must be read as small type, and --on-rubric as the only foreground on a solid rubric fill.",
-      "Do convey depth with the three paper weights and a hairline rule (optionally corner brackets), never a shadow.",
-      "Do draw every border, detent and bracket at --rule-weight / --hairline (1px, stepping to 0.5px and 0.34px on 2x and 3x displays).",
-      "Do keep explicit grades upright-ink and computed grades italic-quiet, always visibly distinct.",
-      "Do set apparatus (labels, keys, weights, provenance) in tracked grotesque small-caps, and everything read in the Caslon serif at a \u226468ch measure with its annotation margin.",
-      "Do set every number that could column-align in tabular lining figures (.figure).",
-      "Do treat every rating/selection control as the rail — a spine with cuts, seated and lit — including switches and sliders."
+      "Do name a page for what it does — Home, Rate, Compare, Library, Rankings, History, Insights, Settings.",
+      "Do render an explicit rating in `--ink` and a computed rollup in `--ink-quiet`, so the two are never confused.",
+      "Do set small accent text in `--accent-ink` and reserve `--accent` for fills and marks.",
+      "Do give every empty state a name for what is missing and the action that fixes it.",
+      "Do keep transitions on `transform` and `opacity`, and let them collapse under `prefers-reduced-motion`.",
+      "Do draw structure at one device pixel with `--hairline` rather than at a fixed 1px."
     ],
     "donts": [
-      "Don't round anything. Zero radius is absolute; no pills, no capsule toggles, no rounded cards.",
-      "Don't add shadows, glows or glassmorphism; the one box-shadow in the system draws focus brackets, not elevation.",
-      "Don't introduce a second accent, tint large surfaces in the rubric, or set small text in --rubric (use --rubric-ink).",
-      "Don't use #000 or #fff; pull every neutral from the warm ink/paper pair.",
-      "Don't let album artwork bleed, fill a background, or set the page's colour — tip it in as a bordered plate, and print initials on a registration crosshair when it is missing or turned off.",
-      "Don't ban gradients as a drawing tool: this world uses them natively to draw (the select caret, the barely-there body::before paper tooth). What is prohibited is gradient fills as surface or atmosphere, not the two-stop gradient used to render a mark.",
-      "Don't set running prose in the grotesque small-caps, or conflate an explicit judgement with a computed one."
+      "Don't use rounded \"cards on a gradient\", glassmorphism, glow, or a coloured slab down one edge of a card.",
+      "Don't introduce a second hue, per-item tinting, or any green that reads as an imitation of a streaming service.",
+      "Don't reach for marketing hero type, pill spam, or an icon that is only decorative.",
+      "Don't set small text in `--accent` rather than `--accent-ink`.",
+      "Don't derive a scrim from `--ink` — it goes pale in dark mode and washes the page out.",
+      "Don't use themed vocabulary in the UI. Labels say what a thing is: \"Your rating\", not a metaphor for one."
     ]
   }
 }

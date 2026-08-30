@@ -7,7 +7,6 @@
   import { refreshSpotifySession, runImport, spotifyConfig } from '../lib/spotify/session';
   import { completeRedirect } from '../lib/storage/onedrive';
   import { oneDriveConfig, startSyncIfEnabled } from '../lib/app/sync';
-  import RegisterMark from '../components/RegisterMark.svelte';
 
   /**
    * The landing strip after an OAuth round trip.
@@ -53,7 +52,6 @@
 </script>
 
 <div class="landing">
-  <RegisterMark size={15} />
   <p class="landing__text" class:is-failed={failed}>{message}</p>
   {#if failed}
     <div class="row">
@@ -79,12 +77,12 @@
     text-align: center;
   }
   .landing__text {
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: 1.125rem;
     max-width: 44ch;
     line-height: 1.5;
   }
   .landing__text.is-failed {
-    color: var(--rubric-ink);
+    color: var(--accent-ink);
   }
 </style>

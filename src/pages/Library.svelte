@@ -16,9 +16,9 @@
   import SpotifySearch from '../components/SpotifySearch.svelte';
 
   /**
-   * The shelf.
+   * Library.
    *
-   * Everything already in the ledger, searchable and filterable, with a way to
+   * Everything in your library, searchable and filterable, with a way to
    * reach past it into Spotify's catalogue for something not here yet.
    */
 
@@ -89,15 +89,15 @@
 
 <div class="sheet">
   <header class="head">
-    <h1 class="display">The shelf</h1>
-    <p class="apparatus">
+    <h1 class="display">Library</h1>
+    <p class="label">
       {results.length.toLocaleString()} of {$graph.allEntities().length.toLocaleString()}
     </p>
   </header>
 
   <div class="filters">
     <label class="field field--grow">
-      <span class="sr-only">Search the shelf</span>
+      <span class="sr-only">Search your library</span>
       <span class="search">
         <Icon name="search" size={15} />
         <input
@@ -105,14 +105,14 @@
           type="search"
           bind:value={term}
           oninput={syncUrl}
-          placeholder="Search everything in the ledger"
+          placeholder="Search your library"
           use:autofocus
         />
       </span>
     </label>
 
     <label class="field field--inline">
-      <span class="apparatus">Kind</span>
+      <span class="label">Kind</span>
       <select class="select" bind:value={typeFilter} onchange={syncUrl}>
         <option value="all">Everything</option>
         {#each enabled as t (t)}
@@ -128,10 +128,10 @@
   </div>
 
   {#if results.length > 0}
-    <ul class="shelf">
+    <ul class="library">
       {#each results.slice(0, limit) as entity (entity.id)}
         <li>
-          <a class="shelf__link" href={entityHref(entity.id)}>
+          <a class="library__link" href={entityHref(entity.id)}>
             <EntryRow
               {entity}
               breakdown={$scores.get(entity.id)}
@@ -149,9 +149,9 @@
     {/if}
   {:else}
     <Empty
-      title={term ? `Nothing here matches “${term}”` : 'The shelf is empty'}
+      title={term ? `Nothing here matches “${term}”` : 'Your library is empty'}
       body={term
-        ? 'Nothing already in the ledger matches. Searching Spotify below reaches the wider catalogue and adds what you pick.'
+        ? 'Nothing in your library matches. Searching Spotify below reaches the wider catalogue and adds what you pick.'
         : 'Load the demo catalogue or connect Spotify from Settings, or search Spotify below to add something specific.'}
     />
   {/if}
@@ -171,7 +171,7 @@
     align-items: flex-end;
     flex-wrap: wrap;
     padding-bottom: var(--s4);
-    border-bottom: var(--rule-weight) solid var(--rule);
+    border-bottom: var(--rule-weight) solid var(--border);
     margin-bottom: var(--s4);
   }
 
@@ -192,15 +192,15 @@
     outline: none;
   }
   .search:focus-within {
-    border-bottom-color: var(--rubric);
-    color: var(--rubric-ink);
+    border-bottom-color: var(--accent);
+    color: var(--accent-ink);
   }
 
-  .shelf {
+  .library {
     display: flex;
     flex-direction: column;
   }
-  .shelf__link {
+  .library__link {
     display: block;
     text-decoration: none;
     color: inherit;
@@ -209,6 +209,6 @@
   .scale-note {
     margin-top: var(--s6);
     padding-top: var(--s3);
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
   }
 </style>

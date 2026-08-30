@@ -19,7 +19,7 @@ import {
 } from './mappers';
 
 /**
- * Pulling the user's account into the local ledger.
+ * Pulling the user's account into the local library.
  *
  * Every step is independently failable: a revoked podcast scope must not stop
  * saved albums from arriving. Each step reports what it managed and what it

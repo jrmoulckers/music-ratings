@@ -4,23 +4,25 @@
   import { announcement } from './lib/app/notices';
   import { dismissUpdate, pwa, reloadForUpdate } from './lib/app/pwa';
   import { navigate, route, startRouter } from './lib/app/router';
+  import { closeSearch, openSearch, searchOpen } from './lib/app/search-overlay';
   import { ready, settings, startStateSync } from './lib/app/state';
   import { startSyncController } from './lib/app/sync';
   import NavRail from './components/NavRail.svelte';
   import Notices from './components/Notices.svelte';
+  import SearchOverlay from './components/SearchOverlay.svelte';
   import Callback from './pages/Callback.svelte';
+  import Compare from './pages/Compare.svelte';
   import Diagnostics from './pages/Diagnostics.svelte';
-  import Duel from './pages/Duel.svelte';
   import Entity from './pages/Entity.svelte';
+  import History from './pages/History.svelte';
   import Home from './pages/Home.svelte';
   import Insights from './pages/Insights.svelte';
   import Library from './pages/Library.svelte';
-  import Lists from './pages/Lists.svelte';
   import NotFound from './pages/NotFound.svelte';
   import Onboarding from './pages/Onboarding.svelte';
-  import Queue from './pages/Queue.svelte';
+  import Rankings from './pages/Rankings.svelte';
+  import Rate from './pages/Rate.svelte';
   import Settings from './pages/Settings.svelte';
-  import Timeline from './pages/Timeline.svelte';
 
   let online = $state(typeof navigator === 'undefined' ? true : navigator.onLine);
 
@@ -52,7 +54,28 @@
   });
 
   const showRail = $derived($route.name !== 'onboarding' && $route.name !== 'callback');
+
+  // Search is reachable from anywhere: "/" the way a reader jumps to find, and
+  // ctrl/cmd-K the way every other tool on the mono does it.
+  function onKey(event: KeyboardEvent) {
+    if (!showRail) return;
+    const target = event.target as HTMLElement | null;
+    const typing =
+      !!target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable);
+    if ((event.key === 'k' || event.key === 'K') && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      if ($searchOpen) closeSearch();
+      else openSearch();
+      return;
+    }
+    if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      openSearch();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <a class="skip-link" href="#main">Skip to content</a>
 
@@ -64,7 +87,7 @@
   <main id="main" tabindex="-1">
     {#if !$ready}
       <div class="booting" role="status">
-        <span class="apparatus">Opening the ledger…</span>
+        <span class="label">Loading your ratings…</span>
       </div>
     {:else if $route.name === 'onboarding'}
       <Onboarding />
@@ -72,18 +95,18 @@
       <Callback />
     {:else if $route.name === 'home'}
       <Home {online} />
-    {:else if $route.name === 'queue'}
-      <Queue />
-    {:else if $route.name === 'duel'}
-      <Duel />
+    {:else if $route.name === 'rate'}
+      <Rate />
+    {:else if $route.name === 'compare'}
+      <Compare />
     {:else if $route.name === 'library'}
       <Library query={$route.query} />
     {:else if $route.name === 'entity'}
       <Entity params={$route.params} />
-    {:else if $route.name === 'lists'}
-      <Lists query={$route.query} />
-    {:else if $route.name === 'timeline'}
-      <Timeline />
+    {:else if $route.name === 'rankings'}
+      <Rankings query={$route.query} />
+    {:else if $route.name === 'history'}
+      <History />
     {:else if $route.name === 'insights'}
       <Insights />
     {:else if $route.name === 'settings'}
@@ -96,6 +119,9 @@
   </main>
 </div>
 
+{#if showRail && $searchOpen}
+  <SearchOverlay />
+{/if}
 {#if $pwa.updateReady}
   <div class="update" role="status">
     <p class="update__text">A newer version is ready. Reloading keeps everything you have saved.</p>
@@ -134,9 +160,9 @@
     gap: var(--s3);
     max-width: min(28rem, calc(100vw - 2rem));
     padding: var(--s3) var(--s4);
-    background: var(--paper-raised);
+    background: var(--surface-raised);
     border: var(--rule-weight) solid var(--ink);
-    box-shadow: 3px 3px 0 0 var(--paper-sunk);
+    box-shadow: 3px 3px 0 0 var(--surface-sunk);
   }
   .update__text {
     font-size: 0.875rem;

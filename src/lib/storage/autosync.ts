@@ -34,7 +34,7 @@ export const syncState = writable<SyncState>({
 });
 
 /**
- * Deliberately module-level rather than store state: this is a state machine,
+ * Deliberately module-level rather than store state: this is a state mono,
  * and reading it back out of a store during a transition invites races.
  */
 let adapter: RemoteAdapter | null = null;

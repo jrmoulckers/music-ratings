@@ -27,7 +27,7 @@ export interface CornerOptions {
 
 /**
  * Draws four corner ticks just inside an element: the printer's trim marks that
- * bound a plate without a border or a shadow.
+ * bound a art without a border or a shadow.
  */
 export const cornerMarks: Action<HTMLElement, CornerOptions | undefined> = (node, options) => {
   const layer = svg('svg', {
@@ -48,7 +48,7 @@ export const cornerMarks: Action<HTMLElement, CornerOptions | undefined> = (node
     if (width === 0 || height === 0) return;
     const size = current.size ?? 9;
     const inset = current.inset ?? 0;
-    const colour = current.colour ?? 'var(--rubric)';
+    const colour = current.colour ?? 'var(--accent)';
     layer.setAttribute('viewBox', `0 0 ${width} ${height}`);
     layer.textContent = '';
     const corners: [number, number, number, number][] = [

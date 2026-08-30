@@ -29,17 +29,17 @@ export default defineConfig(({ mode }) => {
       spa404(),
       VitePWA({
         registerType: 'prompt',
-        includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'offline-plate.svg'],
+        includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'offline-artwork.svg'],
         manifest: {
           id: base,
-          name: 'Ledger — private music ratings',
-          short_name: 'Ledger',
+          name: 'Music Ratings — privately rate your music',
+          short_name: 'Music Ratings',
           description:
-            'A private reference edition of your own taste. Rate and rank your music locally, explain every score, keep the data yours.',
+            'Privately rate and rank your music. Every score is explained, every rating stays on your own device.',
           start_url: base,
           scope: base,
-          theme_color: '#e8e5dc',
-          background_color: '#e8e5dc',
+          theme_color: '#f5f5f7',
+          background_color: '#f5f5f7',
           display: 'standalone',
           orientation: 'any',
           categories: ['music', 'productivity', 'utilities'],
@@ -55,8 +55,8 @@ export default defineConfig(({ mode }) => {
             { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
           ],
           shortcuts: [
-            { name: 'Rating queue', url: `${base}queue` },
-            { name: 'Comparison', url: `${base}duel` },
+            { name: 'Rate', url: `${base}rate` },
+            { name: 'Compare', url: `${base}compare` },
           ],
         },
         workbox: {

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { installDemo, removeDemo } from '../lib/app/demo';
   import { notify } from '../lib/app/notices';
   import { installApp, pwa } from '../lib/app/pwa';
   import { href } from '../lib/app/router';
@@ -16,6 +15,7 @@
   import { ROLLUP_CHANNELS, ENTITY_TYPES, PARENT_TYPES } from '../lib/domain/types';
   import type { EntityType, RollupChannel } from '../lib/domain/types';
   import { SUGGESTION_SOURCES } from '../lib/domain/types';
+  import { equivalenceRows } from '../lib/domain/scales';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
   import { DEVELOPMENT_MODE_USER_LIMIT, ENTITY_SUPPORT } from '../lib/spotify/capabilities';
   import {
@@ -59,6 +59,14 @@
 
   const rollupConfig = $derived($settings.rollup[rollupType]);
 
+  // The equivalence table: what each step of your default scale reads as on
+  // every other scale, computed from the same conversion the app itself uses.
+  const defaultScale = $derived(
+    $allScales.find((scale) => scale.id === $settings.defaultScaleId) ?? $allScales[0]!,
+  );
+  const otherScales = $derived($allScales.filter((scale) => scale.id !== defaultScale.id));
+  const equivalence = $derived(equivalenceRows(defaultScale, otherScales));
+
   async function setWeight(channel: RollupChannel, value: number) {
     const current = $settings.rollup[rollupType];
     if (!current) return;
@@ -85,7 +93,7 @@
     await updateSettings({ enabledTypes: next.length > 0 ? next : [type] });
   }
 
-  async function exportLedger() {
+  async function exportBackup() {
     const snapshot = await buildSnapshot($settings);
     const blob = new Blob([serializeSnapshot(snapshot)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -97,7 +105,7 @@
     notify('Backup downloaded. It is plain JSON you can read yourself.');
   }
 
-  async function importLedger(event: Event) {
+  async function importBackup(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -140,7 +148,7 @@
 <div class="sheet">
   <header class="head">
     <h1 class="display">Settings</h1>
-    <p class="apparatus">saved as you change them</p>
+    <p class="label">saved as you change them</p>
   </header>
 
   <div class="groups">
@@ -149,7 +157,7 @@
       <h2 id="s-rating" class="group__head title">What you rate, and how</h2>
 
       <div class="field">
-        <span class="apparatus">Kinds of thing</span>
+        <span class="label">Kinds of thing</span>
         <ul class="opts">
           {#each ENTITY_TYPES as type (type)}
             <li>
@@ -172,7 +180,7 @@
       </div>
 
       <label class="field">
-        <span class="apparatus">Default scale</span>
+        <span class="label">Default scale</span>
         <select
           class="select"
           value={$settings.defaultScaleId}
@@ -189,7 +197,7 @@
       </p>
 
       <div class="field">
-        <span class="apparatus">Scale per kind</span>
+        <span class="label">Scale per kind</span>
         <ul class="opts">
           {#each $settings.enabledTypes as type (type)}
             <li class="opts__row">
@@ -214,6 +222,37 @@
           {/each}
         </ul>
       </div>
+
+      <div class="field">
+        <span class="label">How the scales line up</span>
+        <p class="note note--small">
+          Every rating is stored once, on a shared 0–100 basis. This is what each step of your
+          default scale means everywhere else, so switching scales relabels your history rather than
+          rewriting it.
+        </p>
+        <div class="equiv__scroll">
+          <table class="equiv">
+            <thead>
+              <tr>
+                <th scope="col">{defaultScale.label}</th>
+                {#each otherScales as other (other.id)}
+                  <th scope="col">{other.label}</th>
+                {/each}
+              </tr>
+            </thead>
+            <tbody>
+              {#each equivalence as row (row.value)}
+                <tr>
+                  <th scope="row">{row.label}</th>
+                  {#each row.on as cell, index (otherScales[index]?.id ?? index)}
+                    <td class="figure">{cell}</td>
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- ---------------------------------------------------------------- -->
@@ -221,7 +260,7 @@
       <h2 id="s-scores" class="group__head title">How computed scores are worked out</h2>
 
       <label class="field">
-        <span class="apparatus">Weights for</span>
+        <span class="label">Weights for</span>
         <select class="select" bind:value={rollupType}>
           {#each PARENT_TYPES as type (type)}
             <option value={type}>{entityLabelCap(type, true)}</option>
@@ -255,7 +294,7 @@
         </p>
 
         <label class="field">
-          <span class="apparatus">Averaging</span>
+          <span class="label">Averaging</span>
           <select
             class="select"
             value={rollupConfig.method}
@@ -269,7 +308,7 @@
         </label>
 
         <label class="field">
-          <span class="apparatus">
+          <span class="label">
             Coverage below {Math.round((rollupConfig.minCoverage ?? 0) * 100)}% is marked
             provisional
           </span>
@@ -286,7 +325,7 @@
         </label>
 
         <label class="field">
-          <span class="apparatus">
+          <span class="label">
             {rollupConfig.recencyHalfLifeDays
               ? `Older ratings count half as much after ${rollupConfig.recencyHalfLifeDays} days`
               : 'Recency decay off — an old rating counts as much as a new one'}
@@ -307,7 +346,7 @@
       {/if}
 
       <label class="field">
-        <span class="apparatus">Which score is shown by default</span>
+        <span class="label">Which score is shown by default</span>
         <select
           class="select"
           value={$settings.scoreView}
@@ -321,7 +360,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">
+        <span class="label">
           In the blend, your own rating counts {Math.round($settings.blendExplicitWeight * 100)}%
         </span>
         <input
@@ -367,7 +406,7 @@
       </ul>
 
       <label class="field">
-        <span class="apparatus">
+        <span class="label">
           A rating counts as stale after {$settings.staleAfterDays} days
         </span>
         <input
@@ -383,7 +422,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">
+        <span class="label">
           Offer a head-to-head {Math.round($settings.comparisonFrequency * 100)}% of the time
         </span>
         <input
@@ -414,7 +453,7 @@
 
       {#if $settings.goalsEnabled}
         <label class="field">
-          <span class="apparatus">Target {$settings.dailyGoal} a day</span>
+          <span class="label">Target {$settings.dailyGoal} a day</span>
           <input
             class="slider"
             type="range"
@@ -434,7 +473,7 @@
       <h2 id="s-look" class="group__head title">How it looks and behaves</h2>
 
       <label class="field">
-        <span class="apparatus">Theme</span>
+        <span class="label">Theme</span>
         <select
           class="select"
           value={$settings.theme}
@@ -448,7 +487,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">Density</span>
+        <span class="label">Density</span>
         <select
           class="select"
           value={$settings.density}
@@ -461,7 +500,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">Motion</span>
+        <span class="label">Motion</span>
         <select
           class="select"
           value={$settings.motion}
@@ -475,7 +514,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">Artwork</span>
+        <span class="label">Artwork</span>
         <select
           class="select"
           value={$settings.artwork}
@@ -570,7 +609,7 @@
         {/if}
       {:else}
         <label class="field">
-          <span class="apparatus">Client ID</span>
+          <span class="label">Client ID</span>
           <input
             class="input"
             value={$settings.spotifyClientId}
@@ -581,7 +620,7 @@
           />
         </label>
         <label class="field">
-          <span class="apparatus">Redirect URI</span>
+          <span class="label">Redirect URI</span>
           <input
             class="input"
             value={$settings.spotifyRedirectUri}
@@ -627,7 +666,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">Microsoft client ID</span>
+        <span class="label">Microsoft client ID</span>
         <input
           class="input"
           value={$settings.onedriveClientId}
@@ -639,13 +678,13 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">File name</span>
+        <span class="label">File name</span>
         <input
           class="input"
           value={$settings.syncFileName}
           onchange={(event) =>
             void updateSettings({
-              syncFileName: event.currentTarget.value.trim() || 'ledger.json',
+              syncFileName: event.currentTarget.value.trim() || 'music-ratings.json',
             })}
         />
       </label>
@@ -682,7 +721,7 @@
       </p>
 
       <div class="row">
-        <button type="button" class="btn" onclick={() => void exportLedger()}>
+        <button type="button" class="btn" onclick={() => void exportBackup()}>
           <Icon name="download" size={14} /> Export a backup
         </button>
         <button type="button" class="btn" onclick={() => importFile?.click()} disabled={busy}>
@@ -693,30 +732,10 @@
           type="file"
           accept="application/json,.json"
           class="sr-only"
-          onchange={(event) => void importLedger(event)}
+          onchange={(event) => void importBackup(event)}
         />
         <a class="btn btn--quiet" href={href('/diagnostics')}>Data health</a>
       </div>
-
-      {#if $settings.demoMode}
-        <button
-          type="button"
-          class="btn btn--quiet"
-          disabled={busy}
-          onclick={() => void removeDemo()}
-        >
-          Remove the demonstration catalogue
-        </button>
-      {:else}
-        <button
-          type="button"
-          class="btn btn--quiet"
-          disabled={busy}
-          onclick={() => void installDemo()}
-        >
-          Load the demonstration catalogue
-        </button>
-      {/if}
 
       <div class="danger">
         <p class="note">
@@ -759,7 +778,7 @@
     flex-direction: column;
   }
   .opts li {
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
     padding: var(--s1) 0;
   }
   .opts__row {
@@ -803,7 +822,7 @@
     gap: var(--s3);
     align-items: baseline;
     padding: 2px 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .steps__label {
     font-size: 0.8125rem;
@@ -812,7 +831,7 @@
   .danger {
     margin-top: var(--s3);
     padding: var(--s4);
-    border: var(--rule-weight) solid var(--rubric);
+    border: var(--rule-weight) solid var(--accent);
     display: flex;
     flex-direction: column;
     gap: var(--s3);
@@ -829,5 +848,36 @@
     .steps li {
       grid-template-columns: minmax(0, 1fr) 3rem;
     }
+  }
+  .equiv__scroll {
+    overflow-x: auto;
+    margin-top: var(--s3);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
+  }
+  .equiv {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+  .equiv th,
+  .equiv td {
+    padding: var(--s2) var(--s3);
+    text-align: left;
+    border-bottom: var(--rule-weight) solid var(--border-faint);
+  }
+  .equiv thead th {
+    color: var(--ink-quiet);
+    font-weight: 600;
+    background: var(--surface-sunk);
+  }
+  .equiv tbody th {
+    color: var(--accent-ink);
+    font-weight: 650;
+  }
+  .equiv tbody tr:last-child th,
+  .equiv tbody tr:last-child td {
+    border-bottom: 0;
   }
 </style>

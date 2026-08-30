@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { installDemo } from '../lib/app/demo';
   import { notify } from '../lib/app/notices';
   import { navigate } from '../lib/app/router';
   import { allScales, entityLabel, settings, updateSettings } from '../lib/app/state';
@@ -9,7 +8,6 @@
   import { ENTITY_SUPPORT } from '../lib/spotify/capabilities';
   import { connectSpotify } from '../lib/spotify/session';
   import Icon from '../lib/ui/Icon.svelte';
-  import RegisterMark from '../components/RegisterMark.svelte';
 
   /**
    * The front door.
@@ -25,22 +23,12 @@
   let working = $state(false);
   let clientId = $state($settings.spotifyClientId);
 
-  const steps = ['Source', 'What you rate', 'The scale'];
+  const steps = ['Source', 'What you rate', 'Rating scale'];
 
   function toggleType(type: EntityType) {
     chosenTypes = chosenTypes.includes(type)
       ? chosenTypes.filter((t) => t !== type)
       : [...chosenTypes, type];
-  }
-
-  async function chooseDemo() {
-    working = true;
-    try {
-      await installDemo();
-      step = 1;
-    } finally {
-      working = false;
-    }
   }
 
   async function chooseSpotify() {
@@ -83,8 +71,7 @@
 
 <div class="door">
   <header class="door__mast">
-    <RegisterMark size={15} />
-    <h1 class="door__wordmark">Ledger</h1>
+    <h1 class="door__wordmark">Music Ratings</h1>
     <p class="door__strap note">
       A private record of what you actually think of the music you listen to. Your ratings stay on
       this device unless you tell them otherwise.
@@ -95,24 +82,16 @@
     {#each steps as label, index (label)}
       <li class:is-done={index < step} class:is-here={index === step}>
         <span class="figure">{index + 1}</span>
-        <span class="apparatus">{label}</span>
+        <span class="label">{label}</span>
       </li>
     {/each}
   </ol>
 
   {#if step === 0}
     <section class="door__panel">
-      <h2 class="title">Where does the catalogue come from?</h2>
+      <h2 class="title">Connect your music</h2>
 
       <div class="choices">
-        <button type="button" class="choice" disabled={working} onclick={() => void chooseDemo()}>
-          <span class="choice__name">Try it with a made-up catalogue</span>
-          <span class="note">
-            Eleven invented artists, their releases, a few playlists, and a plausible history of
-            ratings already in place. No accounts, nothing sent anywhere. You can clear it later.
-          </span>
-        </button>
-
         <div class="choice choice--form">
           <span class="choice__name">Connect Spotify</span>
           <span class="note">
@@ -120,7 +99,7 @@
             of you. Ratings are yours and never leave this device.
           </span>
           <label class="field">
-            <span class="apparatus">Spotify client ID</span>
+            <span class="label">Spotify client ID</span>
             <input
               class="input"
               bind:value={clientId}
@@ -131,7 +110,7 @@
           </label>
           <p class="note note--small">
             The app in your dashboard must list
-            <code class="machine">{$settings.spotifyRedirectUri}</code>
+            <code class="mono">{$settings.spotifyRedirectUri}</code>
             as a redirect URI, and your account must be added to it. Spotify allows five accounts per
             app in development mode.
           </p>
@@ -151,19 +130,20 @@
           disabled={working}
           onclick={() => (step = 1)}
         >
-          <span class="choice__name">Start empty</span>
+          <span class="choice__name">Set up without Spotify</span>
           <span class="note">
-            Nothing in the ledger. Add a source later, or restore a backup from Settings.
+            Start with nothing and add music by hand, or restore a backup from Settings. You can
+            connect Spotify later.
           </span>
         </button>
       </div>
     </section>
   {:else if step === 1}
     <section class="door__panel">
-      <h2 class="title">What do you want to keep an opinion on?</h2>
+      <h2 class="title">What do you want to rate?</h2>
       <p class="note">
-        Only these appear in the queue, the lists and the standings. You can change this whenever
-        you like; turning a type off hides it without deleting anything.
+        Only these appear in the rating queue, the rankings and the library. You can change this
+        whenever you like; turning a type off hides it without deleting anything.
       </p>
 
       <ul class="types">
@@ -222,7 +202,7 @@
           disabled={working}
           onclick={() => void finish()}
         >
-          Open the ledger
+          Start rating
         </button>
       </div>
     </section>
@@ -248,7 +228,7 @@
     border-bottom: var(--rule-weight) solid var(--ink);
   }
   .door__wordmark {
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: clamp(2rem, 1.4rem + 2.6vw, 3rem);
     line-height: 1;
     letter-spacing: -0.015em;
@@ -260,7 +240,7 @@
   .door__steps {
     display: flex;
     gap: var(--s5);
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
     padding-bottom: var(--s3);
   }
   .door__steps li {
@@ -273,7 +253,7 @@
     color: var(--ink);
   }
   .door__steps li.is-here .figure {
-    color: var(--rubric-ink);
+    color: var(--accent-ink);
   }
   .door__steps li.is-done {
     color: var(--ink-quiet);
@@ -298,8 +278,8 @@
     align-items: flex-start;
     text-align: left;
     padding: var(--s4);
-    background: var(--paper-raised);
-    border: var(--rule-weight) solid var(--rule);
+    background: var(--surface-raised);
+    border: var(--rule-weight) solid var(--border);
     color: inherit;
     font: inherit;
     cursor: pointer;
@@ -319,7 +299,7 @@
     background: transparent;
   }
   .choice__name {
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: 1.125rem;
   }
   .choice .note {
@@ -342,18 +322,18 @@
   }
   .types li,
   .scales li {
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .types li:first-child,
   .scales li:first-child {
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
   }
   .types__name {
     display: block;
     font-size: 0.9375rem;
   }
 
-  code.machine {
+  code.mono {
     word-break: break-all;
   }
 </style>

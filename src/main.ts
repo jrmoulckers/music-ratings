@@ -1,6 +1,3 @@
-import '@fontsource/libre-caslon-text/400.css';
-import '@fontsource/libre-caslon-text/400-italic.css';
-import '@fontsource/libre-caslon-text/700.css';
 import '@fontsource-variable/libre-franklin';
 import './app.css';
 
@@ -14,7 +11,7 @@ import { applyTheme, watchSystemTheme } from './lib/ui/theme';
 
 /**
  * Boot order matters: paint the right theme before the first frame, then load
- * the ledger, then mount. The app never flashes the wrong palette.
+ * saved data, then mount. The app never flashes the wrong palette.
  */
 
 applyTheme(get(settings));

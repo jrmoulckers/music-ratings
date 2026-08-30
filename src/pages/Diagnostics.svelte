@@ -95,7 +95,7 @@
 <div class="sheet">
   <header class="head">
     <h1 class="display">Data health</h1>
-    <p class="apparatus">{online ? 'online' : 'offline'}</p>
+    <p class="label">{online ? 'online' : 'offline'}</p>
   </header>
 
   <div class="groups">
@@ -109,14 +109,14 @@
         </p>
         <dl class="pair">
           <div>
-            <dt class="apparatus">This device</dt>
+            <dt class="label">This device</dt>
             <dd>
               {countRecords($syncState.conflict.local)} records · saved
               {dateAndTime($syncState.conflict.local.savedAt)}
             </dd>
           </div>
           <div>
-            <dt class="apparatus">OneDrive</dt>
+            <dt class="label">OneDrive</dt>
             <dd>
               {countRecords($syncState.conflict.remote)} records · saved
               {dateAndTime($syncState.conflict.remote.savedAt)}
@@ -205,17 +205,17 @@
 
         {#if orphans.length > 0}
           <div>
-            <p class="apparatus">Records pointing at items that are gone ({orphans.length})</p>
+            <p class="label">Records pointing at items that are gone ({orphans.length})</p>
             <p class="note note--small">
               Usually a catalogue item removed from Spotify, or one you deleted while a rating
-              survived. Ratings are never deleted automatically — your judgement outlives the
+              survived. Ratings are never deleted automatically — your ratings outlive the
               catalogue.
             </p>
             <ul class="rows">
               {#each orphans.slice(0, 10) as row (row.kind + row.id)}
                 <li>
-                  <span class="machine">{row.id}</span>
-                  <span class="apparatus">{row.kind}</span>
+                  <span class="mono">{row.id}</span>
+                  <span class="label">{row.kind}</span>
                 </li>
               {/each}
             </ul>
@@ -224,7 +224,7 @@
 
         {#if duplicates.length > 0}
           <div>
-            <p class="apparatus">Possible alternate releases ({duplicates.length})</p>
+            <p class="label">Possible alternate releases ({duplicates.length})</p>
             <p class="note note--small">
               Same title and credit, different Spotify identifier — reissues, remasters, regional
               editions. They are listed rather than merged, because merging would silently combine
@@ -234,7 +234,7 @@
               {#each duplicates as group (group.join('|'))}
                 <li class="rows__group">
                   {#each group as id (id)}
-                    <a class="machine" href={entityHref(id)}>{$graph.entity(id)?.name ?? id}</a>
+                    <a class="mono" href={entityHref(id)}>{$graph.entity(id)?.name ?? id}</a>
                   {/each}
                 </li>
               {/each}
@@ -281,7 +281,7 @@
   }
   .group--alert {
     padding: var(--s4);
-    border: var(--rule-weight) solid var(--rubric);
+    border: var(--rule-weight) solid var(--accent);
   }
   .group__head {
     padding-bottom: var(--s2);
@@ -298,7 +298,7 @@
     gap: var(--s4);
     align-items: baseline;
     padding: var(--s1) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .rows--stacked li {
     flex-direction: column;

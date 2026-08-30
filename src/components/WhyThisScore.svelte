@@ -6,7 +6,7 @@
   import { percent, plural } from '../lib/ui/format';
 
   /**
-   * The apparatus behind a computed score.
+   * The label behind a computed score.
    *
    * Every channel is shown even when it contributed nothing, with the weight the
    * reader configured next to the weight actually applied, because the gap
@@ -46,7 +46,7 @@
 </script>
 
 <div class="why">
-  <h3 class="apparatus">How this score was reached</h3>
+  <h3 class="label">How this score was reached</h3>
 
   <ol class="why__channels">
     {#each breakdown.channels as channel (channel.channel)}
@@ -98,7 +98,7 @@
   {#each breakdown.channels as channel (channel.channel)}
     {#if channel.contributors?.length}
       <details class="why__more">
-        <summary class="apparatus"
+        <summary class="label"
           >Top contributions from {CHANNEL_NAME[channel.channel]?.toLowerCase()}</summary
         >
         <ul class="why__list">
@@ -125,7 +125,7 @@
 
   {#if breakdown.exclusions.length > 0}
     <div class="why__excluded">
-      <h4 class="apparatus">Left out on purpose</h4>
+      <h4 class="label">Left out on purpose</h4>
       <ul class="why__list">
         {#each breakdown.exclusions as exclusion (exclusion.code)}
           <li><span class="note">{exclusion.detail}</span></li>
@@ -149,10 +149,10 @@
   }
   .why__channel {
     padding: var(--s3) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .why__channel:first-child {
-    border-top: var(--rule-weight) solid var(--rule);
+    border-top: var(--rule-weight) solid var(--border);
   }
 
   .why__line {
@@ -162,7 +162,7 @@
     gap: var(--s3);
   }
   .why__name {
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: 0.9375rem;
   }
   .why__value {
@@ -180,7 +180,7 @@
     font-variant-numeric: tabular-nums;
   }
   .why__applied {
-    color: var(--rubric-ink);
+    color: var(--accent-ink);
   }
 
   .why__detail {
@@ -197,7 +197,7 @@
     padding: var(--s2) 0;
   }
   .why__more summary:hover {
-    color: var(--rubric-ink);
+    color: var(--accent-ink);
   }
 
   .why__list {
@@ -218,7 +218,7 @@
   }
 
   .why__excluded {
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
     padding-top: var(--s3);
   }
 </style>

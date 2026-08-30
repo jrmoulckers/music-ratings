@@ -14,14 +14,14 @@ import { entityId, membershipId } from '../lib/domain/ids';
 export const T0 = Date.UTC(2025, 0, 1);
 
 export function makeEntity(type: EntityType, id: string, overrides: Partial<Entity> = {}): Entity {
-  const canonical = entityId(type, 'demo', id);
+  const canonical = entityId(type, 'local', id);
   const base: Entity = {
     id: canonical,
     type,
-    provider: 'demo',
+    provider: 'local',
     providerId: id,
     name: overrides.name ?? id,
-    provenance: { provider: 'demo', via: 'test', fetchedAt: T0 },
+    provenance: { provider: 'local', via: 'test', fetchedAt: T0 },
     createdAt: T0,
     updatedAt: T0,
     ...overrides,

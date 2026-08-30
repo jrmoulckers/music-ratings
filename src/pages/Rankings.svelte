@@ -18,7 +18,7 @@
   import EntryRow from '../components/EntryRow.svelte';
 
   /**
-   * Standings.
+   * Rankings.
    *
    * Ties are shown as ties. A list that quietly breaks them by alphabet is
    * pretending to a precision the evidence does not support.
@@ -39,7 +39,7 @@
   let requireExplicit = $state(false);
   let tag = $state('');
 
-  // As on the shelf: the address bar carries the list so it can be shared, and
+  // As in the library: the address bar carries the list so it can be shared, and
   // `applied` keeps the URL and the controls from chasing each other.
   let applied = '';
   $effect(() => {
@@ -100,18 +100,18 @@
   <div class="stack">
     <header class="head">
       <h1 class="display">{direction === 'top' ? 'Best' : 'Worst'} {entityLabel(type, true)}</h1>
-      <p class="apparatus">
+      <p class="label">
         {list.rows.length} shown · {list.considered} considered
       </p>
     </header>
 
     {#if list.rows.length > 0}
-      <ol class="standings">
+      <ol class="ranks">
         {#each list.rows as row (row.entityId)}
           {@const entity = $graph.entity(row.entityId)}
           {#if entity}
             <li>
-              <a class="standings__link" href={entityHref(row.entityId)}>
+              <a class="ranks__link" href={entityHref(row.entityId)}>
                 <EntryRow
                   {entity}
                   breakdown={row.breakdown}
@@ -135,10 +135,10 @@
 
   <aside class="margin">
     <div class="stack stack--tight">
-      <h2 class="apparatus">The list</h2>
+      <h2 class="label">The list</h2>
 
       <label class="field">
-        <span class="apparatus">Kind</span>
+        <span class="label">Kind</span>
         <select class="select" bind:value={type} onchange={syncUrl}>
           {#each enabled as option (option)}
             <option value={option}>{entityLabelCap(option, true)}</option>
@@ -147,7 +147,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">End</span>
+        <span class="label">End</span>
         <select class="select" bind:value={direction} onchange={syncUrl}>
           <option value="top">Best first</option>
           <option value="bottom">Worst first</option>
@@ -155,7 +155,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">Score shown</span>
+        <span class="label">Score shown</span>
         <select class="select" bind:value={view} onchange={syncUrl}>
           <option value="blended">Blended</option>
           <option value="explicit">What you said</option>
@@ -164,7 +164,7 @@
       </label>
 
       <label class="field">
-        <span class="apparatus">Rated within</span>
+        <span class="label">Rated within</span>
         <select class="select" bind:value={rangeId} onchange={syncUrl}>
           {#each TIME_RANGES as option (option.id)}
             <option value={option.id}>{option.label}</option>
@@ -174,15 +174,15 @@
     </div>
 
     <div class="stack stack--tight">
-      <h2 class="apparatus">Only count it if…</h2>
+      <h2 class="label">Only count it if…</h2>
 
       <label class="field">
-        <span class="apparatus">Coverage at least {Math.round(minCoverage * 100)}%</span>
+        <span class="label">Coverage at least {Math.round(minCoverage * 100)}%</span>
         <input class="slider" type="range" min="0" max="1" step="0.05" bind:value={minCoverage} />
       </label>
 
       <label class="field">
-        <span class="apparatus">Weigh-ins at least {minComparisons}</span>
+        <span class="label">Comparisons at least {minComparisons}</span>
         <input class="slider" type="range" min="0" max="20" step="1" bind:value={minComparisons} />
       </label>
 
@@ -193,7 +193,7 @@
 
       {#if allTags.length > 0}
         <label class="field">
-          <span class="apparatus">Tag</span>
+          <span class="label">Tag</span>
           <select class="select" bind:value={tag}>
             <option value="">Any</option>
             {#each allTags as option (option)}
@@ -206,7 +206,7 @@
 
     {#if list.dropped.length > 0 && list.rows.length > 0}
       <div class="stack stack--tight">
-        <h2 class="apparatus">Left out</h2>
+        <h2 class="label">Left out</h2>
         <dl class="dropped">
           {#each list.dropped as entry (entry.reason)}
             <div>
@@ -227,11 +227,11 @@
 </div>
 
 <style>
-  .standings {
+  .ranks {
     display: flex;
     flex-direction: column;
   }
-  .standings__link {
+  .ranks__link {
     display: block;
     text-decoration: none;
     color: inherit;
@@ -247,7 +247,7 @@
     display: flex;
     justify-content: space-between;
     gap: var(--s3);
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
     padding: 2px 0;
   }
   .dropped dd {

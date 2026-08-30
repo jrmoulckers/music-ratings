@@ -44,12 +44,12 @@
     gap: var(--s3);
     align-items: flex-start;
     padding: var(--s5) 0;
-    border-top: var(--rule-weight) solid var(--rule);
+    border-top: var(--rule-weight) solid var(--border);
     max-width: var(--measure);
   }
 
   .empty__title {
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: 1.125rem;
     line-height: 1.3;
   }
@@ -71,7 +71,7 @@
     justify-content: space-between;
     gap: var(--s3);
     padding: 2px 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .empty__reasons dd {
     margin: 0;

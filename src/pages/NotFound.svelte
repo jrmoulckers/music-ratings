@@ -13,8 +13,8 @@
   >
     {#snippet action()}
       <div class="row">
-        <a class="btn btn--primary" href={href('/')}>Back to the desk</a>
-        <a class="btn" href={href('/library')}>Browse the shelf</a>
+        <a class="btn btn--primary" href={href('/')}>Back to home</a>
+        <a class="btn" href={href('/library')}>Browse your library</a>
       </div>
     {/snippet}
   </Empty>

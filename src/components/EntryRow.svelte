@@ -3,7 +3,7 @@
   import { scaleForType } from '../lib/app/state';
   import type { Entity, ScoreBreakdown, ScoreView } from '../lib/domain/types';
   import { duration, releaseYear } from '../lib/ui/format';
-  import Plate from './Plate.svelte';
+  import Artwork from './Artwork.svelte';
   import ScoreMark from './ScoreMark.svelte';
 
   /**
@@ -51,7 +51,7 @@
       {tied ? '=' : ''}{position}
     </span>
   {:else}
-    <Plate src={entity.artworkUrl} thumb={entity.artworkThumbUrl} name={entity.name} />
+    <Artwork src={entity.artworkUrl} thumb={entity.artworkThumbUrl} name={entity.name} />
   {/if}
 
   <span class="entry__body">
@@ -75,7 +75,7 @@
     min-width: 0;
   }
   .entry__name {
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: 1rem;
     line-height: 1.3;
   }

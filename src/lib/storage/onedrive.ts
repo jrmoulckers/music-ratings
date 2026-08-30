@@ -22,7 +22,7 @@ import { SNAPSHOT_KIND, validateSnapshot, type Snapshot } from './snapshot';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const SCOPES = ['Files.ReadWrite.AppFolder', 'User.Read'];
-const RETURN_KEY = 'ledger:auth-return';
+const RETURN_KEY = 'music-ratings:auth-return';
 
 let client: PublicClientApplication | null = null;
 let initialised = false;
@@ -151,7 +151,7 @@ function encodeName(name: string): string {
 }
 
 export function createOneDriveAdapter(config: OneDriveConfig): RemoteAdapter {
-  const file = encodeName(config.fileName || 'ledger.json');
+  const file = encodeName(config.fileName || 'music-ratings.json');
   const contentPath = `/me/drive/special/approot:/${file}:/content`;
   const metaPath = `/me/drive/special/approot:/${file}`;
 

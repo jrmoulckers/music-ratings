@@ -34,7 +34,7 @@ The data is the user's own: local-first, offline-capable, synced to the user's o
 - **Lookup.** Search for an artist, album, playlist or track and inspect its detail page: explicit rating, computed score, rank, confidence, child breakdown, history, notes, tags, Spotify deep link.
 - **Review.** Top and bottom lists per entity type, the rating timeline, and locally computed taste insights.
 - **Environments.** Desktop browser and installed mobile PWA. Frequently offline or on poor connections; ratings made offline queue and sync later.
-- **Accounts.** Spotify (Authorization Code with PKCE, no client secret) is optional; Microsoft/OneDrive is optional; a fully seeded demo mode requires neither.
+- **Accounts.** Spotify (Authorization Code with PKCE, no client secret) is optional; Microsoft/OneDrive is optional. Without either, the app still runs: you can add items by hand and restore a backup.
 
 ## Capabilities and Constraints
 
@@ -71,7 +71,7 @@ The data is the user's own: local-first, offline-capable, synced to the user's o
 ## Evidence on Hand
 
 - **Real data source:** the Spotify Web API, reachable only with the user's own credentials. No Spotify data is bundled.
-- **Demo data:** a seeded set of _fictional_ artists, albums, tracks and playlists must be authored so the full experience is usable without any credentials. It is synthetic and must be labelled as such.
+- **No invented catalogue.** Everything shown is either the user's own data or something they fetched from Spotify themselves. A seeded fictional catalogue was built and then removed: it made the app confusing, because you could not tell your real ratings from the sample ones.
 - **Absences future work must not fabricate:** no real artist, album or track metadata may be shipped in the repository; no lyrics; no claim that Spotify recommended, endorsed, or generated anything; no user counts, testimonials, benchmarks, pricing, or availability claims.
 - **Architectural reference (read-only, not a content source):** `C:\Users\jrmou\src\score-king` — local-first IndexedDB plus optional OneDrive/MSAL/Graph app-folder JSON sync.
 

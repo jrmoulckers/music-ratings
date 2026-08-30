@@ -1,18 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ledger">
-  <rect width="64" height="64" fill="#1a1a1a" />
-  <g stroke="#efe9dd" stroke-width="1.5" shape-rendering="crispEdges">
-    <path d="M6 6h5M6 6v5M58 6h-5M58 6v5M6 58h5M6 58v-5M58 58h-5M58 58v-5" />
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Music Ratings">
+  <rect width="64" height="64" rx="8" fill="#17171b" />
   <g shape-rendering="crispEdges">
-    <rect x="24" y="13" width="2" height="38" fill="#efe9dd" />
-    <g fill="#efe9dd">
-      <rect x="20" y="13" width="10" height="1.5" />
-      <rect x="20" y="19" width="10" height="1.5" />
-      <rect x="20" y="25" width="10" height="1.5" />
-      <rect x="20" y="37" width="10" height="1.5" />
-      <rect x="20" y="43" width="10" height="1.5" />
-      <rect x="20" y="49.5" width="10" height="1.5" />
+    <rect x="31" y="12" width="2" height="40" fill="#5a5a66" />
+    <g fill="#e9e9ee">
+      <rect x="22" y="14" width="20" height="2" />
+      <rect x="24" y="24" width="16" height="2" />
+      <rect x="24" y="40" width="16" height="2" />
+      <rect x="22" y="50" width="20" height="2" />
     </g>
-    <rect x="18" y="30" width="30" height="4" fill="#c23a2a" />
+    <rect x="16" y="30" width="32" height="5" fill="#cf3f26" />
   </g>
 </svg>

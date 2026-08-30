@@ -4,7 +4,7 @@ import { writable } from 'svelte/store';
  * Service worker and install state.
  *
  * Updates are offered, never forced: reloading under someone mid-rating would
- * throw away a judgement they were still forming.
+ * throw away a rating they were still forming.
  */
 
 export interface PwaState {

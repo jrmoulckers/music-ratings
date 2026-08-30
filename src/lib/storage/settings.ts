@@ -35,7 +35,6 @@ export interface AppSettings {
   highContrast: boolean;
   syncEnabled: boolean;
   syncFileName: string;
-  demoMode: boolean;
   onboarded: boolean;
   spotifyClientId: string;
   spotifyRedirectUri: string;
@@ -72,7 +71,6 @@ export const LOCAL_SETTINGS = [
   'highContrast',
   'syncEnabled',
   'syncFileName',
-  'demoMode',
   'onboarded',
   'spotifyClientId',
   'spotifyRedirectUri',
@@ -113,8 +111,7 @@ export function defaultSettings(): AppSettings {
     artwork: 'full',
     highContrast: false,
     syncEnabled: false,
-    syncFileName: 'ledger.json',
-    demoMode: false,
+    syncFileName: 'music-ratings.json',
     onboarded: false,
     spotifyClientId: (import.meta.env?.VITE_SPOTIFY_CLIENT_ID as string | undefined) ?? '',
     spotifyRedirectUri:

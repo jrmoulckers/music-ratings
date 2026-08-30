@@ -26,7 +26,7 @@ export const ENTITY_TYPES = [
 
 export type EntityType = (typeof ENTITY_TYPES)[number];
 
-export type Provider = 'spotify' | 'demo' | 'local';
+export type Provider = 'spotify' | 'local';
 
 export interface EntityRef {
   readonly type: EntityType;
@@ -160,8 +160,18 @@ export interface RatingScale {
    * number of detents.
    */
   labels?: string[];
-  /** Short marks printed in the margin, e.g. letter grades. Same order as `labels`. */
+  /** Short marks printed in the margin, e.g. tier letters. Same order as `labels`. */
   marks?: string[];
+  /**
+   * Where each detent sits on the canonical 0..100 axis, lowest first. Same
+   * length as the detent list.
+   *
+   * Only needed when a scale's positions do not mean "this fraction of the
+   * maximum" — a thumbs-up is not a 100, and a C is not 40% of a masterpiece.
+   * Numeric scales leave this off and are projected by fraction-of-max, which
+   * is what makes 4/5, 8/10 and 80/100 the same judgement.
+   */
+  anchors?: readonly number[];
   builtin: boolean;
   createdAt?: number;
   updatedAt?: number;
@@ -343,7 +353,7 @@ export interface ChannelExplanation {
   sampleSize: number;
   /** Human-readable account of what went in. */
   detail: string;
-  /** Top contributors, for the "Why this score?" apparatus. */
+  /** Top contributors, for the "Why this score?" label. */
   contributors?: ScoreContributor[];
 }
 
@@ -424,6 +434,12 @@ export interface Suggestion {
   entityType: EntityType;
   score: number;
   reasons: SuggestionReason[];
+  /**
+   * Sort band. Lower comes first, and no amount of score lets a lower band be
+   * overtaken. `0` is reserved for things the user has actually just listened
+   * to, which always outrank anything merely inferred.
+   */
+  tier: number;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -86,6 +86,15 @@ export const DEFAULT_SUGGESTION_WEIGHTS: SuggestionWeights = {
 
 const DAY = 86_400_000;
 
+/**
+ * Sort bands. A recent play is direct evidence that the music is on the user's
+ * mind right now; every other source is an inference about what they might be
+ * willing to judge. Bands keep the two from competing on score, which is the
+ * only way "what I just listened to" reliably stays at the front.
+ */
+export const TIER_JUST_PLAYED = 0;
+export const TIER_INFERRED = 1;
+
 /** Half-life for how quickly a play stops being a reason to rate something. */
 const PLAY_HALF_LIFE_DAYS = 10;
 
@@ -310,10 +319,14 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
       score = revisit.reduce((acc2, r) => acc2 + r.weight, 0);
     }
     if (!(score > 0)) continue;
-    out.push({ entityId: item.entityId, entityType: item.entityType, score, reasons });
+    // Something you actually pressed play on beats anything the rules merely
+    // inferred, however many weak reasons that inference managed to stack up.
+    const tier = item.reasons.has('recentlyPlayed') ? TIER_JUST_PLAYED : TIER_INFERRED;
+    out.push({ entityId: item.entityId, entityType: item.entityType, score, reasons, tier });
   }
 
   out.sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
     if (b.score !== a.score) return b.score - a.score;
     return hashString(a.entityId) - hashString(b.entityId);
   });

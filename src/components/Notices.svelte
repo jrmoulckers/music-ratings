@@ -55,13 +55,13 @@
     align-items: center;
     gap: var(--s3);
     padding: var(--s3);
-    background: var(--paper-raised);
+    background: var(--surface-raised);
     border: var(--rule-weight) solid var(--ink);
     pointer-events: auto;
-    box-shadow: 3px 3px 0 0 var(--paper-sunk);
+    box-shadow: 3px 3px 0 0 var(--surface-sunk);
   }
   .slip--warn {
-    border-color: var(--rubric);
+    border-color: var(--accent);
   }
 
   .slip__text {

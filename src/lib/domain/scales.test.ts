@@ -5,10 +5,12 @@ import {
   DEFAULT_SCALE_ID,
   ScaleError,
   clampNormalized,
+  convertValue,
   denormalize,
   detentCount,
   detentIndex,
   detentValues,
+  equivalenceRows,
   findScale,
   formatMark,
   formatComputedOn,
@@ -30,21 +32,36 @@ const scale = (id: string): RatingScale => {
 };
 
 describe('normalization', () => {
-  it('maps every built-in scale onto the same 0..100 axis', () => {
+  it('keeps every built-in scale inside the canonical axis and pointing the same way', () => {
     for (const s of BUILTIN_SCALES) {
-      expect(normalize(s, s.min)).toBe(0);
-      expect(normalize(s, s.max)).toBe(100);
+      const values = detentValues(s);
+      const projected = values.map((v) => normalize(s, v));
+      expect(Math.min(...projected)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...projected)).toBeLessThanOrEqual(100);
+      // Strictly ascending: a higher rating is always a higher canonical value.
+      for (let i = 1; i < projected.length; i += 1) {
+        expect(projected[i] as number).toBeGreaterThan(projected[i - 1] as number);
+      }
     }
   });
 
-  it('places the midpoint of a symmetric scale at 50', () => {
-    expect(normalize(scale('int-5'), 3)).toBe(50);
-    expect(normalize(scale('stars-5'), 3)).toBe(50);
-    expect(normalize(scale('decimal-10'), 5)).toBe(50);
+  it('reads a numeric scale as a fraction of its maximum, which is what people mean', () => {
+    expect(normalize(scale('int-10'), 7)).toBe(70);
+    expect(normalize(scale('decimal-10'), 7)).toBe(70);
+    expect(normalize(scale('int-100'), 70)).toBe(70);
+    expect(normalize(scale('stars-5'), 3.5 as number)).toBe(70);
+    expect(normalize(scale('int-5'), 4)).toBe(80);
+    expect(normalize(scale('stars-5'), 5)).toBe(100);
+  });
+
+  it('does not let a coarse judgement scale claim the extremes', () => {
+    // A thumbs-up says "I like this", not "this is a flawless 10".
+    expect(normalize(scale('thumbs'), 1)).toBe(80);
+    expect(normalize(scale('thumbs'), 0)).toBe(20);
   });
 
   it('clamps values outside the scale rather than extrapolating', () => {
-    expect(normalize(scale('int-10'), -40)).toBe(0);
+    expect(normalize(scale('int-10'), -40)).toBe(normalize(scale('int-10'), 1));
     expect(normalize(scale('int-10'), 1000)).toBe(100);
     expect(clampNormalized(Number.NaN)).toBe(0);
     expect(clampNormalized(120)).toBe(100);
@@ -81,17 +98,17 @@ describe('detents', () => {
   });
 
   it('uses the label count for ordinal scales', () => {
-    expect(detentCount(scale('grades'))).toBe(11);
+    expect(detentCount(scale('tiers'))).toBe(6);
   });
 
   it('seats a normalized value on the nearest detent', () => {
     const stars = scale('stars-5');
     expect(detentIndex(stars, 0)).toBe(0);
     expect(detentIndex(stars, 100)).toBe(4);
-    expect(detentIndex(stars, 51)).toBe(2);
+    expect(detentIndex(stars, 61)).toBe(2);
     expect(normalizedForDetent(stars, 4)).toBe(100);
     expect(normalizedForDetent(stars, 99)).toBe(100);
-    expect(normalizedForDetent(stars, -3)).toBe(0);
+    expect(normalizedForDetent(stars, -3)).toBe(20);
   });
 
   it('never lets float drift push the last detent past the maximum', () => {
@@ -103,18 +120,18 @@ describe('detents', () => {
 describe('migration between scales', () => {
   it('preserves the canonical value exactly', () => {
     const original = { normalized: 62.5 };
-    const migrated = migrateRating(original, scale('grades'));
+    const migrated = migrateRating(original, scale('tiers'));
     expect(migrated.normalized).toBe(62.5);
-    expect(migrated.scaleId).toBe('grades');
+    expect(migrated.scaleId).toBe('tiers');
   });
 
-  it('survives a round trip from stars to grades and back within one detent', () => {
+  it('survives a round trip from stars to tiers and back within one detent', () => {
     const stars = scale('stars-5');
-    const grades = scale('grades');
+    const tiers = scale('tiers');
     for (const value of detentValues(stars)) {
       const asStars = { normalized: normalize(stars, value) };
-      const asGrades = migrateRating(asStars, grades);
-      const back = migrateRating(asGrades, stars);
+      const asTiers = migrateRating(asStars, tiers);
+      const back = migrateRating(asTiers, stars);
       expect(Math.abs(back.value - value)).toBeLessThanOrEqual(stars.step);
       // The canonical history never moves, whatever the display scale does.
       expect(back.normalized).toBe(asStars.normalized);
@@ -135,10 +152,10 @@ describe('migration between scales', () => {
 
 describe('formatting', () => {
   it('prints ordinal labels rather than numbers', () => {
-    expect(formatRaw(scale('grades'), 10)).toBe('A+');
-    expect(formatRaw(scale('grades'), 0)).toBe('E');
-    expect(formatNormalizedOn(scale('grades'), 100)).toBe('A+');
-    expect(formatNormalizedOn(scale('grades'), 0)).toBe('E');
+    expect(formatRaw(scale('tiers'), 5)).toBe('S');
+    expect(formatRaw(scale('tiers'), 0)).toBe('F');
+    expect(formatNormalizedOn(scale('tiers'), 100)).toBe('S');
+    expect(formatNormalizedOn(scale('tiers'), 0)).toBe('F');
   });
 
   it('prints stars with a star mark and decimals with one place', () => {
@@ -153,22 +170,91 @@ describe('formatting', () => {
   });
 });
 
+describe('cross-scale equivalence', () => {
+  const ten = scale('int-10');
+  const hundred = scale('int-100');
+  const stars = scale('stars-5');
+  const halves = scale('half-stars-5');
+  const decimal = scale('decimal-10');
+  const tiers = scale('tiers');
+
+  it('treats the same judgement on different numeric scales as the same value', () => {
+    // The bug this guards: "7 out of 10" used to become "6.7 out of 10" when a
+    // user switched between the integer and decimal ten-point scales.
+    const same = [
+      [ten, 7],
+      [decimal, 7],
+      [hundred, 70],
+      [halves, 3.5],
+    ] as const;
+    const values = same.map(([s, v]) => normalize(s, v));
+    for (const v of values) expect(v).toBe(70);
+  });
+
+  it('lands the five-star scale exactly on the tier letters', () => {
+    const expected = ['D', 'C', 'B', 'A', 'S'];
+    const got = detentValues(stars).map((v) => formatNormalizedOn(tiers, normalize(stars, v)));
+    expect(got).toEqual(expected);
+  });
+
+  it('reads the ten-point scale onto tiers without a jump or a gap', () => {
+    const got = detentValues(ten).map((v) => formatNormalizedOn(tiers, normalize(ten, v)));
+    expect(got).toEqual(['F', 'D', 'D', 'C', 'C', 'B', 'B', 'A', 'A', 'S']);
+  });
+
+  it('keeps every conversion monotonic: a better rating never converts to a worse one', () => {
+    for (const from of BUILTIN_SCALES) {
+      for (const to of BUILTIN_SCALES) {
+        let previous = -Infinity;
+        for (const value of detentValues(from)) {
+          const converted = convertValue(from, value, to);
+          expect(converted).toBeGreaterThanOrEqual(previous);
+          previous = converted;
+        }
+      }
+    }
+  });
+
+  it('round-trips every detent of every scale through every other scale of equal or finer grain', () => {
+    for (const from of BUILTIN_SCALES) {
+      for (const to of BUILTIN_SCALES) {
+        // Converting into a coarser scale legitimately loses detail; only the
+        // journey through an equally or more precise scale must come back.
+        if (detentCount(to) < detentCount(from)) continue;
+        for (const value of detentValues(from)) {
+          const there = convertValue(from, value, to);
+          const back = convertValue(to, there, from);
+          expect(back).toBeCloseTo(value, 6);
+        }
+      }
+    }
+  });
+
+  it('tabulates equivalences for display without inventing positions', () => {
+    const rows = equivalenceRows(tiers, [stars, ten]);
+    expect(rows).toHaveLength(6);
+    expect(rows.map((r) => r.label)).toEqual(['F', 'D', 'C', 'B', 'A', 'S']);
+    expect(rows[5]?.on).toEqual(['5★', '10']);
+    expect(rows[0]?.on).toEqual(['1★', '1']);
+  });
+});
+
 describe('computed scores', () => {
   it('keeps a decimal on coarse numeric scales so a close order stays readable', () => {
-    // Three distinct rollups that all round to 6 on a 1..10 scale.
+    // Three distinct rollups that all round to the same detent on a 1..10 scale.
     const ten = scale('int-10');
     const printed = [55.6, 58.0, 61.1].map((n) => formatComputedOn(ten, n));
-    expect(printed).toEqual(['6.0', '6.2', '6.5']);
+    expect(printed).toEqual(['5.6', '5.8', '6.1']);
     expect(new Set(printed).size).toBe(3);
   });
 
   it('does not invent precision on a scale that already has plenty', () => {
-    expect(formatComputedOn(scale('int-100'), 62.4)).toBe('63');
+    expect(formatComputedOn(scale('int-100'), 62.4)).toBe('62');
     expect(formatComputedOn(scale('int-100'), 62.4)).not.toContain('.');
   });
 
   it('rounds to a real label on ordinal scales, which have no fractions', () => {
-    expect(formatComputedOn(scale('grades'), 62.5)).toBe(formatNormalizedOn(scale('grades'), 62.5));
+    expect(formatComputedOn(scale('tiers'), 62.5)).toBe(formatNormalizedOn(scale('tiers'), 62.5));
     expect(formatComputedOn(scale('thumbs'), 90)).toBe('↑');
   });
 

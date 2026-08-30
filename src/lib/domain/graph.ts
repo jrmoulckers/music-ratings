@@ -113,7 +113,7 @@ export interface DescendantWalk {
  * Breadth-first is load-bearing: the shallowest path wins, so a track that sits
  * on both an album and a compilation is counted once, under whichever release
  * is closest to the root, with ties broken deterministically by id. Every
- * suppressed path is counted and reported so the "Why this score?" apparatus
+ * suppressed path is counted and reported so the "Why this score?" label
  * can say exactly what was left out.
  */
 export function walkDescendants(

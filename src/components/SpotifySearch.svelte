@@ -8,12 +8,12 @@
   import { spotifyConfig, spotifySession } from '../lib/spotify/session';
   import { saveMemberships, upsertEntities } from '../lib/storage/repo';
   import Icon from '../lib/ui/Icon.svelte';
-  import Plate from './Plate.svelte';
+  import Artwork from './Artwork.svelte';
 
   /**
-   * Reaching past the shelf into Spotify's catalogue.
+   * Reaching past your library into Spotify's catalogue.
    *
-   * Results are not written to the ledger until something is added, so a search
+   * Results are not written to your library until something is added, so a search
    * never quietly fills the database with things you did not ask for.
    */
 
@@ -24,7 +24,7 @@
   let { initialTerm = '' }: Props = $props();
 
   let term = $state('');
-  // Seeded from the shelf's search box, then owned here: typing in this field
+  // Seeded from the library search box, then owned here: typing in this field
   // should not disturb the filter behind it.
   let seeded = false;
   $effect(() => {
@@ -75,19 +75,19 @@
     );
     if (related.length > 0) await upsertEntities(related);
     if (links.length > 0) await saveMemberships(links);
-    notify(`${entity.name} added to the shelf.`);
+    notify(`${entity.name} added to your library.`);
   }
 </script>
 
 <section class="find" aria-labelledby="find-head">
   <div class="head">
     <h2 id="find-head" class="title">Find something not here yet</h2>
-    <span class="apparatus">Spotify catalogue</span>
+    <span class="label">Spotify catalogue</span>
   </div>
 
   {#if !$spotifySession.connected}
     <p class="note">
-      Connect Spotify in Settings to search the catalogue. Everything already on your shelf stays
+      Connect Spotify in Settings to search the catalogue. Everything already in your library stays
       searchable without a connection.
     </p>
   {:else}
@@ -122,14 +122,14 @@
         {#each found.entities.slice(0, 20) as entity (entity.id)}
           {@const already = $graph.has(entity.id)}
           <li>
-            <Plate src={entity.artworkThumbUrl} name={entity.name} size="sm" />
+            <Artwork src={entity.artworkThumbUrl} name={entity.name} size="sm" />
             <span class="find__id">
               <span class="find__name">{entity.name}</span>
               {#if entity.subtitle}<span class="note note--small">{entity.subtitle}</span>{/if}
             </span>
-            <span class="apparatus">{entity.type}</span>
+            <span class="label">{entity.type}</span>
             {#if already}
-              <a class="btn btn--small btn--quiet" href={entityHref(entity.id)}>On the shelf</a>
+              <a class="btn btn--small btn--quiet" href={entityHref(entity.id)}>In your library</a>
             {:else}
               <button type="button" class="btn btn--small" onclick={() => void add(entity)}>
                 Add
@@ -146,7 +146,7 @@
   .find {
     margin-top: var(--s7);
     padding-top: var(--s5);
-    border-top: var(--rule-weight) solid var(--rule);
+    border-top: var(--rule-weight) solid var(--border);
   }
 
   .find__form {
@@ -166,7 +166,7 @@
     gap: var(--s3);
     align-items: center;
     padding: var(--s2) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .find__id {
     min-width: 0;

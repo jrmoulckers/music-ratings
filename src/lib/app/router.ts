@@ -10,12 +10,12 @@ import { writable, type Readable } from 'svelte/store';
 
 export type RouteName =
   | 'home'
-  | 'queue'
-  | 'duel'
+  | 'rate'
+  | 'compare'
   | 'library'
   | 'entity'
-  | 'lists'
-  | 'timeline'
+  | 'rankings'
+  | 'history'
   | 'insights'
   | 'settings'
   | 'diagnostics'
@@ -32,16 +32,16 @@ export interface Route {
 
 const PATTERNS: { name: RouteName; pattern: RegExp; keys: string[] }[] = [
   { name: 'home', pattern: /^\/$/, keys: [] },
-  { name: 'queue', pattern: /^\/queue\/?$/, keys: [] },
-  { name: 'duel', pattern: /^\/duel\/?$/, keys: [] },
+  { name: 'rate', pattern: /^\/rate\/?$/, keys: [] },
+  { name: 'compare', pattern: /^\/compare\/?$/, keys: [] },
   { name: 'library', pattern: /^\/library\/?$/, keys: [] },
   {
     name: 'entity',
     pattern: /^\/e\/([^/]+)\/([^/]+)\/([^/]+)\/?$/,
     keys: ['type', 'provider', 'id'],
   },
-  { name: 'lists', pattern: /^\/lists\/?$/, keys: [] },
-  { name: 'timeline', pattern: /^\/timeline\/?$/, keys: [] },
+  { name: 'rankings', pattern: /^\/rankings\/?$/, keys: [] },
+  { name: 'history', pattern: /^\/history\/?$/, keys: [] },
   { name: 'insights', pattern: /^\/insights\/?$/, keys: [] },
   { name: 'settings', pattern: /^\/settings\/?$/, keys: [] },
   { name: 'diagnostics', pattern: /^\/diagnostics\/?$/, keys: [] },

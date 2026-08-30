@@ -1,4 +1,10 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import {
+  openDB,
+  type DBSchema,
+  type IDBPDatabase,
+  type IDBPTransaction,
+  type StoreNames,
+} from 'idb';
 
 import type {
   Collection,
@@ -15,14 +21,14 @@ import type {
 import type { AppSettings } from './settings';
 
 export const DB_NAME = 'music-ratings';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /**
  * Everything the app knows lives here, on this device, in the user's browser.
  * The shape is deliberately flat and id-addressed so the sync layer can treat
  * every store as an unordered bag of records with `updatedAt` and tombstones.
  */
-export interface LedgerDB extends DBSchema {
+export interface AppDB extends DBSchema {
   entities: {
     key: EntityId;
     value: Entity;
@@ -83,17 +89,17 @@ export const META_CURSORS = 'cursors';
 
 /* -------------------------------------------------------------------------- */
 
-let dbp: Promise<IDBPDatabase<LedgerDB>> | null = null;
+let dbp: Promise<IDBPDatabase<AppDB>> | null = null;
 let blockedNotice: ((message: string) => void) | null = null;
 
 export function onDatabaseBlocked(handler: (message: string) => void): void {
   blockedNotice = handler;
 }
 
-export function db(): Promise<IDBPDatabase<LedgerDB>> {
+export function db(): Promise<IDBPDatabase<AppDB>> {
   if (!dbp) {
-    dbp = openDB<LedgerDB>(DB_NAME, DB_VERSION, {
-      upgrade(database, oldVersion) {
+    dbp = openDB<AppDB>(DB_NAME, DB_VERSION, {
+      upgrade(database, oldVersion, _newVersion, transaction) {
         if (oldVersion < 1) {
           const entities = database.createObjectStore('entities', { keyPath: 'id' });
           entities.createIndex('byType', 'type');
@@ -121,6 +127,12 @@ export function db(): Promise<IDBPDatabase<LedgerDB>> {
           // v2 introduced user-defined rating scales as first-class records.
           database.createObjectStore('scales', { keyPath: 'id' });
         }
+        if (oldVersion < 3) {
+          // v3 removed the seeded sample catalogue. Anything that came from it
+          // is purged outright rather than tombstoned: it was never real data,
+          // and leaving it behind is exactly the confusion the removal fixes.
+          purgeSeededSampleData(transaction);
+        }
       },
       blocked() {
         blockedNotice?.(
@@ -138,6 +150,39 @@ export function db(): Promise<IDBPDatabase<LedgerDB>> {
     });
   }
   return dbp;
+}
+
+/**
+ * Removes every trace of the seeded sample catalogue that earlier versions
+ * installed. Sample rows were the only ones written with the `demo` provider,
+ * so their ids all begin `<type>:demo:`, and the ratings, comparisons and notes
+ * that pointed at them go with them.
+ */
+function purgeSeededSampleData(
+  transaction: IDBPTransaction<AppDB, ArrayLike<StoreNames<AppDB>>, 'versionchange'>,
+): void {
+  const isSampleId = (id: unknown): boolean => typeof id === 'string' && /^[a-z]+:demo:/.test(id);
+
+  const purge = <S extends StoreNames<AppDB>>(store: S, refs: (value: unknown) => unknown[]) => {
+    void transaction
+      .objectStore(store)
+      .openCursor()
+      .then(function step(cursor): unknown {
+        if (!cursor) return undefined;
+        if (refs(cursor.value).some(isSampleId)) void cursor.delete();
+        return cursor.continue().then(step);
+      });
+  };
+
+  purge('entities', (v) => [(v as { id?: unknown }).id]);
+  purge('memberships', (v) => [
+    (v as { parentId?: unknown }).parentId,
+    (v as { childId?: unknown }).childId,
+  ]);
+  purge('ratings', (v) => [(v as { entityId?: unknown }).entityId]);
+  purge('comparisons', (v) => [(v as { aId?: unknown }).aId, (v as { bId?: unknown }).bId]);
+  purge('queueStates', (v) => [(v as { id?: unknown }).id]);
+  purge('annotations', (v) => [(v as { id?: unknown }).id]);
 }
 
 /** For tests and for "erase everything" in settings. */
@@ -169,7 +214,7 @@ export interface SyncRecord {
 
 export async function putRecord<S extends SyncedStore>(
   store: S,
-  value: LedgerDB[S]['value'],
+  value: AppDB[S]['value'],
 ): Promise<void> {
   const database = await db();
   await database.put(store, raw(value));
@@ -177,7 +222,7 @@ export async function putRecord<S extends SyncedStore>(
 
 export async function putRecords<S extends SyncedStore>(
   store: S,
-  values: readonly LedgerDB[S]['value'][],
+  values: readonly AppDB[S]['value'][],
 ): Promise<void> {
   if (values.length === 0) return;
   const database = await db();
@@ -186,24 +231,24 @@ export async function putRecords<S extends SyncedStore>(
 }
 
 /** Live records only: tombstones are an implementation detail of sync. */
-export async function allLive<S extends SyncedStore>(store: S): Promise<LedgerDB[S]['value'][]> {
+export async function allLive<S extends SyncedStore>(store: S): Promise<AppDB[S]['value'][]> {
   const database = await db();
-  const rows = (await database.getAll(store)) as LedgerDB[S]['value'][];
+  const rows = (await database.getAll(store)) as AppDB[S]['value'][];
   return rows.filter((r) => !(r as SyncRecord).deleted);
 }
 
 /** Everything, tombstones included. Only sync and export should call this. */
-export async function allForSync<S extends SyncedStore>(store: S): Promise<LedgerDB[S]['value'][]> {
+export async function allForSync<S extends SyncedStore>(store: S): Promise<AppDB[S]['value'][]> {
   const database = await db();
-  return (await database.getAll(store)) as LedgerDB[S]['value'][];
+  return (await database.getAll(store)) as AppDB[S]['value'][];
 }
 
 export async function getRecord<S extends SyncedStore>(
   store: S,
-  key: LedgerDB[S]['key'],
-): Promise<LedgerDB[S]['value'] | undefined> {
+  key: AppDB[S]['key'],
+): Promise<AppDB[S]['value'] | undefined> {
   const database = await db();
-  const found = (await database.get(store, key)) as LedgerDB[S]['value'] | undefined;
+  const found = (await database.get(store, key)) as AppDB[S]['value'] | undefined;
   if (found && (found as SyncRecord).deleted) return undefined;
   return found;
 }
@@ -214,7 +259,7 @@ export async function getRecord<S extends SyncedStore>(
  */
 export async function tombstone<S extends SyncedStore>(
   store: S,
-  key: LedgerDB[S]['key'],
+  key: AppDB[S]['key'],
   now = Date.now(),
 ): Promise<void> {
   const database = await db();

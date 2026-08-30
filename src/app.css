@@ -1,10 +1,9 @@
 /*
-  Ledger — the built world.
+  Music Ratings — the built world.
 
-  Three values, no more: iron ink, unbleached paper, and a rubric vermilion that
-  never appears as a large fill. Nothing here has a corner radius. State is
-  printed, not shaded: a hairline at rest, filled when pressed, bracketed on
-  focus, struck through when spent.
+  A plain, legible product surface: neutral greys, one accent, one typeface.
+  Nothing here is decorative for its own sake. State is shown by weight and
+  fill rather than by ornament, and every page says what it is for.
 */
 
 /* -------------------------------------------------------------------------- */
@@ -14,27 +13,32 @@
 :root {
   color-scheme: light;
 
-  /* Paper and ink. */
-  --paper: #f1ece2;
-  --paper-sunk: #e8e2d5;
-  --paper-raised: #f7f3ea;
-  --ink: #1a1a1a;
-  --ink-quiet: #55534e;
-  --ink-faint: #7d7a72;
-  --rule: #b3aea2;
-  --rule-faint: #cdc8bb;
+  /* Surfaces and text. */
+  --surface: #f5f5f7;
+  --surface-sunk: #eaeaee;
+  --surface-raised: #ffffff;
+  --ink: #17171b;
+  --ink-quiet: #54545e;
+  --ink-faint: #7a7a86;
+  --border: #d5d5dc;
+  --border-faint: #e6e6eb;
+  /* Always dark, in both themes: a scrim built from --ink would go pale in
+     dark mode and wash the page out instead of pushing it back. */
+  --scrim: rgb(0 0 0 / 0.45);
 
-  /* The one accent. Marks and fills use --rubric; text uses --rubric-ink,
-     which is darkened so small caps still clear 4.5:1 on paper. */
-  --rubric: #c23a2a;
-  --rubric-ink: #a32a1c;
-  --rubric-wash: #f3e3df;
-  /* What can be set on a solid rubric fill and still clear 4.5:1. */
-  --on-rubric: #fdfbf6;
+  /* The one accent. Fills and marks use --accent; text uses --accent-ink,
+     which is darkened so small text still clears 4.5:1 on the surface. */
+  --accent: #cf3f26;
+  --accent-ink: #b23319;
+  --accent-wash: #fbeae6;
+  /* What can be set on a solid accent fill and still clear 4.5:1. */
+  --on-accent: #ffffff;
 
   /* One device pixel, whatever the display. */
   --hairline: 1px;
   --rule-weight: 1px;
+  --radius: 5px;
+  --radius-sm: 3px;
 
   /* Spacing is a set, not a scale generator. */
   --s1: 0.25rem;
@@ -50,10 +54,10 @@
   --margin-col: 13rem;
   --rail-w: 15rem;
 
-  --serif: 'Libre Caslon Text', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --sans:
     'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, Helvetica, Arial, sans-serif;
+  --display: var(--sans);
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   --dur-1: 90ms;
@@ -77,22 +81,21 @@
   }
 }
 
-/* A proof pull on black, not an inverted page. Ink becomes the ground, the
-   paper becomes the mark, and the rubric is lifted so it still reads. */
 [data-theme='dark'] {
   color-scheme: dark;
-  --paper: #14140f;
-  --paper-sunk: #0d0d0a;
-  --paper-raised: #1c1c16;
-  --ink: #ece7da;
-  --ink-quiet: #a9a496;
-  --ink-faint: #7f7b6f;
-  --rule: #4a473e;
-  --rule-faint: #33312a;
-  --rubric: #e0604a;
-  --rubric-ink: #ef8a76;
-  --rubric-wash: #2b1c18;
-  --on-rubric: #14140f;
+  --surface: #141417;
+  --surface-sunk: #0e0e10;
+  --surface-raised: #1c1c21;
+  --ink: #e9e9ee;
+  --ink-quiet: #a2a2ae;
+  --ink-faint: #787883;
+  --border: #35353d;
+  --border-faint: #26262c;
+  --scrim: rgb(0 0 0 / 0.68);
+  --accent: #f4634a;
+  --accent-ink: #ff8b74;
+  --accent-wash: #2c1a16;
+  --on-accent: #16100e;
 }
 
 [data-density='compact'] {
@@ -105,14 +108,14 @@
 
 [data-contrast='high'] {
   --ink-quiet: var(--ink);
-  --ink-faint: #46443f;
-  --rule: #6d695f;
-  --rule-faint: #8d887c;
+  --ink-faint: #45454e;
+  --border: #6c6c78;
+  --border-faint: #8c8c97;
 }
 [data-theme='dark'][data-contrast='high'] {
-  --ink-faint: #cfcabb;
-  --rule: #8b8779;
-  --rule-faint: #6a675c;
+  --ink-faint: #d0d0d8;
+  --border: #8a8a95;
+  --border-faint: #696973;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -132,9 +135,9 @@ html {
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 1rem;
   line-height: 1.62;
   font-synthesis-weight: none;
@@ -152,7 +155,7 @@ body::before {
   pointer-events: none;
   z-index: 0;
   opacity: 0.4;
-  background-image: radial-gradient(circle at 1px 1px, var(--rule-faint) 0.5px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, var(--border-faint) 0.5px, transparent 0);
   background-size: 4px 4px;
 }
 [data-theme='dark'] body::before {
@@ -199,10 +202,10 @@ a {
   color: inherit;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;
-  text-decoration-color: var(--rule);
+  text-decoration-color: var(--border);
 }
 a:hover {
-  text-decoration-color: var(--rubric);
+  text-decoration-color: var(--accent);
 }
 
 table {
@@ -211,7 +214,7 @@ table {
 }
 
 ::selection {
-  background: var(--rubric-wash);
+  background: var(--accent-wash);
   color: var(--ink);
 }
 
@@ -244,7 +247,7 @@ table {
 /* -------------------------------------------------------------------------- */
 
 .display {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-weight: 400;
   font-size: clamp(2rem, 1.3rem + 3vw, 3.4rem);
   line-height: 1.06;
@@ -253,7 +256,7 @@ table {
 }
 
 .title {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-weight: 400;
   font-size: clamp(1.4rem, 1.1rem + 1.3vw, 2rem);
   line-height: 1.16;
@@ -262,7 +265,7 @@ table {
 }
 
 .subtitle {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 1.125rem;
   line-height: 1.4;
   letter-spacing: -0.006em;
@@ -276,9 +279,9 @@ table {
   margin-top: var(--s4);
 }
 
-/* The apparatus: everything that labels, keys, or annotates. Small caps in the
+/* The label: everything that labels, keys, or annotates. Small caps in the
    grotesque, never used for running text. */
-.apparatus {
+.label {
   font-family: var(--sans);
   font-size: 0.6875rem;
   font-weight: 550;
@@ -287,12 +290,12 @@ table {
   line-height: 1.3;
   color: var(--ink-quiet);
 }
-.apparatus--rubric {
-  color: var(--rubric-ink);
+.label--accent {
+  color: var(--accent-ink);
 }
 
 .note {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--ink-quiet);
@@ -318,7 +321,7 @@ table {
   letter-spacing: -0.01em;
 }
 
-.machine {
+.mono {
   font-family: var(--mono);
   font-size: 0.8125rem;
   letter-spacing: -0.01em;
@@ -330,7 +333,7 @@ table {
 
 .struck {
   text-decoration: line-through;
-  text-decoration-color: var(--rubric);
+  text-decoration-color: var(--accent);
   text-decoration-thickness: 1px;
   color: var(--ink-faint);
 }
@@ -341,11 +344,11 @@ table {
 
 .rule {
   border: 0;
-  border-top: var(--rule-weight) solid var(--rule);
+  border-top: var(--rule-weight) solid var(--border);
   margin: 0;
 }
 .rule--faint {
-  border-top-color: var(--rule-faint);
+  border-top-color: var(--border-faint);
 }
 
 /* A ruled line carrying the register cross at its centre — the mark this whole
@@ -359,17 +362,17 @@ table {
 .registered-rule::before,
 .registered-rule::after {
   content: '';
-  border-top: var(--rule-weight) solid var(--rule);
+  border-top: var(--rule-weight) solid var(--border);
 }
 .registered-rule > .register-mark {
-  color: var(--rubric);
+  color: var(--accent);
 }
 
 .register-mark {
   width: 11px;
   height: 11px;
   flex: none;
-  color: var(--rubric);
+  color: var(--accent);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -401,7 +404,7 @@ table {
   }
 }
 
-/* Short measure inside a wide annotation margin: the apparatus hangs where a
+/* Short measure inside a wide annotation margin: the label hangs where a
    printed reference edition would put it. */
 .setting {
   display: grid;
@@ -422,14 +425,14 @@ table {
   flex-direction: column;
   gap: var(--s5);
   padding-left: var(--s4);
-  border-left: var(--rule-weight) solid var(--rule-faint);
+  border-left: var(--rule-weight) solid var(--border-faint);
 }
 @media (max-width: 68rem) {
   .margin {
     position: static;
     border-left: 0;
     padding-left: 0;
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
     padding-top: var(--s4);
   }
 }
@@ -475,8 +478,18 @@ table {
   justify-content: space-between;
   gap: var(--s4);
   padding-bottom: var(--s2);
-  border-bottom: var(--rule-weight) solid var(--rule);
+  border-bottom: var(--rule-weight) solid var(--border);
   margin-bottom: var(--s4);
+}
+
+/* A heading and its meta line stop sharing a row once the meta has to wrap
+   twice to fit beside it. */
+@media (max-width: 40rem) {
+  .head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s2);
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -510,32 +523,32 @@ table {
     border-color var(--dur-1) var(--ease);
 }
 .btn:hover:not(:disabled) {
-  background: var(--rubric-wash);
+  background: var(--accent-wash);
 }
 /* Pressed is a filled impression, the way a hand press leaves one. */
 .btn:active:not(:disabled) {
   background: var(--ink);
-  color: var(--paper);
+  color: var(--surface);
   border-color: var(--ink);
 }
 .btn:disabled {
   color: var(--ink-faint);
-  border-color: var(--rule-faint);
+  border-color: var(--border-faint);
   cursor: not-allowed;
 }
 
 .btn--primary {
-  --btn-edge: var(--rubric);
-  --btn-ink: var(--rubric-ink);
+  --btn-edge: var(--accent);
+  --btn-ink: var(--accent-ink);
 }
 .btn--primary:hover:not(:disabled) {
-  background: var(--rubric-wash);
+  background: var(--accent-wash);
 }
 .btn--primary:active:not(:disabled),
 .btn--primary[aria-pressed='true'] {
-  background: var(--rubric);
-  border-color: var(--rubric);
-  color: #fbf7ee;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .btn--quiet {
@@ -543,7 +556,7 @@ table {
   padding-inline: var(--s2);
 }
 .btn--quiet:hover:not(:disabled) {
-  border-color: var(--rule);
+  border-color: var(--border);
   background: transparent;
 }
 
@@ -569,10 +582,10 @@ table {
   width: 100%;
   padding: 0.55rem 0.7rem;
   min-height: 2.5rem;
-  background: var(--paper-raised);
-  border: var(--rule-weight) solid var(--rule);
+  background: var(--surface-raised);
+  border: var(--rule-weight) solid var(--border);
   border-radius: 0;
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 0.9375rem;
   color: var(--ink);
 }
@@ -611,15 +624,15 @@ table {
 /* Focus is bracketed, not glowing: two rules stand off the element like the
    square brackets a compositor sets around a correction. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: var(--rule-weight) solid var(--rubric);
+  outline: var(--rule-weight) solid var(--accent);
   outline-offset: 3px;
 }
 .bracketed:focus-visible,
 .bracketed:focus-within {
   outline: none;
   box-shadow:
-    -4px 0 0 -3px var(--rubric),
-    4px 0 0 -3px var(--rubric);
+    -4px 0 0 -3px var(--accent),
+    4px 0 0 -3px var(--accent);
 }
 
 .check {
@@ -636,19 +649,19 @@ table {
   flex: none;
   margin-top: 0.28rem;
   border: var(--rule-weight) solid var(--ink-quiet);
-  background: var(--paper-raised);
+  background: var(--surface-raised);
   cursor: pointer;
   display: grid;
   place-content: center;
 }
 .check input:checked {
-  border-color: var(--rubric);
+  border-color: var(--accent);
 }
 .check input:checked::after {
   content: '';
   width: 0.55rem;
   height: 0.55rem;
-  background: var(--rubric);
+  background: var(--accent);
 }
 /* A chosen option is a cut seated across the box, not a dot. No radius anywhere. */
 .check input[type='radio']:checked::after {
@@ -656,7 +669,7 @@ table {
   height: 3px;
 }
 .check input:disabled {
-  border-color: var(--rule-faint);
+  border-color: var(--border-faint);
   cursor: not-allowed;
 }
 
@@ -669,7 +682,7 @@ table {
   flex: none;
   position: relative;
   border: var(--rule-weight) solid var(--ink-quiet);
-  background: var(--paper-raised);
+  background: var(--surface-raised);
   cursor: pointer;
 }
 .switch::after {
@@ -681,10 +694,10 @@ table {
   transition: transform var(--dur-2) var(--ease);
 }
 .switch:checked {
-  border-color: var(--rubric);
+  border-color: var(--accent);
 }
 .switch:checked::after {
-  background: var(--rubric);
+  background: var(--accent);
   transform: translateX(1.35rem);
 }
 .switch:disabled {
@@ -703,34 +716,34 @@ table {
 }
 .slider::-webkit-slider-runnable-track {
   height: var(--rule-weight);
-  background: var(--rule);
+  background: var(--border);
 }
 .slider::-moz-range-track {
   height: var(--rule-weight);
-  background: var(--rule);
+  background: var(--border);
 }
 .slider::-webkit-slider-thumb {
   appearance: none;
   width: 3px;
   height: 1.1rem;
   margin-top: -0.55rem;
-  background: var(--rubric);
+  background: var(--accent);
   border: 0;
   border-radius: 0;
 }
 .slider::-moz-range-thumb {
   width: 3px;
   height: 1.1rem;
-  background: var(--rubric);
+  background: var(--accent);
   border: 0;
   border-radius: 0;
 }
 .slider::-moz-range-progress {
   height: var(--rule-weight);
-  background: var(--rubric);
+  background: var(--accent);
 }
 .slider:focus-visible {
-  outline: var(--rule-weight) solid var(--rubric);
+  outline: var(--rule-weight) solid var(--accent);
   outline-offset: 3px;
 }
 .slider:disabled {
@@ -742,70 +755,51 @@ table {
 /* Plates: artwork is tipped in, with a printed border, never bled            */
 /* -------------------------------------------------------------------------- */
 
-.plate {
+.art {
   position: relative;
   display: block;
   flex: none;
-  background: var(--paper-sunk);
-  border: var(--rule-weight) solid var(--rule);
+  background: var(--surface-sunk);
+  border: var(--rule-weight) solid var(--border);
   padding: 3px;
   overflow: hidden;
 }
-.plate img {
+.art img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
-.plate--sm {
+.art--sm {
   width: 2.75rem;
   height: 2.75rem;
 }
-.plate--md {
+.art--md {
   width: 5rem;
   height: 5rem;
 }
-.plate--lg {
+.art--lg {
   width: min(15rem, 40vw);
   height: min(15rem, 40vw);
 }
-/* On a phone the plate yields to the thing being decided. */
+/* On a phone the art yields to the thing being decided. */
 @media (max-width: 48rem) {
-  .plate--lg {
+  .art--lg {
     width: min(9rem, 32vw);
     height: min(9rem, 32vw);
   }
 }
-/* A plate with no image is a *reserved* plate, not a hole: it prints the
-   registration crosshair the image would have been aligned to. */
-.plate__empty {
+/* Artwork with no image is a reserved slot, not a hole: the initials sit on a
+   plain sunk field so a missing cover reads as pending, not broken. */
+.art__empty {
   position: relative;
   width: 100%;
   height: 100%;
   display: grid;
   place-content: center;
 }
-.plate__empty::before,
-.plate__empty::after {
-  content: '';
-  position: absolute;
-  background: var(--rule);
-}
-.plate__empty::before {
-  left: 14%;
-  right: 14%;
-  top: 50%;
-  height: var(--rule-weight);
-}
-.plate__empty::after {
-  top: 14%;
-  bottom: 14%;
-  left: 50%;
-  width: var(--rule-weight);
-}
-.plate__initials {
+.art__initials {
   position: relative;
-  background: var(--paper-sunk);
   padding: 0 0.3em;
   color: var(--ink-faint);
 }
@@ -822,17 +816,17 @@ table {
   width: 100%;
   padding: var(--s3) var(--s2);
   border: 0;
-  border-bottom: var(--rule-weight) solid var(--rule-faint);
+  border-bottom: var(--rule-weight) solid var(--border-faint);
   background: transparent;
   text-align: left;
   cursor: pointer;
   transition: background-color var(--dur-1) var(--ease);
 }
 .entry:hover {
-  background: var(--paper-raised);
+  background: var(--surface-raised);
 }
 .entry[aria-current='true'] {
-  background: var(--rubric-wash);
+  background: var(--accent-wash);
 }
 .entry__position {
   font-family: var(--sans);
@@ -844,7 +838,7 @@ table {
   text-align: right;
 }
 .entry__name {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 1rem;
   line-height: 1.3;
 }
@@ -861,15 +855,15 @@ table {
 
 .panel {
   position: relative;
-  border: var(--rule-weight) solid var(--rule);
-  background: var(--paper-raised);
+  border: var(--rule-weight) solid var(--border);
+  background: var(--surface-raised);
   padding: var(--s4);
 }
 .panel--sunk {
-  background: var(--paper-sunk);
+  background: var(--surface-sunk);
 }
-.panel--rubric {
-  border-color: var(--rubric);
+.panel--accent {
+  border-color: var(--accent);
 }
 
 .corner-marks::before,
@@ -878,7 +872,7 @@ table {
   position: absolute;
   width: 7px;
   height: 7px;
-  border: var(--rule-weight) solid var(--rubric);
+  border: var(--rule-weight) solid var(--accent);
   pointer-events: none;
 }
 .corner-marks::before {
@@ -904,8 +898,8 @@ table {
   top: -4rem;
   z-index: var(--z-toast);
   padding: var(--s2) var(--s4);
-  background: var(--paper-raised);
-  border: var(--rule-weight) solid var(--rubric);
+  background: var(--surface-raised);
+  border: var(--rule-weight) solid var(--accent);
   transition: top var(--dur-2) var(--ease);
 }
 .skip-link:focus {
@@ -936,7 +930,7 @@ table {
 
 .divider-dotted {
   border: 0;
-  border-top: var(--rule-weight) dotted var(--rubric);
+  border-top: var(--rule-weight) dotted var(--accent);
   margin: 0;
 }
 
@@ -949,11 +943,11 @@ table {
   font-size: 0.6875rem;
   letter-spacing: 0.06em;
   padding: 0.1rem 0.4rem;
-  border: var(--rule-weight) solid var(--rule);
+  border: var(--rule-weight) solid var(--border);
   color: var(--ink-quiet);
   white-space: nowrap;
 }
-.tag--rubric {
-  border-color: var(--rubric);
-  color: var(--rubric-ink);
+.tag--accent {
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }

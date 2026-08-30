@@ -1,8 +1,8 @@
-# Ledger
+# Music Ratings
 
-A private ledger for what you actually think of music.
+A private record of what you actually think of music.
 
-Ledger is a local-first, installable web app for rating the music in your Spotify
+Music Ratings is a local-first, installable web app for rating the music in your Spotify
 library — and, more importantly, for turning a pile of disconnected scores into an
 honest ordering of your real favourites and least favourites. It does that with a
 hybrid method: direct ratings on a scale you choose, plus occasional head-to-head
@@ -48,11 +48,12 @@ npm run dev
 
 Then open <http://127.0.0.1:5173>.
 
-On first run choose **Explore with sample data**. That seeds a complete fictional
-catalogue — invented artists, albums, playlists, shows and audiobooks, with a
-plausible rating history — so every screen in the app is usable and testable
-without a Spotify or Microsoft account. The sample data is clearly marked and can
-be removed in one click without touching anything real.
+On first run you choose whether to connect Spotify. Connecting it fills the rating
+queue from your own listening; skipping it gives you an empty library that you can
+fill by hand, or by restoring a backup from Settings.
+
+There is no sample catalogue. Everything you see in the app is either your own
+data or something you fetched from Spotify yourself.
 
 > Use `127.0.0.1`, not `localhost`. Spotify rejects `localhost` as a redirect
 > host. The dev server and preview server are both bound to `127.0.0.1` for this
@@ -62,7 +63,7 @@ be removed in one click without touching anything real.
 
 ## Connecting Spotify
 
-Ledger uses the **Authorization Code with PKCE** flow entirely in the browser.
+Music Ratings uses the **Authorization Code with PKCE** flow entirely in the browser.
 There is no client secret, and one must never be added — a secret in a static site
 is a published secret.
 
@@ -71,7 +72,7 @@ is a published secret.
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
    and select **Create app**.
 2. Give it any name and description.
-3. Under **Redirect URIs**, add the exact URL Ledger will return to:
+3. Under **Redirect URIs**, add the exact URL this app will return to:
    - Local development: `http://127.0.0.1:5173/callback`
    - Deployed: `https://your-domain.example/callback`
      (HTTPS is required for any non-loopback host.)
@@ -80,7 +81,7 @@ is a published secret.
 4. Under **Which API/SDKs are you planning to use?**, tick **Web API**.
 5. Save, then copy the **Client ID**. There is no need to reveal the client secret.
 
-### 2. Give the ID to Ledger
+### 2. Give the ID to the app
 
 Either put it in `.env.local`:
 
@@ -120,19 +121,19 @@ Two further constraints worth knowing before you invite anyone:
 | `playlist-read-private`, `playlist-read-collaborative` | Your playlists and their tracks                                                            |
 | `user-read-playback-position`                          | Only requested if you enable shows or episodes — Spotify requires it for podcast endpoints |
 
-Ledger never requests write scopes. It cannot modify your library, your playlists,
+Music Ratings never requests write scopes. It cannot modify your library, your playlists,
 or your playback.
 
 ---
 
 ## API limitations you should know about
 
-Ledger deliberately does not use, work around, or simulate the Spotify endpoints
+Music Ratings deliberately does not use, work around, or simulate the Spotify endpoints
 that were withdrawn from new applications on **27 November 2024**. Where a feature
 would have depended on one, the app says so rather than approximating it. The
 **Data health** screen lists these at runtime.
 
-| Not available                                               | Consequence in Ledger                                                                                    |
+| Not available                                               | Consequence here                                                                                         |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Recommendations                                             | No "you might like" from Spotify. Exploration suggestions are rule-based and explain their own evidence. |
 | Related Artists                                             | Similar-artist browsing is absent, not faked.                                                            |
@@ -143,20 +144,20 @@ would have depended on one, the app says so rather than approximating it. The
 Other honest limits:
 
 - **Recently played is capped at 50 items** by Spotify, and covers tracks only.
-  Ledger stores each fetch so history accumulates over time on your device.
+  Music Ratings stores each fetch so history accumulates over time on your device.
 - **Audiobooks are available in the US, UK, Canada, Ireland, New Zealand and
   Australia only.** Outside those markets the entity type degrades to
   "unavailable" rather than silently returning nothing.
 - **Some playlist items are unavailable in your market or have been deleted.**
   These are skipped and counted, not dropped silently.
-- **Rate limits** return HTTP 429 with a `Retry-After` header, which Ledger honours
+- **Rate limits** return HTTP 429 with a `Retry-After` header, which Music Ratings honours
   with a visible countdown. In Development Mode a 429 can also mean the app's
-  shared quota is exhausted; Ledger distinguishes the two.
-- If a token expires or a scope is revoked, Ledger refreshes silently where it can
+  shared quota is exhausted; Music Ratings distinguishes the two.
+- If a token expires or a scope is revoked, Music Ratings refreshes silently where it can
   and asks you to reconnect where it cannot. Partial imports are kept, never rolled
   back.
 
-Ledger is not affiliated with or endorsed by Spotify. It stores no lyrics and no
+Music Ratings is not affiliated with or endorsed by Spotify. It stores no lyrics and no
 audio, and makes no claims on Spotify's behalf.
 
 ---
@@ -164,7 +165,7 @@ audio, and makes no claims on Spotify's behalf.
 ## Connecting OneDrive (optional)
 
 Sync is opt-in and uses a **sandboxed application folder** in your own OneDrive —
-Ledger can read and write only its own folder, never the rest of your drive.
+Music Ratings can read and write only its own folder, never the rest of your drive.
 
 1. Register an application in the
    [Microsoft Entra admin centre](https://entra.microsoft.com) →
@@ -181,9 +182,9 @@ Ledger can read and write only its own folder, never the rest of your drive.
 
 Use your own registration. Do not reuse a client ID from another project.
 
-**How sync behaves.** Ledger writes a single JSON snapshot into the app folder.
+**How sync behaves.** Music Ratings writes a single JSON snapshot into the app folder.
 Writes are guarded by the file's ETag, so two devices cannot silently overwrite
-each other. When both have changed since they last agreed, Ledger stops, tells you,
+each other. When both have changed since they last agreed, Music Ratings stops, tells you,
 and asks which side wins — it never merges by guessing. Per-record merging uses
 last-write-wins on `updatedAt`, and deletions are tombstoned so a delete on one
 device is not resurrected by another. MSAL is loaded only when you first connect,
@@ -240,7 +241,7 @@ redirect.
 
 ## Privacy
 
-- Ledger has **no backend**. No analytics, no telemetry, no error reporting, no
+- Music Ratings has **no backend**. No analytics, no telemetry, no error reporting, no
   third-party scripts.
 - Your ratings, notes, tags, comparisons and settings are stored in **IndexedDB in
   your browser**, on your device.

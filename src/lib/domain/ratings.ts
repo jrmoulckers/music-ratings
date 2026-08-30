@@ -85,14 +85,14 @@ export const CONFIDENCE_WEIGHT: Readonly<Record<RatingConfidence, number>> = {
 };
 
 export const CONFIDENCE_LABEL: Readonly<Record<RatingConfidence, string>> = {
-  low: 'Unsure',
-  medium: 'Settled',
+  low: 'Not sure',
+  medium: 'Fairly sure',
   high: 'Certain',
 };
 
 /**
  * Exponential decay by age. `halfLifeDays <= 0` disables decay entirely, which
- * is the default: a judgement does not become wrong because it is old.
+ * is the default: a rating does not become wrong because it is old.
  */
 export function recencyWeight(at: number, now: number, halfLifeDays: number): number {
   if (!(halfLifeDays > 0)) return 1;

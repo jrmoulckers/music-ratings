@@ -110,9 +110,65 @@ describe('database shape', () => {
     });
 
     const database = await db();
-    expect(database.version).toBe(2);
+    expect(database.version).toBe(3);
     expect(database.objectStoreNames.contains('scales')).toBe(true);
     expect(await getEntity(makeEntity('album', 'legacy').id)).toBeTruthy();
+  });
+
+  it('purges the seeded sample catalogue when upgrading past v2', async () => {
+    await closeDatabase();
+    // A v2 database that still holds sample rows alongside real ones.
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 2);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        const entities = database.createObjectStore('entities', { keyPath: 'id' });
+        entities.createIndex('byType', 'type');
+        entities.createIndex('byUpdated', 'updatedAt');
+        const memberships = database.createObjectStore('memberships', { keyPath: 'id' });
+        memberships.createIndex('byParent', 'parentId');
+        memberships.createIndex('byChild', 'childId');
+        const ratings = database.createObjectStore('ratings', { keyPath: 'id' });
+        ratings.createIndex('byEntity', 'entityId');
+        ratings.createIndex('byAt', 'at');
+        ratings.createIndex('byType', 'entityType');
+        const comparisons = database.createObjectStore('comparisons', { keyPath: 'id' });
+        comparisons.createIndex('byType', 'entityType');
+        comparisons.createIndex('byAt', 'at');
+        database.createObjectStore('queueStates', { keyPath: 'id' });
+        database.createObjectStore('annotations', { keyPath: 'id' });
+        database.createObjectStore('collections', { keyPath: 'id' });
+        database.createObjectStore('meta');
+        database.createObjectStore('scales', { keyPath: 'id' });
+      };
+      request.onsuccess = () => {
+        const database = request.result;
+        const tx = database.transaction(['entities', 'ratings'], 'readwrite');
+        const store = tx.objectStore('entities');
+        store.put({ ...makeEntity('album', 'real'), id: 'album:spotify:real' });
+        store.put({ ...makeEntity('album', 'fake'), id: 'album:demo:fake' });
+        tx.objectStore('ratings').put({
+          id: 'r1',
+          entityId: 'album:demo:fake',
+          entityType: 'album',
+          normalized: 80,
+          at: 1,
+          updatedAt: 1,
+        });
+        tx.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    const database = await db();
+    expect(database.version).toBe(3);
+    expect(await getEntity('album:spotify:real')).toBeTruthy();
+    expect(await getEntity('album:demo:fake')).toBeUndefined();
+    expect((await countAll()).ratings).toBe(0);
   });
 
   it('strips reactive proxies before writing', () => {

@@ -7,7 +7,7 @@ import type { EntityId, EntityType, RatingEvent, ScoreBreakdown } from './types'
 /**
  * Taste insights.
  *
- * Everything here is descriptive statistics over the user's own judgements,
+ * Everything here is descriptive statistics over the user's own ratings,
  * computed on the device. Nothing is trained, inferred from other users, or
  * borrowed from a provider's recommender. Each insight carries the evidence
  * that produced it so the user can disagree with it on the facts.
@@ -91,7 +91,7 @@ export function computeInsights(input: InsightInput): Insight[] {
     out.push({
       id: 'favourite',
       kind: 'favourite',
-      title: 'Your highest judgements',
+      title: 'Your highest rated',
       finding: `${top.length} item${top.length === 1 ? '' : 's'} sit at the top of everything you have rated.`,
       evidence: 'Ranked by your explicit rating, highest first. No computed scores involved.',
       weight: 100,
@@ -108,7 +108,7 @@ export function computeInsights(input: InsightInput): Insight[] {
     out.push({
       id: 'avoid',
       kind: 'avoid',
-      title: 'Your lowest judgements',
+      title: 'Your lowest rated',
       finding: 'These are the things you have rated furthest down.',
       evidence: 'Ranked by your explicit rating, lowest first.',
       weight: 90,
@@ -318,7 +318,7 @@ export function computeInsights(input: InsightInput): Insight[] {
     title: 'Probably safe to skip',
     finding: 'Consistently low ratings across several items.',
     evidence:
-      'Four or more rated items inside, averaging 35 or below. A rule over your own ratings, not a judgement about the music.',
+      'Four or more rated items inside, averaging 35 or below. A rule over your own ratings, not a claim about the music.',
     weight: 55,
     entities: deprioritise,
   });

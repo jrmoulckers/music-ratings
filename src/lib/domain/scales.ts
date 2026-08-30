@@ -4,6 +4,19 @@ import type { RatingScale, ScaleKind } from './types';
  * Every configured scale projects onto a single canonical 0..100 axis. Nothing
  * downstream — rollups, rankings, insights, lists — ever sees a raw value, so a
  * user can change scale without losing a single judgement.
+ *
+ * The projection is chosen so that scales agree with each other:
+ *
+ * - **Numeric scales** project by *fraction of the maximum*. "4 out of 5" and
+ *   "8 out of 10" and "80 out of 100" and "4 stars" are all 80, because that is
+ *   what a person means when they say them. Endpoint-stretching would have made
+ *   1/10 and 1/5 both the rock bottom of the axis, which is false.
+ * - **Judgement scales** (thumbs, tiers, custom labelled scales) carry explicit
+ *   `anchors`, because their positions do not mean fractions. A thumbs-up says
+ *   "I like this", not "this is perfect", so it lands at 80 rather than 100.
+ *
+ * The result is that every scale converts to every other scale sensibly, in
+ * both directions, and round-trips back to where it started.
  */
 
 export const NORMALIZED_MIN = 0;
@@ -42,17 +55,25 @@ export const BUILTIN_SCALES: readonly RatingScale[] = [
     step: 1,
     labels: ['Down', 'Up'],
     marks: ['↓', '↑'],
+    // A thumb is a coarse signal, not a verdict on perfection: "I like this"
+    // sits well up the axis without claiming the top of it.
+    anchors: [20, 80],
     builtin: true,
   },
   {
-    id: 'grades',
+    id: 'tiers',
     kind: 'ordinal',
-    label: 'Letter grades',
+    label: 'Tier list (S–F)',
     min: 0,
-    max: 10,
+    max: 5,
     step: 1,
-    labels: ['E', 'D', 'C−', 'C', 'C+', 'B−', 'B', 'B+', 'A−', 'A', 'A+'],
-    marks: ['E', 'D', 'C−', 'C', 'C+', 'B−', 'B', 'B+', 'A−', 'A', 'A+'],
+    labels: ['F', 'D', 'C', 'B', 'A', 'S'],
+    marks: ['F', 'D', 'C', 'B', 'A', 'S'],
+    // Spaced the way tiers are actually used rather than evenly: C sits just
+    // below the middle because "average" is not 40%, and the gap up to S is
+    // wide because S is meant to be earned. Reads 1–5 stars as D/C/B/A/S and
+    // 1–10 as F/D/D/C/C/B/B/A/A/S.
+    anchors: [0, 22, 45, 65, 84, 100],
     builtin: true,
   },
 ];
@@ -116,19 +137,94 @@ export function clampRaw(scale: RatingScale, value: number): number {
   return Math.min(scale.max, Math.max(scale.min, value));
 }
 
+/**
+ * Where each detent of this scale sits on the canonical axis.
+ *
+ * Explicit anchors win. Labelled scales without anchors are ordinal, so their
+ * positions spread evenly. Everything else is numeric and projects by fraction
+ * of the maximum, which is the rule that keeps scales agreeing with each other.
+ */
+export function scaleAnchors(scale: RatingScale): number[] {
+  const values = detentValues(scale);
+  const declared = scale.anchors;
+  if (declared && declared.length === values.length) {
+    return declared.map((a) => clampNormalized(a));
+  }
+  if (scale.labels?.length === values.length && values.length > 1) {
+    return values.map((_, i) => (i / (values.length - 1)) * NORMALIZED_MAX);
+  }
+  if (usesFractionOfMax(scale)) {
+    return values.map((v) => clampNormalized((v / scale.max) * NORMALIZED_MAX));
+  }
+  return values.map((v) =>
+    clampNormalized(((v - scale.min) / (scale.max - scale.min)) * NORMALIZED_MAX),
+  );
+}
+
+/**
+ * A scale reads as "n out of max" when it starts at or above zero and counts
+ * up to a positive maximum. Custom scales that run through negative numbers
+ * have no such reading and fall back to stretching between their endpoints.
+ */
+function usesFractionOfMax(scale: RatingScale): boolean {
+  return scale.min >= 0 && scale.max > 0 && !scale.labels?.length;
+}
+
+/** Whether this scale needs the piecewise anchor projection rather than a formula. */
+function isAnchored(scale: RatingScale): boolean {
+  return Boolean(scale.anchors?.length) || Boolean(scale.labels?.length);
+}
+
+/** Piecewise-linear interpolation through a strictly ascending table. */
+function interpolate(from: number[], to: number[], value: number): number {
+  const n = from.length;
+  if (n === 0) return value;
+  if (n === 1) return to[0] as number;
+  if (value <= (from[0] as number)) return to[0] as number;
+  if (value >= (from[n - 1] as number)) return to[n - 1] as number;
+  for (let i = 1; i < n; i += 1) {
+    const hi = from[i] as number;
+    if (value <= hi) {
+      const lo = from[i - 1] as number;
+      const span = hi - lo;
+      const t = span === 0 ? 0 : (value - lo) / span;
+      const a = to[i - 1] as number;
+      const b = to[i] as number;
+      return a + t * (b - a);
+    }
+  }
+  return to[n - 1] as number;
+}
+
 /** Raw scale value → canonical 0..100. */
 export function normalize(scale: RatingScale, value: number): number {
   assertUsable(scale);
   const clamped = clampRaw(scale, value);
+  if (isAnchored(scale)) {
+    return clampNormalized(interpolate(detentValues(scale), scaleAnchors(scale), clamped));
+  }
+  if (usesFractionOfMax(scale)) {
+    return clampNormalized((clamped / scale.max) * NORMALIZED_MAX);
+  }
   return clampNormalized(((clamped - scale.min) / (scale.max - scale.min)) * NORMALIZED_MAX);
+}
+
+/** Canonical 0..100 → raw value, unsnapped. The continuous inverse of `normalize`. */
+function projectRaw(scale: RatingScale, normalized: number): number {
+  const n = clampNormalized(normalized);
+  if (isAnchored(scale)) {
+    return interpolate(scaleAnchors(scale), detentValues(scale), n);
+  }
+  if (usesFractionOfMax(scale)) {
+    return (n / NORMALIZED_MAX) * scale.max;
+  }
+  return scale.min + (n / NORMALIZED_MAX) * (scale.max - scale.min);
 }
 
 /** Canonical 0..100 → nearest raw value on this scale. */
 export function denormalize(scale: RatingScale, normalized: number): number {
   assertUsable(scale);
-  const n = clampNormalized(normalized);
-  const raw = scale.min + (n / NORMALIZED_MAX) * (scale.max - scale.min);
-  return clampRaw(scale, roundToStep(scale, raw));
+  return clampRaw(scale, roundToStep(scale, projectRaw(scale, normalized)));
 }
 
 /** Index of the detent a normalized value seats on. */
@@ -200,8 +296,7 @@ export function formatComputedOn(scale: RatingScale, normalized: number): string
   if (scale.labels?.length) return formatNormalizedOn(scale, normalized);
   // Deliberately *not* `denormalize`, which seats a value on the nearest detent.
   // A rollup lives between detents, and that is exactly the part worth showing.
-  const n = clampNormalized(normalized);
-  const raw = scale.min + (n / NORMALIZED_MAX) * (scale.max - scale.min);
+  const raw = projectRaw(scale, normalized);
   if (scale.max - scale.min >= 50) return String(Math.round(raw));
   return (Math.round(raw * 10) / 10).toFixed(1);
 }
@@ -217,12 +312,37 @@ export interface MigratedRating {
  *
  * Migration never touches `normalized` — the canonical value *is* the history.
  * Only the presentation value and its scale id move, so a user can switch from
- * stars to letter grades and back without losing anything beyond one detent of
+ * stars to tiers and back without losing anything beyond one detent of
  * display rounding.
  */
 export function migrateRating(from: { normalized: number }, to: RatingScale): MigratedRating {
   const value = denormalize(to, from.normalized);
   return { value, scaleId: to.id, normalized: clampNormalized(from.normalized) };
+}
+
+/** The same judgement, expressed on another scale. */
+export function convertValue(from: RatingScale, value: number, to: RatingScale): number {
+  return denormalize(to, normalize(from, value));
+}
+
+/**
+ * How every position on `scale` reads on each of `others`. Drives the
+ * equivalence table in settings, so the conversion rules are inspectable
+ * rather than something a user has to take on trust.
+ */
+export function equivalenceRows(
+  scale: RatingScale,
+  others: readonly RatingScale[],
+): { value: number; normalized: number; label: string; on: string[] }[] {
+  return detentValues(scale).map((value) => {
+    const normalized = normalize(scale, value);
+    return {
+      value,
+      normalized,
+      label: formatMark(scale, value),
+      on: others.map((other) => formatNormalizedOn(other, normalized)),
+    };
+  });
 }
 
 /**

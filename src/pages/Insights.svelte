@@ -15,14 +15,14 @@
   import Empty from '../components/Empty.svelte';
 
   /**
-   * Findings.
+   * Insights.
    *
    * Every one of these is a rule you can read and check against your own data.
    * Nothing here is a prediction, a model, or a claim that Spotify recommended
    * anything — the evidence line says exactly what produced the finding.
    */
 
-  const findings = $derived(
+  const insights = $derived(
     computeInsights({
       graph: $graph,
       explicit: $explicitRatings,
@@ -39,18 +39,18 @@
     { label: 'What you actually avoid', kinds: ['avoid', 'deprioritise'] },
     { label: 'Where you are undecided', kinds: ['polarizing', 'uncertain', 'drift'] },
     { label: 'Where the record is thin', kinds: ['coverage', 'explore'] },
-    { label: 'What is settled', kinds: ['stable'] },
+    { label: 'Settled rankings', kinds: ['stable'] },
   ];
 
   const grouped = $derived(
     GROUPS.map((group) => ({
       ...group,
-      items: findings.filter((f) => group.kinds.includes(f.kind)),
+      items: insights.filter((f) => group.kinds.includes(f.kind)),
     })).filter((group) => group.items.length > 0),
   );
 
   /**
-   * Findings are computed on the canonical 0–100 basis, but they are read on
+   * Insights are computed on the canonical 0–100 basis, but they are read on
    * whatever scale the reader chose. Where a finding hands back a bare score,
    * print it on that scale instead.
    */
@@ -64,20 +64,20 @@
 
 <div class="sheet">
   <header class="head">
-    <h1 class="display">Findings</h1>
-    <p class="apparatus">computed here, from your ratings only</p>
+    <h1 class="display">Insights</h1>
+    <p class="label">computed here, from your ratings only</p>
   </header>
 
   {#if grouped.length === 0}
     <Empty
       title="Not enough to say anything honest"
-      body="Findings need a body of ratings to describe. Rate twenty or thirty things and patterns start to be worth stating; before that, anything shown here would be noise dressed up as insight."
+      body="Insights need a body of ratings to describe. Rate twenty or thirty things and patterns start to be worth stating; before that, anything shown here would be noise dressed up as insight."
     />
   {:else}
-    <div class="findings">
+    <div class="insights">
       {#each grouped as group (group.label)}
         <section aria-labelledby="g-{group.label}">
-          <h2 id="g-{group.label}" class="findings__group title">{group.label}</h2>
+          <h2 id="g-{group.label}" class="insights__group title">{group.label}</h2>
           {#each group.items as finding (finding.id)}
             <article class="finding">
               <h3 class="finding__title">{finding.title}</h3>
@@ -92,7 +92,7 @@
                   {/each}
                 </ul>
               {/if}
-              <p class="finding__evidence apparatus">Rule: {finding.evidence}</p>
+              <p class="finding__evidence label">Rule: {finding.evidence}</p>
             </article>
           {/each}
         </section>
@@ -107,13 +107,13 @@
 </div>
 
 <style>
-  .findings {
+  .insights {
     display: flex;
     flex-direction: column;
     gap: var(--s6);
   }
 
-  .findings__group {
+  .insights__group {
     padding-bottom: var(--s2);
     border-bottom: var(--rule-weight) solid var(--ink);
     margin-bottom: var(--s3);
@@ -121,7 +121,7 @@
 
   .finding {
     padding: var(--s4) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
     max-width: var(--measure);
   }
   .finding__title {
@@ -131,7 +131,7 @@
     margin-bottom: var(--s1);
   }
   .finding__body {
-    font-family: var(--serif);
+    font-family: var(--display);
     line-height: 1.5;
     margin-bottom: var(--s3);
   }
@@ -142,7 +142,7 @@
     gap: 2px;
     margin-bottom: var(--s3);
     padding-left: var(--s4);
-    border-left: var(--rule-weight) solid var(--rubric);
+    border-left: var(--rule-weight) solid var(--accent);
   }
   .finding__items li {
     display: flex;
@@ -162,7 +162,7 @@
   .disclaimer {
     margin-top: var(--s6);
     padding-top: var(--s3);
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
     max-width: var(--measure);
   }
 </style>

@@ -71,7 +71,7 @@
     {printed}
   </span>
   {#if showKind}
-    <span class="mark__kind apparatus">
+    <span class="mark__kind label">
       {KIND_WORD[kind]}{#if provisional}&nbsp;· provisional{/if}
     </span>
   {/if}
@@ -99,7 +99,7 @@
   }
 
   /* A computed figure is set in italic outline, so it can never be mistaken for
-     a judgement the reader actually made. */
+     a rating the reader actually made. */
   .mark__figure--computed {
     font-style: italic;
     color: var(--ink-quiet);

@@ -5,14 +5,14 @@
   import { formatComputedOn, formatNormalizedOn } from '../lib/domain/scales';
   import type { Comparison, Entity } from '../lib/domain/types';
   import Icon from '../lib/ui/Icon.svelte';
-  import Plate from './Plate.svelte';
+  import Artwork from './Artwork.svelte';
 
   /**
-   * Weighing up.
+   * Head-to-head comparison.
    *
-   * Two items on the beam, the fulcrum between them. Choosing tips the beam
-   * before the next pair loads, so the answer is felt as well as recorded.
-   * "Level" leaves the beam flat — that is the whole point of the shape.
+   * Two items side by side with a pivot between them. Choosing tips the pair
+   * before the next one loads, so the answer is felt as well as recorded.
+   * "Level" leaves it flat, which is a real answer and not a skip.
    */
 
   interface Props {
@@ -38,17 +38,16 @@
     const explicit = $explicitRatings.get(entity.id);
     if (explicit) return `you rated it ${formatNormalizedOn(scale, explicit.normalized)}`;
     const rollup = $scores.get(entity.id)?.rollup;
-    if (rollup !== null && rollup !== undefined)
-      return `computes to ${formatComputedOn(scale, rollup)}`;
+    if (rollup !== null && rollup !== undefined) return `score ${formatComputedOn(scale, rollup)}`;
     return 'no score yet';
   }
 
-  function settledness(entity: Entity): string {
+  function confidenceLine(entity: Entity): string {
     const table = $rankings.get(entity.type);
     const state = table?.get(entity.id);
-    if (!state || state.comparisons === 0) return 'first time on the beam';
+    if (!state || state.comparisons === 0) return 'not compared yet';
     const pct = Math.round(rankingConfidence(state) * 100);
-    return `${state.comparisons} weigh-ins · ${pct}% settled`;
+    return `${state.comparisons} comparisons · ${pct}% confident`;
   }
 
   async function judge(outcome: Comparison['outcome']) {
@@ -96,14 +95,14 @@
 <svelte:window onkeydown={onKey} />
 
 <section
-  class="beam"
+  class="pair"
   class:tip-a={tip === 'a'}
   class:tip-b={tip === 'b'}
   class:level={tip === 'level'}
 >
-  <p class="beam__reason note">{reason}</p>
+  <p class="pair__reason note">{reason}</p>
 
-  <div class="beam__pans">
+  <div class="pair__pans">
     <button
       type="button"
       class="pan pan--a"
@@ -111,10 +110,10 @@
       onclick={() => void judge('a')}
       aria-label="Prefer {a.name}"
     >
-      <Plate src={a.artworkUrl} thumb={a.artworkThumbUrl} name={a.name} size="lg" priority />
+      <Artwork src={a.artworkUrl} thumb={a.artworkThumbUrl} name={a.name} size="lg" priority />
       <span class="pan__name title">{a.name}</span>
       {#if a.subtitle}<span class="note">{a.subtitle}</span>{/if}
-      <span class="apparatus">{standing(a)} · {settledness(a)}</span>
+      <span class="label">{standing(a)} · {confidenceLine(a)}</span>
       <span class="pan__choose">
         <Icon name="check" size={13} />
         This one
@@ -135,10 +134,10 @@
       onclick={() => void judge('b')}
       aria-label="Prefer {b.name}"
     >
-      <Plate src={b.artworkUrl} thumb={b.artworkThumbUrl} name={b.name} size="lg" priority />
+      <Artwork src={b.artworkUrl} thumb={b.artworkThumbUrl} name={b.name} size="lg" priority />
       <span class="pan__name title">{b.name}</span>
       {#if b.subtitle}<span class="note">{b.subtitle}</span>{/if}
-      <span class="apparatus">{standing(b)} · {settledness(b)}</span>
+      <span class="label">{standing(b)} · {confidenceLine(b)}</span>
       <span class="pan__choose">
         <Icon name="check" size={13} />
         This one
@@ -147,9 +146,9 @@
     </button>
   </div>
 
-  <div class="beam__outs">
+  <div class="pair__outs">
     <button type="button" class="btn" disabled={busy} onclick={() => void judge('tie')}>
-      <Icon name="balance" size={14} /> Level <kbd>=</kbd>
+      <Icon name="versus" size={14} /> Level <kbd>=</kbd>
     </button>
     <button
       type="button"
@@ -166,19 +165,19 @@
 </section>
 
 <style>
-  .beam {
+  .pair {
     display: flex;
     flex-direction: column;
     gap: var(--s5);
   }
 
-  .beam__reason {
+  .pair__reason {
     text-align: center;
     max-width: 56ch;
     margin-inline: auto;
   }
 
-  .beam__pans {
+  .pair__pans {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
@@ -191,8 +190,8 @@
     align-items: center;
     gap: var(--s2);
     padding: var(--s5) var(--s4);
-    background: var(--paper-raised);
-    border: var(--rule-weight) solid var(--rule);
+    background: var(--surface-raised);
+    border: var(--rule-weight) solid var(--border);
     cursor: pointer;
     text-align: center;
     color: inherit;
@@ -204,7 +203,7 @@
   }
   .pan:hover:not(:disabled) {
     border-color: var(--ink);
-    background: var(--paper);
+    background: var(--surface);
   }
   .pan:disabled {
     cursor: default;
@@ -222,7 +221,7 @@
     gap: var(--s2);
     margin-top: var(--s3);
     padding: var(--s2) var(--s3);
-    border: var(--rule-weight) solid var(--rule);
+    border: var(--rule-weight) solid var(--border);
     font-family: var(--sans);
     font-size: 0.6875rem;
     font-weight: 600;
@@ -235,8 +234,8 @@
   }
   .pan:hover:not(:disabled) .pan__choose,
   .pan:focus-visible .pan__choose {
-    color: var(--rubric-ink);
-    border-color: var(--rubric);
+    color: var(--accent-ink);
+    border-color: var(--accent);
   }
 
   /* A key cap is a lie on a device with no keys. */
@@ -246,18 +245,18 @@
     }
   }
 
-  /* The beam tips. Both pans move, because a balance has one body. */
-  .beam.tip-a .pan--a,
-  .beam.tip-b .pan--b {
+  /* Both sides move together, because the pair is one object. */
+  .pair.tip-a .pan--a,
+  .pair.tip-b .pan--b {
     transform: translateY(6px);
-    border-color: var(--rubric);
+    border-color: var(--accent);
   }
-  .beam.tip-a .pan--b,
-  .beam.tip-b .pan--a {
+  .pair.tip-a .pan--b,
+  .pair.tip-b .pan--a {
     transform: translateY(-6px);
     opacity: 0.55;
   }
-  .beam.level .pan {
+  .pair.level .pan {
     border-color: var(--ink-quiet);
   }
 
@@ -272,42 +271,42 @@
   .fulcrum__rule {
     flex: 1;
     width: var(--rule-weight);
-    background: var(--rule);
+    background: var(--border);
     min-height: var(--s5);
   }
   .fulcrum__pivot {
     width: 9px;
     height: 9px;
-    background: var(--rubric);
+    background: var(--accent);
     transform: rotate(45deg);
     transition: transform var(--dur-2) var(--ease);
   }
-  .beam.tip-a .fulcrum__pivot {
+  .pair.tip-a .fulcrum__pivot {
     transform: rotate(45deg) translate(-3px, 3px);
   }
-  .beam.tip-b .fulcrum__pivot {
+  .pair.tip-b .fulcrum__pivot {
     transform: rotate(45deg) translate(3px, -3px);
   }
 
-  .beam__outs {
+  .pair__outs {
     display: flex;
     justify-content: center;
     gap: var(--s2);
     flex-wrap: wrap;
     padding-top: var(--s4);
-    border-top: var(--rule-weight) solid var(--rule-faint);
+    border-top: var(--rule-weight) solid var(--border-faint);
   }
 
   kbd {
     font-family: var(--mono);
     font-size: 0.625rem;
-    border: var(--rule-weight) solid var(--rule);
+    border: var(--rule-weight) solid var(--border);
     padding: 0 3px;
     color: var(--ink-faint);
   }
 
   @media (max-width: 48rem) {
-    .beam__pans {
+    .pair__pans {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--s3);
     }
@@ -325,12 +324,12 @@
     .pan {
       padding: var(--s4);
     }
-    .beam.tip-a .pan--a,
-    .beam.tip-b .pan--b {
+    .pair.tip-a .pan--a,
+    .pair.tip-b .pan--b {
       transform: translateX(6px);
     }
-    .beam.tip-a .pan--b,
-    .beam.tip-b .pan--a {
+    .pair.tip-a .pan--b,
+    .pair.tip-b .pan--a {
       transform: translateX(-6px);
     }
   }
@@ -340,10 +339,10 @@
     .fulcrum__pivot {
       transition: none;
     }
-    .beam.tip-a .pan--a,
-    .beam.tip-b .pan--b,
-    .beam.tip-a .pan--b,
-    .beam.tip-b .pan--a {
+    .pair.tip-a .pan--a,
+    .pair.tip-b .pan--b,
+    .pair.tip-a .pan--b,
+    .pair.tip-b .pan--a {
       transform: none;
     }
   }

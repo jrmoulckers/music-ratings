@@ -8,10 +8,10 @@
 
 const AUTH_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const STORAGE_KEY = 'ledger:spotify-token';
-const VERIFIER_KEY = 'ledger:spotify-verifier';
-const RETURN_KEY = 'ledger:spotify-return';
-const STATE_KEY = 'ledger:spotify-state';
+const STORAGE_KEY = 'music-ratings:spotify-token';
+const VERIFIER_KEY = 'music-ratings:spotify-verifier';
+const RETURN_KEY = 'music-ratings:spotify-return';
+const STATE_KEY = 'music-ratings:spotify-state';
 
 /**
  * Read-only, and no more than the app actually uses. Playback scopes are

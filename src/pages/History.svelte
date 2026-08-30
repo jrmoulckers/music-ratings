@@ -17,7 +17,7 @@
   /**
    * The record.
    *
-   * Every judgement, in the order it was made, grouped by day. Nothing is
+   * Every rating, in the order it was made, grouped by day. Nothing is
    * silently rewritten: an amendment is a new entry, a withdrawal is struck
    * through rather than erased.
    */
@@ -74,15 +74,15 @@
 <div class="sheet setting">
   <div class="stack">
     <header class="head">
-      <h1 class="display">The record</h1>
-      <p class="apparatus">{events.length.toLocaleString()} entries</p>
+      <h1 class="display">History</h1>
+      <p class="label">{events.length.toLocaleString()} entries</p>
     </header>
 
     {#if days.length > 0}
       <div class="record">
         {#each days as [day, entries] (day)}
           <section class="day">
-            <h2 class="day__label apparatus">{day}</h2>
+            <h2 class="day__label label">{day}</h2>
             <ol class="day__entries">
               {#each entries as event (event.id)}
                 {@const entity = $graph.entity(event.entityId)}
@@ -98,7 +98,7 @@
                         {event.entityId} — no longer in the catalogue
                       </span>
                     {/if}
-                    <span class="apparatus">
+                    <span class="label">
                       {entityLabel(event.entityType)} · {dateAndTime(event.at)}
                       {#if event.confidence && event.confidence !== 'medium'}
                         · {event.confidence} confidence
@@ -106,7 +106,7 @@
                     </span>
                     {#if event.note}<span class="note">“{event.note}”</span>{/if}
                     {#if event.tags?.length}
-                      <span class="apparatus">{event.tags.join(' · ')}</span>
+                      <span class="label">{event.tags.join(' · ')}</span>
                     {/if}
                   </span>
                   <span class="entry__acts">
@@ -149,9 +149,9 @@
 
   <aside class="margin">
     <div class="stack stack--tight">
-      <h2 class="apparatus">Filter</h2>
+      <h2 class="label">Filter</h2>
       <label class="field">
-        <span class="apparatus">Kind</span>
+        <span class="label">Kind</span>
         <select class="select" bind:value={typeFilter}>
           <option value="all">Everything</option>
           {#each $settings.enabledTypes as t (t)}
@@ -160,7 +160,7 @@
         </select>
       </label>
       <label class="field">
-        <span class="apparatus">Contains</span>
+        <span class="label">Contains</span>
         <input class="input" type="search" bind:value={search} placeholder="Name or note" />
       </label>
       <label class="check">
@@ -171,7 +171,7 @@
 
     {#if swing}
       <div class="stack stack--tight">
-        <h2 class="apparatus">Drift</h2>
+        <h2 class="label">Drift</h2>
         <p class="note">
           Your average this month is {Math.round(swing.recent)} against {Math.round(swing.before)} over
           the year before it — {Math.abs(swing.recent - swing.before) < 3
@@ -181,7 +181,7 @@
               : 'you are marking harder'}.
         </p>
         <p class="note note--small">
-          Based on {swing.n} recent entries. Descriptive, not a judgement.
+          Based on {swing.n} recent entries. Descriptive only.
         </p>
       </div>
     {/if}
@@ -211,7 +211,7 @@
     gap: var(--s3);
     align-items: baseline;
     padding: var(--s3) 0;
-    border-bottom: var(--rule-weight) solid var(--rule-faint);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
   .day__entries li.is-retracted .entry__mark,
   .day__entries li.is-retracted .entry__name {
@@ -220,7 +220,7 @@
   }
 
   .entry__mark {
-    color: var(--rubric-ink);
+    color: var(--accent-ink);
     font-size: 1rem;
   }
   .entry__body {
