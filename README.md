@@ -31,6 +31,14 @@ belonging to anyone but you.
 - **Show you your taste** — polarising artists, hidden gems, drift over time,
   completion gaps, stable versus uncertain rankings — computed locally from your
   own data by rules you can read.
+- **Combine duplicates.** The same record reaches a library several times over —
+  an original, a remaster, a regional edition, the same song again on a
+  compilation. Declare them one thing and they become one row everywhere: one
+  entry in every list, one candidate in every comparison, one child in every
+  rollup. Nothing is deleted, every source keeps its own Spotify link, and where
+  two of them were rated the two ratings are averaged into one new entry with
+  both originals left in your history. It comes apart again, and separating puts
+  every rating back.
 - **Rate what is playing.** Music Ratings is a Spotify Connect remote: transport,
   devices, queue, and — if you want it — this browser as a Connect device of its
   own. Rate the track, the record and the performer without leaving the music, and
@@ -322,11 +330,17 @@ redirect.
   the sync protocol. `src/lib/spotify/` owns PKCE auth, the rate-limited API client,
   and mapping Spotify's shapes into the domain's.
 - `src/lib/app/` is the reactive layer: one derived chain
-  (`world → graph → ratings → rankings → scores → suggestions`) that every screen
-  reads, so no screen decides for itself what an item's score is.
+  (`world → canonical → graph → ratings → rankings → scores → suggestions`) that
+  every screen reads, so no screen decides for itself what an item's score is.
 - Rating events are **immutable and temporal**. Every rating is normalised to 0–100
   on write, so changing your scale re-labels your history rather than rewriting it.
   Rankings are derived by replaying the comparison log, never stored.
+- Combining duplicates is a **resolution rule, not an edit**. A canonical group
+  names the sources and which of them is primary; its primary's own id is the
+  canonical id, so no invented identifier ever reaches a rating, a comparison or
+  a URL. Every stored row keeps the subject it was written against and the
+  derived chain resolves source ids as it reads, which is why a combine — or an
+  uncombine, or changing the primary — costs one small record and loses nothing.
 
 See `PRODUCT.md` for what the product is, and `DESIGN.md` for how it looks and why.
 

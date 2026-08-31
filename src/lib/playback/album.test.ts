@@ -89,6 +89,21 @@ describe('albumRows', () => {
         ?.position,
     ).toBe(1);
   });
+
+  it('recognises a row by any copy of it that has been combined into one', () => {
+    const rows = albumRows({
+      tracks,
+      // What Spotify is playing is the remastered copy, folded into row three.
+      currentUri: 'spotify:track:t3-remaster',
+      listened: new Set(),
+      rated: new Set(),
+      urisOf: (entity) =>
+        entity.providerId === 't3'
+          ? ['spotify:track:t3', 'spotify:track:t3-remaster']
+          : [`spotify:track:${entity.providerId}`],
+    });
+    expect(rows.map((r) => r.state)).toEqual(['played', 'played', 'current', 'upcoming']);
+  });
 });
 
 describe('albumProgress', () => {

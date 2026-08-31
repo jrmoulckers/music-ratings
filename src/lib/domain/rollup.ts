@@ -195,6 +195,8 @@ const EXCLUSION_TEXT: Record<ExclusionCode, (n: number) => string> = {
   'below-coverage': () => 'Coverage is below your threshold, so this score is marked provisional.',
   self: () => 'The item itself is not counted as one of its own children.',
   'marked-duplicate': (n) => `${n} item${n === 1 ? '' : 's'} you folded into another record.`,
+  combined: (n) =>
+    `${n} link${n === 1 ? '' : 's'} led to a copy you combined with something already counted.`,
 };
 
 function note(code: ExclusionCode, count: number): ExclusionNote {
@@ -221,6 +223,14 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
 
   const walk = entity ? walkDescendants(input.graph, entityId) : { hits: [], duplicatePaths: 0 };
   if (walk.duplicatePaths > 0) exclusions.push(note('duplicate-path', walk.duplicatePaths));
+
+  // Links that landed on a copy the user has combined with something already
+  // inside. They were not dropped for being wrong — they were the same item
+  // twice — but a rollup that stayed silent about them would be hiding the
+  // reason a release with twenty links shows eighteen children.
+  let foldedLinks = entity ? input.graph.foldedEdges(entityId) : 0;
+  for (const hit of walk.hits) foldedLinks += input.graph.foldedEdges(hit.entityId);
+  if (foldedLinks > 0) exclusions.push(note('combined', foldedLinks));
 
   const annotations = input.annotations;
   const usable: DescendantHit[] = [];

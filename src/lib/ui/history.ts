@@ -77,6 +77,7 @@ const CONTEXT_WORDS: Record<RatingContext, string> = {
   bulk: 'rated in bulk',
   'now-playing': 'while it was playing',
   'album-listening': 'while listening to the release',
+  combine: 'averaged when you combined duplicates',
 };
 
 export function contextWords(context: RatingContext | undefined): string {

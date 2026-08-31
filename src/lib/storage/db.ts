@@ -6,7 +6,9 @@ import {
   type StoreNames,
 } from 'idb';
 
+import { uid } from '../domain/ids';
 import type {
+  CanonicalGroup,
   Collection,
   Comparison,
   Entity,
@@ -21,7 +23,7 @@ import type {
 import type { AppSettings } from './settings';
 
 export const DB_NAME = 'music-ratings';
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /**
  * Everything the app knows lives here, on this device, in the user's browser.
@@ -53,6 +55,12 @@ export interface AppDB extends DBSchema {
   annotations: { key: EntityId; value: EntityAnnotation };
   collections: { key: string; value: Collection };
   scales: { key: string; value: RatingScale };
+  /** Sources the user has declared to be one record. */
+  canonicalGroups: {
+    key: string;
+    value: CanonicalGroup;
+    indexes: { byType: EntityType };
+  };
   /** Free-form singletons: settings, sync bookkeeping, provider cursors. */
   meta: { key: string; value: unknown };
 }
@@ -66,6 +74,7 @@ export type StoreName =
   | 'annotations'
   | 'collections'
   | 'scales'
+  | 'canonicalGroups'
   | 'meta';
 
 /** Stores whose records take part in sync. `meta` is handled separately. */
@@ -78,6 +87,7 @@ export const SYNCED_STORES = [
   'annotations',
   'collections',
   'scales',
+  'canonicalGroups',
 ] as const satisfies readonly StoreName[];
 
 export type SyncedStore = (typeof SYNCED_STORES)[number];
@@ -133,6 +143,13 @@ export function db(): Promise<IDBPDatabase<AppDB>> {
           // and leaving it behind is exactly the confusion the removal fixes.
           purgeSeededSampleData(transaction);
         }
+        if (oldVersion < 4) {
+          // v4 made combining duplicates a first-class, reversible record
+          // rather than a one-way pointer on a note.
+          const groups = database.createObjectStore('canonicalGroups', { keyPath: 'id' });
+          groups.createIndex('byType', 'entityType');
+          bridgeDuplicateAnnotations(transaction);
+        }
       },
       blocked() {
         blockedNotice?.(
@@ -183,6 +200,69 @@ function purgeSeededSampleData(
   purge('comparisons', (v) => [(v as { aId?: unknown }).aId, (v as { bId?: unknown }).bId]);
   purge('queueStates', (v) => [(v as { id?: unknown }).id]);
   purge('annotations', (v) => [(v as { id?: unknown }).id]);
+}
+
+/**
+ * Turns every legacy `duplicateOf` pointer into a real canonical group.
+ *
+ * Before v4 an alternate release was recorded as a one-way note on the copy
+ * that lost: it excluded that copy from rollups and did nothing else — no
+ * shared rating, no way back. Each pointer becomes a group here so the same
+ * intention now behaves the way the feature does, and can be undone.
+ *
+ * The annotations themselves are left exactly as they are. Rewriting them would
+ * bump their `updatedAt` and push a device that has not upgraded yet into
+ * losing an edit it made in the meantime; and the reader bridges any pointer
+ * that arrives later from such a device anyway.
+ */
+function bridgeDuplicateAnnotations(
+  transaction: IDBPTransaction<AppDB, ArrayLike<StoreNames<AppDB>>, 'versionchange'>,
+): void {
+  const typeOf = (id: string): string => {
+    const first = id.indexOf(':');
+    return first > 0 ? id.slice(0, first) : '';
+  };
+
+  const byCanonical = new Map<string, Set<string>>();
+  const groups = transaction.objectStore('canonicalGroups');
+  const now = Date.now();
+
+  void transaction
+    .objectStore('annotations')
+    .openCursor()
+    .then(function step(cursor): unknown {
+      if (!cursor) {
+        for (const [canonicalId, aliases] of byCanonical) {
+          const memberIds = [...new Set([canonicalId, ...aliases])].sort();
+          if (memberIds.length < 2) continue;
+          void groups.put({
+            id: uid('grp'),
+            entityType: typeOf(canonicalId) as EntityType,
+            primaryId: canonicalId,
+            memberIds,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+        return undefined;
+      }
+      const value = cursor.value as { id?: unknown; duplicateOf?: unknown; deleted?: unknown };
+      const aliasId = value.id;
+      const canonicalId = value.duplicateOf;
+      if (
+        !value.deleted &&
+        typeof aliasId === 'string' &&
+        typeof canonicalId === 'string' &&
+        aliasId !== canonicalId &&
+        typeOf(aliasId) !== '' &&
+        typeOf(aliasId) === typeOf(canonicalId)
+      ) {
+        const set = byCanonical.get(canonicalId);
+        if (set) set.add(aliasId);
+        else byCanonical.set(canonicalId, new Set([aliasId]));
+      }
+      return cursor.continue().then(step);
+    });
 }
 
 /** For tests and for "erase everything" in settings. */

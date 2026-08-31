@@ -30,6 +30,12 @@ export interface AlbumRowsInput {
   currentUri: string | null;
   listened: ReadonlySet<EntityId>;
   rated: ReadonlySet<EntityId>;
+  /**
+   * Every Spotify URI a row answers to. A row standing for several combined
+   * copies of one recording answers to all of them, because what is playing is
+   * one particular copy and the list must still recognise it.
+   */
+  urisOf?: (entity: Entity) => readonly string[];
 }
 
 function uriOf(entity: Entity): string {
@@ -45,8 +51,9 @@ function uriOf(entity: Entity): string {
  * once, so both are kept.
  */
 export function albumRows(input: AlbumRowsInput): AlbumTrackRow[] {
+  const uris = input.urisOf ?? ((entity: Entity) => [uriOf(entity)]);
   const index = input.currentUri
-    ? input.tracks.findIndex((track) => uriOf(track) === input.currentUri)
+    ? input.tracks.findIndex((track) => uris(track).includes(input.currentUri as string))
     : -1;
   return input.tracks.map((entity, i) => ({
     entity,

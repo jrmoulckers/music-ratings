@@ -60,10 +60,17 @@ export type RankingTable = Map<EntityId, RankingState>;
  * Comparisons are kept strictly within a type: cross-type duels are off by
  * default because "is this album better than that artist" is not a question the
  * rating model can answer honestly.
+ *
+ * `resolve` maps each side onto its canonical id before the replay, so
+ * comparisons made against a copy that has since been combined still count.
+ * A pair whose two sides became the same record is dropped: it was a real
+ * judgement about two things the user then declared to be one, and feeding it
+ * to Elo as a draw against itself would invent evidence.
  */
 export function computeRankings(
   comparisons: readonly Comparison[],
   entityType?: EntityType,
+  resolve: (id: EntityId) => EntityId = (id) => id,
 ): RankingTable {
   const table: RankingTable = new Map();
   const relevant = comparisons.filter(
@@ -71,9 +78,11 @@ export function computeRankings(
   );
 
   for (const c of sortComparisons(relevant)) {
-    if (c.aId === c.bId) continue;
-    const a = table.get(c.aId) ?? seedState(c.aId, c.entityType);
-    const b = table.get(c.bId) ?? seedState(c.bId, c.entityType);
+    const aId = resolve(c.aId);
+    const bId = resolve(c.bId);
+    if (aId === bId) continue;
+    const a = table.get(aId) ?? seedState(aId, c.entityType);
+    const b = table.get(bId) ?? seedState(bId, c.entityType);
 
     const scoreA = c.outcome === 'a' ? 1 : c.outcome === 'b' ? 0 : 0.5;
     const expA = expectedScore(a.rating, b.rating);
@@ -99,8 +108,8 @@ export function computeRankings(
       b.draws += 1;
     }
 
-    table.set(c.aId, a);
-    table.set(c.bId, b);
+    table.set(aId, a);
+    table.set(bId, b);
   }
   return table;
 }

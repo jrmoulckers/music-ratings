@@ -50,6 +50,8 @@
       currentUri: onAlbum ? (snapshot?.item?.uri ?? null) : null,
       listened,
       rated,
+      urisOf: (track) =>
+        $graph.sourcesOf(track.id).map((source) => `spotify:track:${source.providerId}`),
     }),
   );
   const progress = $derived(albumProgress(rows));
@@ -77,7 +79,14 @@
     const previous = sounding;
     sounding = uri;
     if (!previous) return;
-    const left = tracks.find((track) => `spotify:track:${track.providerId}` === previous);
+    // Matched against every source behind a row, not only the one standing for
+    // it: what Spotify is playing is one particular recording, and combining
+    // two of them must not stop either from being recognised as heard.
+    const left = tracks.find((track) =>
+      $graph
+        .sourcesOf(track.id)
+        .some((source) => `spotify:track:${source.providerId}` === previous),
+    );
     if (left) noteListened(left.id);
   });
 

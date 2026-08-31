@@ -8,7 +8,20 @@ import type { Entity, EntityId, EntityType, Membership } from './types';
  * distinct descendant must contribute exactly once — otherwise a track that
  * happens to sit on a compilation as well as its album would count twice and
  * quietly skew the result.
+ *
+ * Combined duplicates are folded in here, once, for everybody. Given a
+ * resolver, the graph holds one node per canonical group: alias records are
+ * kept and remain reachable by their own id, but they no longer appear in any
+ * listing, and every containment edge is re-pointed at the canonical id and
+ * de-duplicated. That is what makes a combined remaster stop being a second row
+ * in every list, a second candidate in every duel and a second child in every
+ * rollup, without a single caller having to know that combining exists.
  */
+
+/** All the graph needs of the canonical index: one id in, one id out. */
+export interface CanonicalLookup {
+  resolve(id: EntityId): EntityId;
+}
 
 export interface GraphEdge {
   parentId: EntityId;
@@ -23,34 +36,117 @@ export class ContainmentGraph {
   private readonly childrenOf = new Map<EntityId, GraphEdge[]>();
   private readonly parentsOf = new Map<EntityId, GraphEdge[]>();
   private readonly entities = new Map<EntityId, Entity>();
+  /** Every live record by its own id, alias records included. */
+  private readonly sources = new Map<EntityId, Entity>();
+  /** Alias id → the canonical id it was folded into. */
+  private readonly aliasTo = new Map<EntityId, EntityId>();
+  /** Canonical id → every source record, primary first. */
+  private readonly sourcesOfCanonical = new Map<EntityId, Entity[]>();
+  /** Parent id → edges dropped because they landed on something already there. */
+  private readonly folded = new Map<EntityId, number>();
 
-  constructor(entities: readonly Entity[], memberships: readonly Membership[]) {
+  constructor(
+    entities: readonly Entity[],
+    memberships: readonly Membership[],
+    canonical?: CanonicalLookup,
+  ) {
     for (const e of entities) {
       if (e.deleted) continue;
+      this.sources.set(e.id, e);
+    }
+
+    for (const e of this.sources.values()) {
+      const canonicalId = canonical?.resolve(e.id) ?? e.id;
+      const primary = canonicalId === e.id ? undefined : this.sources.get(canonicalId);
+      // A group whose primary is not in the library (removed, or not synced
+      // here yet) leaves its aliases standing on their own rather than
+      // vanishing. Nothing is ever hidden because a pointer went stale.
+      if (primary && primary.type === e.type) {
+        this.aliasTo.set(e.id, canonicalId);
+        continue;
+      }
       this.entities.set(e.id, e);
     }
+
+    for (const [aliasId, canonicalId] of this.aliasTo) {
+      const alias = this.sources.get(aliasId);
+      if (!alias) continue;
+      const list = this.sourcesOfCanonical.get(canonicalId);
+      if (list) list.push(alias);
+      else {
+        const primary = this.entities.get(canonicalId);
+        this.sourcesOfCanonical.set(canonicalId, primary ? [primary, alias] : [alias]);
+      }
+    }
+    for (const list of this.sourcesOfCanonical.values()) {
+      const [primary, ...rest] = list;
+      rest.sort((a, b) => (a.id < b.id ? -1 : 1));
+      list.length = 0;
+      if (primary) list.push(primary, ...rest);
+    }
+
+    const seen = new Set<string>();
     for (const m of memberships) {
       if (m.deleted) continue;
-      if (!this.entities.has(m.parentId) || !this.entities.has(m.childId)) continue;
+      const parentId = this.canonicalId(m.parentId);
+      const childId = this.canonicalId(m.childId);
+      if (!this.entities.has(parentId) || !this.entities.has(childId)) continue;
+      // Two sources of the same record can carry the same link, and a track
+      // combined with one of its own album's tracks would otherwise contain
+      // itself. Both are counted and reported rather than silently dropped.
+      if (parentId === childId || seen.has(`${parentId}|${childId}`)) {
+        this.folded.set(parentId, (this.folded.get(parentId) ?? 0) + 1);
+        continue;
+      }
+      seen.add(`${parentId}|${childId}`);
       const edge: GraphEdge = {
-        parentId: m.parentId,
-        childId: m.childId,
-        parentType: m.parentType,
-        childType: m.childType,
+        parentId,
+        childId,
+        parentType: this.entities.get(parentId)?.type ?? m.parentType,
+        childType: this.entities.get(childId)?.type ?? m.childType,
         share: m.share ?? 1,
       };
       if (m.position != null) edge.position = m.position;
-      push(this.childrenOf, m.parentId, edge);
-      push(this.parentsOf, m.childId, edge);
+      push(this.childrenOf, parentId, edge);
+      push(this.parentsOf, childId, edge);
     }
   }
 
+  /** The canonical id for any id, whether or not it is combined. */
+  canonicalId(id: EntityId): EntityId {
+    return this.aliasTo.get(id) ?? id;
+  }
+
+  /** The entity a caller means by this id: an alias resolves to its canonical. */
   entity(id: EntityId): Entity | undefined {
-    return this.entities.get(id);
+    return this.entities.get(id) ?? this.entities.get(this.canonicalId(id));
+  }
+
+  /** The record stored under exactly this id, alias or not. */
+  source(id: EntityId): Entity | undefined {
+    return this.sources.get(id);
+  }
+
+  /** Every source record behind an entity, primary first. One when uncombined. */
+  sourcesOf(id: EntityId): Entity[] {
+    const canonical = this.canonicalId(id);
+    const list = this.sourcesOfCanonical.get(canonical);
+    if (list) return [...list];
+    const single = this.entities.get(canonical);
+    return single ? [single] : [];
+  }
+
+  isCombined(id: EntityId): boolean {
+    return this.sourcesOfCanonical.has(this.canonicalId(id));
+  }
+
+  /** How many containment links under this parent were folded into others. */
+  foldedEdges(id: EntityId): number {
+    return this.folded.get(this.canonicalId(id)) ?? 0;
   }
 
   has(id: EntityId): boolean {
-    return this.entities.has(id);
+    return this.entity(id) !== undefined;
   }
 
   allEntities(): Entity[] {
@@ -63,7 +159,7 @@ export class ContainmentGraph {
 
   /** Direct children, sorted by position then id so output is stable. */
   children(id: EntityId): GraphEdge[] {
-    const edges = this.childrenOf.get(id) ?? [];
+    const edges = this.childrenOf.get(this.canonicalId(id)) ?? [];
     return [...edges].sort((a, b) => {
       const pa = a.position ?? Number.MAX_SAFE_INTEGER;
       const pb = b.position ?? Number.MAX_SAFE_INTEGER;
@@ -73,7 +169,7 @@ export class ContainmentGraph {
   }
 
   parents(id: EntityId): GraphEdge[] {
-    return this.parentsOf.get(id) ?? [];
+    return this.parentsOf.get(this.canonicalId(id)) ?? [];
   }
 
   /** Direct children restricted to one type. */

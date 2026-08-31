@@ -11,15 +11,20 @@ import type {
 } from '../domain/types';
 import {
   clearQueueState,
-  patchAnnotation,
+  combineEntities,
+  patchCanonicalAnnotation,
   recordComparison,
   recordRating,
   retractRating,
+  revertCombine,
+  setGroupPrimary,
   setQueueState,
+  uncombineGroup,
   undoComparison,
+  type CombineResult,
 } from '../storage/repo';
 import { announce, notify } from './notices';
-import { annotationsById, scaleForType } from './state';
+import { annotationsById, canonical, scaleForType } from './state';
 
 /**
  * The verbs the screens call.
@@ -111,7 +116,9 @@ export async function restoreToQueue(entity: Entity): Promise<void> {
 
 export async function pin(entity: Entity, kind: 'favorite' | 'avoid' | null): Promise<void> {
   const existing = get(annotationsById).get(entity.id);
-  await patchAnnotation(entity.id, {
+  const index = get(canonical);
+  const id = index.resolve(entity.id);
+  await patchCanonicalAnnotation(id, index.members(id), {
     tags: existing?.tags ?? [],
     ...(kind ? { pinned: kind } : { pinned: undefined }),
   });
@@ -126,12 +133,16 @@ export async function pin(entity: Entity, kind: 'favorite' | 'avoid' | null): Pr
 }
 
 export async function setTags(entityId: EntityId, tags: string[]): Promise<void> {
-  await patchAnnotation(entityId, { tags });
+  const index = get(canonical);
+  const id = index.resolve(entityId);
+  await patchCanonicalAnnotation(id, index.members(id), { tags });
 }
 
 export async function setStandingNote(entityId: EntityId, note: string): Promise<void> {
   const existing = get(annotationsById).get(entityId);
-  await patchAnnotation(entityId, {
+  const index = get(canonical);
+  const id = index.resolve(entityId);
+  await patchCanonicalAnnotation(id, index.members(id), {
     tags: existing?.tags ?? [],
     ...(note.trim() ? { note: note.trim() } : { note: undefined }),
   });
@@ -161,4 +172,67 @@ export async function submitComparison(
     action: { label: 'Undo', run: () => undoComparison(comparison.id) },
   });
   return comparison;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Combining duplicates                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Declare several catalogue records to be one.
+ *
+ * The whole consequence is spoken out loud, because this is the one action in
+ * the app that can change a number the user did not touch: where two of the
+ * sources were rated, their ratings are averaged into one new entry. Undo takes
+ * the group apart again and withdraws that entry, putting every source back
+ * where it was.
+ */
+export async function combine(
+  entity: Entity,
+  entityIds: readonly EntityId[],
+  primaryId: EntityId,
+): Promise<CombineResult> {
+  const scale = get(scaleForType)(entity.type);
+  const result = await combineEntities({ entityIds, primaryId, scale });
+  const count = result.group.memberIds.length;
+  const rating =
+    result.plan.rating.kind === 'averaged'
+      ? ` Your ${result.plan.rating.sources.length} ratings were averaged into one new entry; the originals stay in your history.`
+      : result.plan.rating.kind === 'carried'
+        ? ' The one rating among them now stands for all of them.'
+        : '';
+  const spoken = `${count} items combined into ${entity.name}.${rating}`;
+  announce(spoken);
+  notify(spoken, {
+    action: {
+      label: 'Undo',
+      run: async () => {
+        await revertCombine(result);
+        announce(
+          result.previous
+            ? `${entity.name} is back to ${result.previous.memberIds.length} combined sources.`
+            : `${entity.name} separated again.`,
+        );
+      },
+    },
+  });
+  return result;
+}
+
+export async function separate(groupId: string, name: string): Promise<void> {
+  const plan = await uncombineGroup(groupId);
+  if (!plan) return;
+  const spoken =
+    plan.withdrawEventIds.length > 0
+      ? `${name} separated into ${plan.memberIds.length} items. The averaged entry was withdrawn, so each is back to its own rating.`
+      : `${name} separated into ${plan.memberIds.length} items.`;
+  announce(spoken);
+  notify(spoken);
+}
+
+export async function makePrimary(groupId: string, entity: Entity): Promise<void> {
+  await setGroupPrimary(groupId, entity.id);
+  const spoken = `${entity.name} now represents the combined record.`;
+  announce(spoken);
+  notify(spoken);
 }

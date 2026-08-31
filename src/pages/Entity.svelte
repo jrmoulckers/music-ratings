@@ -6,6 +6,7 @@
   import { entityHref, href, navigate } from '../lib/app/router';
   import {
     annotationsById,
+    canonical,
     entityLabel,
     entityLabelCap,
     explicitRatings,
@@ -30,6 +31,7 @@
   import { contextWords } from '../lib/ui/history';
   import Icon from '../lib/ui/Icon.svelte';
   import AutoLoad from '../components/AutoLoad.svelte';
+  import CombinePanel from '../components/CombinePanel.svelte';
   import Empty from '../components/Empty.svelte';
   import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
   import Artwork from '../components/Artwork.svelte';
@@ -44,6 +46,11 @@
    * The explicit rating and the computed score are shown side by side and never
    * merged into a single number without saying so — the whole point of the app
    * is that those are different claims.
+   *
+   * A link to a source that has been combined into another lands here on the
+   * record that stands for it, with every source listed and individually
+   * reachable. Following a URL must never be how somebody discovers that half
+   * their library has quietly gone missing.
    */
 
   interface Props {
@@ -52,13 +59,14 @@
 
   let { params }: Props = $props();
 
-  const id = $derived(
+  const requested = $derived(
     entityId(
       (params.type ?? 'track') as EntityType,
       (params.provider ?? 'spotify') as Provider,
       params.id ?? '',
     ),
   );
+  const id = $derived($canonical.resolve(requested));
   const entity = $derived($graph.entity(id));
   const scale = $derived(entity ? $scaleForType(entity.type) : $scaleForType('track'));
   const breakdown = $derived($scores.get(id));
@@ -67,7 +75,10 @@
   const ranking = $derived(entity ? $rankings.get(entity.type)?.get(id) : undefined);
   const children = $derived(entity ? $graph.children(id) : []);
   const parents = $derived(entity ? $graph.parents(id) : []);
-  const history = $derived(historyFor($world.ratings, id));
+  const history = $derived(
+    historyFor($world.ratings, id, { resolve: (raw) => $canonical.resolve(raw) }),
+  );
+  const arrivedByAlias = $derived(requested !== id && $graph.source(requested) !== undefined);
 
   let noteDraft = $state('');
   let tagDraft = $state('');
@@ -199,6 +210,12 @@
           <h1 class="item__name display">{entity.name}</h1>
           {#if entity.subtitle}<p class="item__sub">{entity.subtitle}</p>{/if}
           {#if entity.description}<p class="note item__desc">{entity.description}</p>{/if}
+          {#if arrivedByAlias}
+            <p class="note note--small item__alias">
+              You followed a link to {$graph.source(requested)?.name ?? 'another copy'}, which you
+              combined into this record. Every source is listed below with its own Spotify link.
+            </p>
+          {/if}
 
           <div class="row item__links">
             {#if entity.type === 'album' || entity.type === 'playlist'}
@@ -337,6 +354,8 @@
         </section>
       {/if}
 
+      <CombinePanel {entity} />
+
       {#if history.length > 0}
         <section aria-labelledby="history-head">
           <div class="head">
@@ -345,6 +364,7 @@
           </div>
           <ol class="history">
             {#each history as event (event.id)}
+              {@const source = $graph.source(event.entityId)}
               <li class:is-retracted={event.retracted}>
                 <span class="history__mark figure">{formatScore(event.normalized, scale)}</span>
                 <span class="history__body">
@@ -352,6 +372,9 @@
                   {#if event.note}<span class="note">“{event.note}”</span>{/if}
                   {#if event.retracted}<span class="label">withdrawn</span>{/if}
                   {#if event.context}<span class="label">{contextWords(event.context)}</span>{/if}
+                  {#if source && source.id !== entity.id}
+                    <span class="label">on {source.name}, since combined</span>
+                  {/if}
                 </span>
                 <button
                   type="button"
@@ -461,6 +484,10 @@
   }
   .item__desc {
     max-width: 58ch;
+  }
+  .item__alias {
+    max-width: 58ch;
+    color: var(--ink-quiet);
   }
   .item__links {
     margin-top: var(--s2);

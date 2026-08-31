@@ -1,6 +1,7 @@
 <script lang="ts">
   import { entityHref, href } from '../lib/app/router';
   import {
+    canonical,
     entityLabelCap,
     explicitRatings,
     graph,
@@ -9,6 +10,7 @@
     settings,
     world,
   } from '../lib/app/state';
+  import { resolveComparisons } from '../lib/domain/canonical';
   import { selectPairs, type PairCandidate } from '../lib/domain/elo';
   import type { EntityType } from '../lib/domain/types';
   import { undoComparison } from '../lib/storage/repo';
@@ -47,7 +49,11 @@
       const ranking = $rankings.get(type)?.get(entity.id);
       return [{ entityId: entity.id, estimate, ...(ranking ? { ranking } : {}) }];
     });
-    const [selected] = selectPairs(candidates, $world.comparisons, { limit: 1 });
+    // Read canonically, so a pair judged before one of its sides was combined
+    // still counts as "you have already answered this" and is not put in front
+    // of the user again under a different name.
+    const seen = resolveComparisons($world.comparisons, (raw) => $canonical.resolve(raw));
+    const [selected] = selectPairs(candidates, seen, { limit: 1 });
     if (!selected) return null;
     const a = $graph.entity(selected.aId);
     const b = $graph.entity(selected.bId);
