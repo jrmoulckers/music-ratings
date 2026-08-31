@@ -10,7 +10,7 @@
   import { entityHref } from '../lib/app/router';
   import { playedReason } from '../lib/domain/reasons';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
-  import type { Entity, ScoreView, Suggestion } from '../lib/domain/types';
+  import type { Entity, RatingContext, ScoreView, Suggestion } from '../lib/domain/types';
   import { duration, releaseYear } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
@@ -45,6 +45,8 @@
     expanded?: boolean;
     ontoggle?: (() => void) | undefined;
     onafter?: (() => void) | undefined;
+    /** Recorded on every rating made from this row. */
+    where?: RatingContext | undefined;
   }
 
   let {
@@ -57,6 +59,7 @@
     expanded = false,
     ontoggle,
     onafter,
+    where,
   }: Props = $props();
 
   const scale = $derived($scaleForType(entity.type));
@@ -172,6 +175,7 @@
         {entity}
         value={existing?.normalized ?? null}
         disabled={busy}
+        {where}
         onafter={() => onafter?.()}
       />
 
@@ -224,7 +228,7 @@
 
   {#if expanded}
     <div class="slip__editor">
-      <RatePanel {entity} {suggestion} {onafter} inline shortcuts={queueActions} />
+      <RatePanel {entity} {suggestion} {onafter} inline shortcuts={queueActions} {where} />
     </div>
   {/if}
 </li>

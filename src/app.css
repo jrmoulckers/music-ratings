@@ -71,6 +71,7 @@
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   --z-rail: 20;
+  --z-player: 40;
   --z-overlay: 60;
   --z-toast: 80;
 }
@@ -368,12 +369,15 @@ table {
   min-height: 100dvh;
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  /* The mini-player publishes its own height here so nothing it overlaps has to
+     guess. Zero whenever there is no player, so the page is unchanged. */
+  padding-bottom: var(--player-h, 0px);
 }
 
 @media (max-width: 60rem) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
-    padding-bottom: 4.25rem;
+    padding-bottom: calc(4.25rem + var(--player-h, 0px));
   }
 }
 
@@ -748,6 +752,16 @@ table {
 .slider:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* The scrubber is that same rail with the travelled part inked in. Firefox gets
+   it from ::-moz-range-progress; everyone else needs the track painted. */
+.slider--played::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--accent) 0 calc(var(--played, 0) * 100%),
+    var(--border) calc(var(--played, 0) * 100%) 100%
+  );
 }
 
 /* -------------------------------------------------------------------------- */

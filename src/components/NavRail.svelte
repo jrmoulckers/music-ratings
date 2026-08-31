@@ -32,6 +32,7 @@
     { path: '/compare', label: 'Compare', icon: 'versus', primary: true },
     { path: '/library', label: 'Library', icon: 'library', primary: true },
     { path: '/rankings', label: 'Rankings', icon: 'ranks', primary: true },
+    { path: '/now-playing', label: 'Now Playing', icon: 'play', primary: false },
     { path: '/history', label: 'History', icon: 'timeline', primary: false },
     { path: '/insights', label: 'Insights', icon: 'lens', primary: false },
     { path: '/settings', label: 'Settings', icon: 'settings', primary: false },

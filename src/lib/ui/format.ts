@@ -13,6 +13,20 @@ export function duration(ms: number | undefined): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+/**
+ * A running clock for the player: always `m:ss`, never blank, because a
+ * transport that shows nothing at zero looks broken.
+ */
+export function clockTime(ms: number | undefined): string {
+  const safe = Math.max(0, Math.round((ms ?? 0) / 1000));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  if (hours > 0)
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function relative(at: number, now = Date.now()): string {
   const diff = now - at;
   if (diff < 0) return 'just now';

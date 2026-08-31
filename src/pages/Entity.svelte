@@ -3,7 +3,7 @@
 
   import { pin, setStandingNote, setTags } from '../lib/app/actions';
   import { notify } from '../lib/app/notices';
-  import { entityHref, href } from '../lib/app/router';
+  import { entityHref, href, navigate } from '../lib/app/router';
   import {
     annotationsById,
     entityLabel,
@@ -19,12 +19,15 @@
   import { rankingConfidence } from '../lib/domain/elo';
   import { entityId } from '../lib/domain/ids';
   import { formatScore, historyFor, pickView } from '../lib/domain/ratings';
-  import type { EntityType, Provider, ScoreView } from '../lib/domain/types';
+  import type { Entity, EntityType, Provider, ScoreView } from '../lib/domain/types';
+  import { startAlbumSession } from '../lib/playback/album';
+  import { playbackEnqueue, playbackPlay } from '../lib/playback/store';
   import { SpotifyClient } from '../lib/spotify/client';
   import { expandEntity } from '../lib/spotify/library';
   import { spotifyConfig, spotifySession } from '../lib/spotify/session';
   import { deleteRating, saveMemberships, upsertEntities } from '../lib/storage/repo';
   import { dateAndTime, duration, relative, releaseYear } from '../lib/ui/format';
+  import { contextWords } from '../lib/ui/history';
   import Icon from '../lib/ui/Icon.svelte';
   import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
@@ -123,6 +126,37 @@
     }
   }
 
+  /**
+   * Start playing this record and follow it track by track.
+   *
+   * The listening session is started before playback so the page you land on is
+   * already the one you wanted, even if Spotify takes a moment to catch up or
+   * refuses because no device is awake.
+   */
+  async function listenAndRate(subject: Entity) {
+    const uri = `spotify:${subject.type}:${subject.providerId}`;
+    if (subject.type === 'album') startAlbumSession(subject.id, uri);
+    navigate(href('/now-playing'));
+    try {
+      await playbackPlay({ contextUri: uri });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Spotify would not start that.', {
+        tone: 'warn',
+      });
+    }
+  }
+
+  async function addToQueue(subject: Entity) {
+    try {
+      await playbackEnqueue(`spotify:track:${subject.providerId}`);
+      notify(`${subject.name} is queued.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Spotify would not queue that.', {
+        tone: 'warn',
+      });
+    }
+  }
+
   onMount(() => {
     if (entity) document.title = `${entity.name} · Music Ratings`;
     return () => {
@@ -167,6 +201,20 @@
           {#if entity.description}<p class="note item__desc">{entity.description}</p>{/if}
 
           <div class="row item__links">
+            {#if entity.type === 'album' || entity.type === 'playlist'}
+              <button
+                type="button"
+                class="btn btn--small"
+                onclick={() => void listenAndRate(entity)}
+              >
+                <Icon name="play" size={13} />
+                {entity.type === 'album' ? 'Listen & rate' : 'Play'}
+              </button>
+            {:else if entity.type === 'track' && entity.providerId}
+              <button type="button" class="btn btn--small" onclick={() => void addToQueue(entity)}>
+                <Icon name="queue-add" size={13} /> Add to queue
+              </button>
+            {/if}
             {#if entity.externalUrl}
               <a
                 class="btn btn--small"
@@ -303,7 +351,7 @@
                   <span class="history__when">{dateAndTime(event.at)}</span>
                   {#if event.note}<span class="note">“{event.note}”</span>{/if}
                   {#if event.retracted}<span class="label">withdrawn</span>{/if}
-                  {#if event.context}<span class="label">from the {event.context}</span>{/if}
+                  {#if event.context}<span class="label">{contextWords(event.context)}</span>{/if}
                 </span>
                 <button
                   type="button"

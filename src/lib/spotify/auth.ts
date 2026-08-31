@@ -14,8 +14,20 @@ const RETURN_KEY = 'music-ratings:spotify-return';
 const STATE_KEY = 'music-ratings:spotify-state';
 
 /**
- * Read-only, and no more than the app actually uses. Playback scopes are
- * deliberately absent: this app never plays anything.
+ * Reading what is playing, and controlling it. Requested for everyone, because
+ * Now Playing is a first-class surface: without these, the transport is dead
+ * furniture. Controlling playback also needs Spotify Premium, which no scope
+ * can grant.
+ */
+export const PLAYBACK_SCOPES = [
+  'user-read-playback-state',
+  'user-read-currently-playing',
+  'user-modify-playback-state',
+] as const;
+
+/**
+ * Read-only over your library, plus the playback scopes above. No more than the
+ * app actually uses.
  */
 export const BASE_SCOPES = [
   'user-read-private',
@@ -24,10 +36,17 @@ export const BASE_SCOPES = [
   'user-library-read',
   'playlist-read-private',
   'playlist-read-collaborative',
+  ...PLAYBACK_SCOPES,
 ] as const;
 
 /** Only requested when the user enables shows or episodes. */
 export const PODCAST_SCOPE = 'user-read-playback-position';
+
+/**
+ * Only requested when the user turns this browser into a Spotify device. It is
+ * the one scope that lets a page emit sound, so it is never asked for on spec.
+ */
+export const STREAMING_SCOPE = 'streaming';
 
 export interface SpotifyTokens {
   accessToken: string;

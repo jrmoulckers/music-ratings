@@ -40,7 +40,7 @@
   .slips {
     position: fixed;
     left: 50%;
-    bottom: var(--s5);
+    bottom: calc(var(--s5) + var(--player-h, 0px));
     transform: translateX(-50%);
     z-index: var(--z-toast);
     display: flex;
@@ -84,7 +84,7 @@
 
   @media (max-width: 60rem) {
     .slips {
-      bottom: 4.75rem;
+      bottom: calc(4.75rem + var(--player-h, 0px));
     }
   }
 </style>

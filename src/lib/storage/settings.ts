@@ -14,6 +14,7 @@ export type ThemeChoice = 'light' | 'dark' | 'system';
 export type MotionChoice = 'system' | 'reduce' | 'full';
 export type DensityChoice = 'cozy' | 'compact';
 export type ArtworkChoice = 'full' | 'thumbnails' | 'none';
+export type PollingChoice = 'responsive' | 'relaxed' | 'manual';
 
 export interface AppSettings {
   /* ---- portable: the user's judgement, synced everywhere ---- */
@@ -58,6 +59,18 @@ export interface AppSettings {
   spotifyClientId: string;
   spotifyRedirectUri: string;
   onedriveClientId: string;
+  /**
+   * Turn this browser into a Spotify device. Off by default: it needs the
+   * `streaming` permission and Spotify Premium, and most people already have a
+   * speaker or phone they would rather control.
+   */
+  browserPlayer: boolean;
+  /** The device to reach for first. A Spotify device id, meaningless elsewhere. */
+  preferredDeviceId: string;
+  /** How hard to chase Spotify for the current state. */
+  playbackPolling: PollingChoice;
+  /** Open album listening automatically when Spotify starts playing a release. */
+  autoAlbumMode: boolean;
 }
 
 /**
@@ -98,6 +111,10 @@ export const LOCAL_SETTINGS = [
   'spotifyClientId',
   'spotifyRedirectUri',
   'onedriveClientId',
+  'browserPlayer',
+  'preferredDeviceId',
+  'playbackPolling',
+  'autoAlbumMode',
 ] as const;
 
 type Portable = (typeof PORTABLE_SETTINGS)[number];
@@ -145,6 +162,10 @@ export function defaultSettings(): AppSettings {
       (import.meta.env?.VITE_SPOTIFY_REDIRECT_URI as string | undefined) ??
       (typeof location === 'undefined' ? '' : `${location.origin}${base()}callback`),
     onedriveClientId: (import.meta.env?.VITE_ONEDRIVE_CLIENT_ID as string | undefined) ?? '',
+    browserPlayer: false,
+    preferredDeviceId: '',
+    playbackPolling: 'responsive',
+    autoAlbumMode: false,
   };
 }
 

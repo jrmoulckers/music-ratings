@@ -18,6 +18,7 @@
   import { SCORE_VIEW_LABEL } from '../lib/domain/ratings';
   import { ROLLUP_CHANNELS, ENTITY_TYPES, PARENT_TYPES, SCORE_VIEWS } from '../lib/domain/types';
   import type { EntityType, FacetConfig, RollupChannel, ScoreView } from '../lib/domain/types';
+  import type { AppSettings } from '../lib/storage/settings';
   import { SUGGESTION_SOURCES } from '../lib/domain/types';
   import { equivalenceRows } from '../lib/domain/scales';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
@@ -960,6 +961,89 @@
         This app uses Authorization Code with PKCE and never handles a client secret. In Spotify's
         development mode an app may authorise at most {DEVELOPMENT_MODE_USER_LIMIT} accounts, and each
         must be added to the app in the dashboard.
+      </p>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="group" aria-labelledby="s-playback">
+      <h2 id="s-playback" class="group__head title">Playing and rating live</h2>
+
+      <p class="note">
+        This app can control Spotify playback on your devices and show what is playing, so you can
+        rate it as you listen. Spotify only allows this for Premium accounts. Nothing about playback
+        is stored or synced.
+      </p>
+
+      {#if $spotifySession.connected && $spotifySession.missingPlaybackScopes}
+        <p class="note note--warn">
+          Your connection was made before this app could read playback. Reconnect above to grant
+          those permissions.
+        </p>
+      {/if}
+
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={$settings.browserPlayer}
+          onchange={(event) => void updateSettings({ browserPlayer: event.currentTarget.checked })}
+        />
+        <span>
+          <span>Let this browser be a Spotify device</span>
+          <span class="note note--small">
+            Adds Spotify's player to this tab so sound can come out here. Needs Premium and one more
+            Spotify permission, so reconnect after turning it on. It stops when the tab closes.
+          </span>
+        </span>
+      </label>
+
+      {#if $settings.browserPlayer && $spotifySession.connected && $spotifySession.missingStreamingScope}
+        <p class="note note--warn">
+          Reconnect Spotify to grant the playback permission this needs.
+          <button type="button" class="btn btn--small" onclick={() => void connectSpotify()}>
+            Reconnect
+          </button>
+        </p>
+      {/if}
+
+      <label class="field">
+        <span class="label">How often to check what is playing</span>
+        <select
+          class="select"
+          value={$settings.playbackPolling}
+          onchange={(event) =>
+            void updateSettings({
+              playbackPolling: event.currentTarget.value as AppSettings['playbackPolling'],
+            })}
+        >
+          <option value="responsive">Responsive — every few seconds while playing</option>
+          <option value="relaxed">Relaxed — less often, fewer requests</option>
+          <option value="manual">Only when I ask</option>
+        </select>
+        <span class="note note--small">
+          Checking stops entirely when this tab is hidden or offline, whichever you pick.
+        </span>
+      </label>
+
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={$settings.autoAlbumMode}
+          onchange={(event) => void updateSettings({ autoAlbumMode: event.currentTarget.checked })}
+        />
+        <span>
+          <span>Offer track-by-track rating when I play a record</span>
+          <span class="note note--small">
+            When Spotify is playing an album from start to finish, Now Playing offers its track list
+            so you can rate as you go.
+          </span>
+        </span>
+      </label>
+
+      <p class="note note--small">
+        Preferred device: {$settings.preferredDeviceId
+          ? 'set on this device'
+          : 'none — the app uses whatever Spotify is already playing on'}. Choose one from the
+        device list in Now Playing.
       </p>
     </section>
 

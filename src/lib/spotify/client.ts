@@ -15,16 +15,92 @@ import {
 
 const API = 'https://api.spotify.com/v1';
 
+export type Params = Record<string, string | number | boolean | undefined>;
+
+/** Builds a request URL, dropping empty parameters and encoding the rest. */
+function endpoint(path: string, params: Params = {}): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') query.set(key, String(value));
+  }
+  return `${API}${path}${query.size ? `?${query.toString()}` : ''}`;
+}
+
+/** Reads Spotify's error body once, tolerating empty and non-JSON responses. */
+async function failure(response: Response): Promise<{ message: string; reason?: string }> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: { message?: string; reason?: string } | string;
+  };
+  if (typeof body.error === 'string') return { message: body.error.trim() };
+  return { message: (body.error?.message ?? '').trim(), reason: body.error?.reason };
+}
+
+export type SpotifyErrorKind =
+  | 'rate-limit'
+  | 'quota'
+  | 'forbidden'
+  | 'not-found'
+  | 'offline'
+  | 'server'
+  | 'premium'
+  | 'no-device'
+  | 'restricted'
+  | 'other';
+
 export class SpotifyApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly kind:
-      'rate-limit' | 'quota' | 'forbidden' | 'not-found' | 'offline' | 'server' | 'other',
+    readonly kind: SpotifyErrorKind,
+    /** Spotify's own machine reason, e.g. `NO_ACTIVE_DEVICE`. Player errors only. */
+    readonly reason?: string,
   ) {
     super(message);
     this.name = 'SpotifyApiError';
   }
+}
+
+/**
+ * What the player endpoints say when they refuse, and what that means to a
+ * person. Spotify sends a machine `reason` alongside the status; using it is the
+ * difference between "Spotify refused that request" and "nothing is playing
+ * anywhere to control".
+ */
+const PLAYER_REASONS: Record<string, { kind: SpotifyErrorKind; message: string }> = {
+  NO_ACTIVE_DEVICE: {
+    kind: 'no-device',
+    message: 'Nothing is playing. Open Spotify on a device, or play in this browser.',
+  },
+  PREMIUM_REQUIRED: {
+    kind: 'premium',
+    message: 'Controlling playback needs Spotify Premium.',
+  },
+  NO_PREV_TRACK: { kind: 'restricted', message: 'There is nothing before this.' },
+  NO_NEXT_TRACK: { kind: 'restricted', message: 'There is nothing after this.' },
+  ALREADY_PAUSED: { kind: 'restricted', message: 'It is already paused.' },
+  NOT_PAUSED: { kind: 'restricted', message: 'It is already playing.' },
+  NOT_PLAYING_TRACK: { kind: 'restricted', message: 'No track is playing.' },
+  NOT_PLAYING_CONTEXT: {
+    kind: 'restricted',
+    message: 'Nothing is playing from a release or list.',
+  },
+  ENDLESS_CONTEXT: { kind: 'restricted', message: 'This is an endless station, so it cannot.' },
+  CONTEXT_DISALLOW: { kind: 'restricted', message: 'What is playing does not allow that.' },
+  ALREADY_PLAYING: { kind: 'restricted', message: 'That is already playing.' },
+  REMOTE_CONTROL_DISALLOW: {
+    kind: 'restricted',
+    message: 'That device does not accept remote control.',
+  },
+  DEVICE_NOT_CONTROLLABLE: {
+    kind: 'restricted',
+    message: 'That device cannot be controlled from here.',
+  },
+  VOLUME_CONTROL_DISALLOW: { kind: 'restricted', message: 'That device sets its own volume.' },
+  UNSUPPORTED_DEVICE: { kind: 'restricted', message: 'That device does not support this.' },
+};
+
+function playerRefusal(reason: string | undefined) {
+  return reason ? PLAYER_REASONS[reason] : undefined;
 }
 
 export interface RequestOptions {
@@ -42,7 +118,8 @@ export interface SpotifyClientOptions extends RequestOptions {
 
 let inFlightRefresh: Promise<SpotifyTokens> | null = null;
 
-async function freshToken(config: SpotifyConfig): Promise<string> {
+/** A valid access token, refreshing first if the stored one has expired. */
+export async function accessToken(config: SpotifyConfig): Promise<string> {
   const tokens = storedTokens();
   if (!tokens) throw new SpotifyAuthError('Connect Spotify to load your library.', 'expired');
   if (tokens.expiresAt > Date.now()) return tokens.accessToken;
@@ -68,28 +145,45 @@ export class SpotifyClient {
     this.onBackoff = options.onBackoff;
   }
 
-  async get<T>(
-    path: string,
-    params: Record<string, string | number | undefined> = {},
-    options: RequestOptions = {},
-  ): Promise<T> {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== '') query.set(key, String(value));
-    }
-    const url = `${API}${path}${query.size ? `?${query.toString()}` : ''}`;
-    return this.request<T>(url, options);
+  async get<T>(path: string, params: Params = {}, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(endpoint(path, params), options);
   }
 
-  private async request<T>(url: string, options: RequestOptions, attempt = 0): Promise<T> {
+  /**
+   * PUT, POST or DELETE with an optional JSON body.
+   *
+   * Every player command answers `204 No Content` on success, which the request
+   * layer already reads as "done" rather than as an empty response to parse.
+   */
+  private send<T>(
+    method: 'PUT' | 'POST' | 'DELETE',
+    path: string,
+    params: Params = {},
+    body?: unknown,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    return this.request<T>(endpoint(path, params), options, { method, body });
+  }
+
+  private async request<T>(
+    url: string,
+    options: RequestOptions,
+    call: { method?: 'PUT' | 'POST' | 'DELETE'; body?: unknown } = {},
+    attempt = 0,
+  ): Promise<T> {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       throw new SpotifyApiError('You are offline, so nothing new could be fetched.', 0, 'offline');
     }
 
-    const token = await freshToken(this.config);
+    const token = await accessToken(this.config);
     let response: Response;
     try {
       const init: RequestInit = { headers: { Authorization: `Bearer ${token}` } };
+      if (call.method) init.method = call.method;
+      if (call.body !== undefined) {
+        init.body = JSON.stringify(call.body);
+        (init.headers as Record<string, string>)['Content-Type'] = 'application/json';
+      }
       const signal = options.signal ?? this.signal;
       if (signal) init.signal = signal;
       response = await fetch(url, init);
@@ -102,9 +196,9 @@ export class SpotifyClient {
       const body = (await response
         .clone()
         .json()
-        .catch(() => ({}))) as { reason?: string };
+        .catch(() => ({}))) as { reason?: string; error?: { reason?: string } };
       const seconds = Number(response.headers.get('Retry-After') ?? 2);
-      if (body.reason === 'QUOTA_EXCEEDED') {
+      if (body.reason === 'QUOTA_EXCEEDED' || body.error?.reason === 'QUOTA_EXCEEDED') {
         throw new SpotifyApiError(
           'This Spotify app has hit its request quota. Apps in development mode have a small allowance; wait a while and try again.',
           429,
@@ -122,7 +216,7 @@ export class SpotifyClient {
       const wait = Math.max(1, seconds);
       (options.onBackoff ?? this.onBackoff)?.(wait);
       await sleep(wait * 1000, options.signal);
-      return this.request<T>(url, options, attempt + 1);
+      return this.request<T>(url, options, call, attempt + 1);
     }
 
     if (response.status === 401) {
@@ -133,15 +227,21 @@ export class SpotifyClient {
       );
     }
     if (response.status === 403) {
-      const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+      const { message, reason } = await failure(response);
+      const known = playerRefusal(reason);
+      if (known) throw new SpotifyApiError(known.message, 403, known.kind, reason);
       throw new SpotifyApiError(
-        body.error?.message ??
+        message ||
           'Spotify refused that request. If this app is in development mode, your account must be added to it in the Spotify dashboard.',
         403,
         'forbidden',
+        reason,
       );
     }
     if (response.status === 404) {
+      const { reason } = await failure(response);
+      const known = playerRefusal(reason);
+      if (known) throw new SpotifyApiError(known.message, 404, known.kind, reason);
       throw new SpotifyApiError(
         'Spotify has nothing at that address for your market.',
         404,
@@ -151,7 +251,7 @@ export class SpotifyClient {
     if (response.status >= 500) {
       if (attempt < 3) {
         await sleep(2 ** attempt * 700, options.signal);
-        return this.request<T>(url, options, attempt + 1);
+        return this.request<T>(url, options, call, attempt + 1);
       }
       throw new SpotifyApiError('Spotify is having trouble right now.', response.status, 'server');
     }
@@ -159,21 +259,24 @@ export class SpotifyClient {
       // Spotify explains itself in the body ("Invalid market code", "Bad
       // request"). Swallowing that leaves a bare status code and nothing to act
       // on, so pass the reason through when there is one.
-      const body = (await response.json().catch(() => ({}))) as {
-        error?: { message?: string } | string;
-      };
-      const detail =
-        typeof body.error === 'string' ? body.error : (body.error?.message ?? '').trim();
+      const { message, reason } = await failure(response);
+      const known = playerRefusal(reason);
+      if (known) throw new SpotifyApiError(known.message, response.status, known.kind, reason);
       throw new SpotifyApiError(
-        detail
-          ? `Spotify returned ${response.status}: ${detail}`
+        message
+          ? `Spotify returned ${response.status}: ${message}`
           : `Spotify returned ${response.status}.`,
         response.status,
         'other',
+        reason,
       );
     }
+    // 204 is both how every player command reports success and how Spotify says
+    // "nothing is playing at all" — an empty body, never an error.
     if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    const text = await response.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   }
 
   private signal: AbortSignal | undefined;
@@ -370,6 +473,148 @@ export class SpotifyClient {
       options,
     );
   }
+
+  /* ---- player ----------------------------------------------------------- */
+
+  /**
+   * What is playing right now, anywhere on the account.
+   *
+   * Answers `204` — and therefore `undefined` here — when no device is active.
+   * That is the ordinary resting state, not a failure.
+   */
+  playbackState(options?: RequestOptions) {
+    return this.get<PlaybackState | undefined>(
+      '/me/player',
+      { market: this.market, additional_types: 'track,episode' },
+      options,
+    );
+  }
+
+  /** Every device Spotify currently knows about for this account. */
+  async devices(options?: RequestOptions) {
+    const body = await this.get<{ devices?: SpotifyDevice[] } | undefined>(
+      '/me/player/devices',
+      {},
+      options,
+    );
+    return body?.devices ?? [];
+  }
+
+  /** Moves playback to another device. `play: false` keeps the current state. */
+  transferPlayback(deviceId: string, play: boolean, options?: RequestOptions) {
+    return this.send<void>('PUT', '/me/player', {}, { device_ids: [deviceId], play }, options);
+  }
+
+  /**
+   * Starts or resumes playback.
+   *
+   * With no arguments this resumes whatever was paused. A `contextUri` starts a
+   * release or list; `uris` starts loose tracks. Sending an empty body is not
+   * the same as sending `{}` with keys set to undefined, so the body is built
+   * up only from what was actually asked for.
+   */
+  play(
+    input: {
+      deviceId?: string;
+      contextUri?: string;
+      uris?: string[];
+      offset?: { position?: number; uri?: string };
+      positionMs?: number;
+    } = {},
+    options?: RequestOptions,
+  ) {
+    const body: Record<string, unknown> = {};
+    if (input.contextUri) body.context_uri = input.contextUri;
+    if (input.uris?.length) body.uris = input.uris;
+    if (input.offset) body.offset = input.offset;
+    if (input.positionMs !== undefined)
+      body.position_ms = Math.max(0, Math.trunc(input.positionMs));
+    return this.send<void>(
+      'PUT',
+      '/me/player/play',
+      { device_id: input.deviceId },
+      Object.keys(body).length ? body : {},
+      options,
+    );
+  }
+
+  pause(deviceId?: string, options?: RequestOptions) {
+    return this.send<void>('PUT', '/me/player/pause', { device_id: deviceId }, undefined, options);
+  }
+
+  next(deviceId?: string, options?: RequestOptions) {
+    return this.send<void>('POST', '/me/player/next', { device_id: deviceId }, undefined, options);
+  }
+
+  previous(deviceId?: string, options?: RequestOptions) {
+    return this.send<void>(
+      'POST',
+      '/me/player/previous',
+      { device_id: deviceId },
+      undefined,
+      options,
+    );
+  }
+
+  seek(positionMs: number, deviceId?: string, options?: RequestOptions) {
+    return this.send<void>(
+      'PUT',
+      '/me/player/seek',
+      { position_ms: Math.max(0, Math.trunc(positionMs)), device_id: deviceId },
+      undefined,
+      options,
+    );
+  }
+
+  /** Percent, clamped — Spotify 400s on anything outside 0–100. */
+  setVolume(percent: number, deviceId?: string, options?: RequestOptions) {
+    return this.send<void>(
+      'PUT',
+      '/me/player/volume',
+      {
+        volume_percent: Math.max(0, Math.min(100, Math.round(percent))),
+        device_id: deviceId,
+      },
+      undefined,
+      options,
+    );
+  }
+
+  setShuffle(state: boolean, deviceId?: string, options?: RequestOptions) {
+    return this.send<void>(
+      'PUT',
+      '/me/player/shuffle',
+      { state, device_id: deviceId },
+      undefined,
+      options,
+    );
+  }
+
+  setRepeat(state: RepeatMode, deviceId?: string, options?: RequestOptions) {
+    return this.send<void>(
+      'PUT',
+      '/me/player/repeat',
+      { state, device_id: deviceId },
+      undefined,
+      options,
+    );
+  }
+
+  /** What is lined up next. Answers `204` when nothing is playing. */
+  async queue(options?: RequestOptions) {
+    const body = await this.get<SpotifyQueue | undefined>('/me/player/queue', {}, options);
+    return { currently_playing: body?.currently_playing ?? null, queue: body?.queue ?? [] };
+  }
+
+  addToQueue(uri: string, deviceId?: string, options?: RequestOptions) {
+    return this.send<void>(
+      'POST',
+      '/me/player/queue',
+      { uri, device_id: deviceId },
+      undefined,
+      options,
+    );
+  }
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -532,4 +777,63 @@ export interface SearchResponse {
   shows?: Paged<SpotifyShow | null>;
   episodes?: Paged<SpotifyEpisode | null>;
   audiobooks?: Paged<SpotifyAudiobook | null>;
+}
+
+/* ---- player wire shapes -------------------------------------------------- */
+
+export type RepeatMode = 'off' | 'context' | 'track';
+
+export interface SpotifyDevice {
+  id: string | null;
+  name: string;
+  type?: string;
+  is_active?: boolean;
+  is_private_session?: boolean;
+  is_restricted?: boolean;
+  supports_volume?: boolean;
+  volume_percent?: number | null;
+}
+
+/** What playback is running against: a release, a list, an artist's catalogue. */
+export interface PlaybackContext {
+  type?: string;
+  uri?: string;
+  external_urls?: { spotify?: string };
+}
+
+/**
+ * Spotify reports what the current device and content will *not* accept. Every
+ * absent key is allowed; every key present and true is refused. Honouring this
+ * is the difference between a disabled button and a command that 403s.
+ */
+export interface PlaybackDisallows {
+  interrupting_playback?: boolean;
+  pausing?: boolean;
+  resuming?: boolean;
+  seeking?: boolean;
+  skipping_next?: boolean;
+  skipping_prev?: boolean;
+  toggling_repeat_context?: boolean;
+  toggling_repeat_track?: boolean;
+  toggling_shuffle?: boolean;
+  transferring_playback?: boolean;
+}
+
+export interface PlaybackState {
+  device?: SpotifyDevice | null;
+  repeat_state?: RepeatMode;
+  shuffle_state?: boolean;
+  context?: PlaybackContext | null;
+  timestamp?: number;
+  progress_ms?: number | null;
+  is_playing?: boolean;
+  /** A track, an episode, or null while Spotify plays an advert. */
+  item?: SpotifyTrack | SpotifyEpisode | null;
+  currently_playing_type?: string;
+  actions?: { disallows?: PlaybackDisallows };
+}
+
+export interface SpotifyQueue {
+  currently_playing?: SpotifyTrack | SpotifyEpisode | null;
+  queue?: (SpotifyTrack | SpotifyEpisode)[];
 }

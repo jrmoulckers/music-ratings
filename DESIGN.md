@@ -284,6 +284,10 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - **Entity type icon** (`EntityTypeIcon`) — one silhouette per kind: artist, release, track, playlist, show, episode, audiobook, chapter. Decorative beside a visible type word, labelled when it stands alone, so a screen reader is never told the kind twice.
 - **Score mark** (`ScoreMark`) — explicit ratings in `--ink`, computed rollups in `--ink-quiet`. The two are never rendered identically, because the app never overwrites one with the other. A row hides it when it would print the number the quick control is already showing.
 - **History entry** — a record line that is also a place to rate from. It shows where it stands (_Your rating now_, _An earlier rating_, _Withdrawn_), and offers exactly one record action: **Withdraw** while it still counts, **Delete permanently** — behind an in-place confirmation — only once it has been withdrawn. Opening **Rate again** loads the shared editor seeded from that entry and saves a new one; nothing in the record is ever rewritten.
+- **Mini player** (`MiniPlayer`) — one ruled band at the foot of the app, present on every page except Now Playing itself, where it would be a second copy of the page you are on. Sleeve, title, performer, previous/play/next, elapsed and length, the device name, and the same `QuickRate` used in every list — because the point of knowing what is playing is being able to say what you think of it while it plays. It measures itself and publishes `--player-h`, which the shell, the notices and the update prompt clear by exactly; nothing guesses a bar height. With nothing playing it offers a device rather than sitting there blank, and it vanishes entirely when there is no device either.
+- **Now Playing** (`NowPlaying`) — a remote control that knows what you think. The sleeve sets the height and the identity and rating sit against its middle. Transport is the plain expected set — shuffle, previous, play/pause, next, repeat, a scrubber that reports only on release, volume where the device has any — because a scrubber that behaves unusually is a scrubber that gets mis-used. Every control Spotify refuses is disabled with the reason on it rather than failing after the press. The rating is the shared `QuickRate` with the shared `RatePanel` behind **Note, confidence and context**; when the track changes under an open editor the editor stays pinned to what you were rating and says so, because silently moving an unsaved draft onto a different track would record an opinion nobody held.
+- **Device picker** (`DevicePicker`) — the sheet listing what Spotify can see, each with its kind, whether it is active, and whether it is restricted. Transfer moves playback; a restricted device says why it cannot. With nothing listed it gives the three real recoveries — open Spotify somewhere, look again, or turn this browser into a device — rather than an empty list.
+- **Album mode** (`AlbumMode`) — a record listened to in order and rated as it goes. Track list with played / playing / to come, each row a `RatableRow`, the current one highlighted but never scrolled to while you are editing another. `x of y rated` and an **Unrated from this record** filter make the gap the thing you close. The record's own rating is a separate control that stays separate: tracks never silently become an album rating, and the computed rollup is shown beside the direct one with its usual breakdown.
 - **Search overlay** — `/` or Ctrl/Cmd+K from anywhere. Answers instantly and offline from your own library; searching the Spotify catalogue is a deliberate second step.
 - **Empty states** — every one names what is missing and offers the action that fixes it.
 
@@ -302,12 +306,16 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Do draw structure at one device pixel with `--hairline` rather than at a fixed 1px.
 - Do give a list of ratable things a `RatableRow` and let the end of it load itself.
 - Do write a suggestion reason as a sentence a person would say: "Played 2 hours ago.", "#3 in your all-time listening.", "No tracks from Rain Ledger rated yet."
+- Do disable a playback control Spotify has refused and put the reason on it, rather than letting the press fail.
+- Do keep an unsaved rating draft pinned to the thing it was opened on when playback moves on.
 
 ### Don't
 
 - Don't use rounded "cards on a gradient", glassmorphism, glow, or a coloured slab down one edge of a card.
 - Don't introduce a second hue, per-item tinting, or any green that reads as an imitation of a streaming service. Three colours are exempt because they carry meaning the shape cannot: `--star` on stars, the six tier-list hexes in `lib/ui/tiers.ts`, and nothing else. A destructive button is not exempt — the accent is already red, so **Delete permanently** is solid ink instead, the only filled thing on its page.
 - Don't offer two record actions on one entry. Withdraw is reachable while a rating counts; delete is reachable only after it has stopped.
+- Don't repeat a surface inside itself: the mini player is hidden on Now Playing, where the same track, the same transport and the same rating are already full size.
+- Don't build a now-playing display that only displays. Every visible piece of state is a control, and the rating beside it is the real one.
 
 - Don't reach for marketing hero type, pill spam, or an icon that is only decorative.
 - Don't set small text in `--accent` rather than `--accent-ink`.

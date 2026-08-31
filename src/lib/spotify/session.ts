@@ -9,6 +9,8 @@ import {
   hasScopes,
   storedTokens,
   PODCAST_SCOPE,
+  PLAYBACK_SCOPES,
+  STREAMING_SCOPE,
   BASE_SCOPES,
   type SpotifyConfig,
 } from './auth';
@@ -28,6 +30,13 @@ export interface SpotifySession {
   scopes: string[];
   expiresAt: number | null;
   missingPodcastScope: boolean;
+  /**
+   * Connected before this app could control playback. Everything else keeps
+   * working; only the player needs a reconnect, and saying so beats a 403.
+   */
+  missingPlaybackScopes: boolean;
+  /** Browser player is switched on, but the sign-in predates that choice. */
+  missingStreamingScope: boolean;
 }
 
 export interface ImportProgress {
@@ -68,12 +77,21 @@ export const importProgress = writable<ImportProgress>({
 
 function read(): SpotifySession {
   const tokens = storedTokens();
+  const connected = Boolean(tokens);
+  let wantsBrowserPlayer = false;
+  try {
+    wantsBrowserPlayer = get(settings).browserPlayer === true;
+  } catch {
+    /* Settings not loaded yet. Assume the modest answer. */
+  }
   return {
-    connected: Boolean(tokens),
+    connected,
     profileName: tokens ? storedProfileName() : null,
     scopes: tokens?.scopes ?? [],
     expiresAt: tokens?.expiresAt ?? null,
-    missingPodcastScope: Boolean(tokens) && !hasScopes(tokens, [PODCAST_SCOPE]),
+    missingPodcastScope: connected && !hasScopes(tokens, [PODCAST_SCOPE]),
+    missingPlaybackScopes: connected && !hasScopes(tokens, PLAYBACK_SCOPES),
+    missingStreamingScope: connected && wantsBrowserPlayer && !hasScopes(tokens, [STREAMING_SCOPE]),
   };
 }
 
@@ -85,10 +103,14 @@ export function spotifyConfig(): SpotifyConfig {
   const current = get(settings);
   const wantsPodcasts =
     current.enabledTypes.includes('show') || current.enabledTypes.includes('episode');
+  const extra = [
+    ...(wantsPodcasts ? [PODCAST_SCOPE] : []),
+    ...(current.browserPlayer ? [STREAMING_SCOPE] : []),
+  ];
   return {
     clientId: current.spotifyClientId,
     redirectUri: current.spotifyRedirectUri,
-    ...(wantsPodcasts ? { extraScopes: [PODCAST_SCOPE] } : {}),
+    ...(extra.length ? { extraScopes: extra } : {}),
   };
 }
 

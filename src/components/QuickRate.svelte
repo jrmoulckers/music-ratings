@@ -1,7 +1,7 @@
 <script lang="ts">
   import { rate } from '../lib/app/actions';
   import { scaleForType } from '../lib/app/state';
-  import type { Entity } from '../lib/domain/types';
+  import type { Entity, RatingContext } from '../lib/domain/types';
   import CompactRating from './CompactRating.svelte';
 
   /**
@@ -19,9 +19,11 @@
     value: number | null;
     onafter?: (() => void) | undefined;
     disabled?: boolean;
+    /** Recorded on the event so History can say where you were. */
+    where?: RatingContext;
   }
 
-  let { entity, value, onafter, disabled = false }: Props = $props();
+  let { entity, value, onafter, disabled = false, where = 'bulk' }: Props = $props();
 
   const scale = $derived($scaleForType(entity.type));
   let busy = $state(false);
@@ -30,7 +32,7 @@
     if (busy || disabled) return;
     busy = true;
     try {
-      await rate(entity, normalized, { context: 'bulk' });
+      await rate(entity, normalized, { context: where });
       onafter?.();
     } finally {
       busy = false;

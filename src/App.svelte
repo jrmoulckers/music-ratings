@@ -8,6 +8,7 @@
   import { ready, settings, startStateSync } from './lib/app/state';
   import { startSyncController } from './lib/app/sync';
   import NavRail from './components/NavRail.svelte';
+  import MiniPlayer from './components/MiniPlayer.svelte';
   import Notices from './components/Notices.svelte';
   import SearchOverlay from './components/SearchOverlay.svelte';
   import Callback from './pages/Callback.svelte';
@@ -19,6 +20,7 @@
   import Insights from './pages/Insights.svelte';
   import Library from './pages/Library.svelte';
   import NotFound from './pages/NotFound.svelte';
+  import NowPlaying from './pages/NowPlaying.svelte';
   import Onboarding from './pages/Onboarding.svelte';
   import Rankings from './pages/Rankings.svelte';
   import Rate from './pages/Rate.svelte';
@@ -109,6 +111,8 @@
       <History />
     {:else if $route.name === 'insights'}
       <Insights />
+    {:else if $route.name === 'now-playing'}
+      <NowPlaying />
     {:else if $route.name === 'settings'}
       <Settings />
     {:else if $route.name === 'diagnostics'}
@@ -118,6 +122,10 @@
     {/if}
   </main>
 </div>
+
+{#if showRail && $ready && $route.name !== 'now-playing'}
+  <MiniPlayer />
+{/if}
 
 {#if showRail && $searchOpen}
   <SearchOverlay />
@@ -153,7 +161,7 @@
 
   .update {
     position: fixed;
-    inset: auto var(--s5) var(--s5) auto;
+    inset: auto var(--s5) calc(var(--s5) + var(--player-h, 0px)) auto;
     z-index: var(--z-toast);
     display: flex;
     align-items: center;
@@ -171,7 +179,7 @@
 
   @media (max-width: 60rem) {
     .update {
-      inset: auto var(--s3) 4.75rem var(--s3);
+      inset: auto var(--s3) calc(4.75rem + var(--player-h, 0px)) var(--s3);
       max-width: none;
     }
   }

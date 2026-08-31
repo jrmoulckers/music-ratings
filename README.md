@@ -31,6 +31,10 @@ belonging to anyone but you.
 - **Show you your taste** — polarising artists, hidden gems, drift over time,
   completion gaps, stable versus uncertain rankings — computed locally from your
   own data by rules you can read.
+- **Rate what is playing.** Music Ratings is a Spotify Connect remote: transport,
+  devices, queue, and — if you want it — this browser as a Connect device of its
+  own. Rate the track, the record and the performer without leaving the music, and
+  sit with an album track by track while it plays.
 - **Work offline**, install to your home screen or dock, and sync between your own
   devices through your own OneDrive.
 
@@ -112,17 +116,28 @@ Two further constraints worth knowing before you invite anyone:
 
 ### Scopes requested
 
-| Scope                                                  | Why                                                                                        |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `user-read-private`, `user-read-email`                 | Identify the signed-in account                                                             |
-| `user-top-read`                                        | Top artists and tracks, for suggestions                                                    |
-| `user-read-recently-played`                            | Recent plays, for suggestions                                                              |
-| `user-library-read`                                    | Saved tracks, albums, shows, episodes, audiobooks                                          |
-| `playlist-read-private`, `playlist-read-collaborative` | Your playlists and their tracks                                                            |
-| `user-read-playback-position`                          | Only requested if you enable shows or episodes — Spotify requires it for podcast endpoints |
+| Scope                                                     | Why                                                                                                   |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `user-read-private`, `user-read-email`                    | Identify the signed-in account                                                                        |
+| `user-top-read`                                           | Top artists and tracks, for suggestions                                                               |
+| `user-read-recently-played`                               | Recent plays, for suggestions                                                                         |
+| `user-library-read`                                       | Saved tracks, albums, shows, episodes, audiobooks                                                     |
+| `playlist-read-private`, `playlist-read-collaborative`    | Your playlists and their tracks                                                                       |
+| `user-read-playback-position`                             | Only requested if you enable shows or episodes — Spotify requires it for podcast endpoints            |
+| `user-read-playback-state`, `user-read-currently-playing` | Read what is playing, on which device, for Now Playing                                                |
+| `user-modify-playback-state`                              | The transport controls: play/pause, skip, seek, volume, shuffle, repeat, queue, transfer              |
+| `streaming`                                               | **Only** when you turn on the browser player in Settings — it makes this tab a Spotify Connect device |
 
-Music Ratings never requests write scopes. It cannot modify your library, your playlists,
-or your playback.
+Music Ratings requests no scope that can change your library. `user-modify-playback-state`
+controls playback only: it cannot save, unsave, or edit a playlist. `streaming` is not
+requested at all until you ask for the browser player.
+
+**Playback needs Spotify Premium.** Reading what is playing works on any account; every
+control — including the browser player — is Premium-only, and Spotify returns a clear
+refusal otherwise, which the app shows you rather than swallowing.
+
+If you connected before playback existed, your stored token has none of the three player
+scopes. Now Playing says so and offers **Reconnect Spotify**; there are no mysterious 403s.
 
 ---
 
@@ -170,6 +185,32 @@ Other honest limits:
 
 Music Ratings is not affiliated with or endorsed by Spotify. It stores no lyrics and no
 audio, and makes no claims on Spotify's behalf.
+
+### Now Playing and the browser player
+
+- **Playback is Premium-only.** Free accounts can see what is playing; controls
+  return a refusal, which the app shows on the disabled control itself.
+- **Something must already be playing, or a device must be awake.** Spotify has no
+  "wake my phone" API. With no device, Music Ratings offers the three real
+  recoveries: open Spotify somewhere, look again, or turn this browser into a device.
+- **Spotify reports what each device and track disallow** (`actions.disallows`).
+  Music Ratings disables those controls with the reason attached rather than letting
+  the press fail. Ads, local files and private sessions are handled the same way.
+- **The browser player is opt-in.** Turning it on in Settings adds the `streaming`
+  scope and asks you to reconnect; the Web Playback SDK is downloaded only then, and
+  never for people who only remote-control another device. Browsers require a real
+  tap before audio starts, and iOS Safari is unreliable for it — remote-controlling
+  a phone or speaker is the better path there. Closing the tab removes the device.
+- **Polling, not push.** Spotify has no playback webhook, so Music Ratings reads
+  state every 4s while playing and 15s while paused, drops to 10s/45s in
+  data-saving mode, and stops entirely when the tab is hidden or the device is
+  offline. Progress is interpolated locally between reads, so the clock moves
+  smoothly without extra requests.
+- **Playback state is never stored or synced.** It belongs to the device you are on.
+  Ratings you make while listening are ordinary rating events and sync normally.
+- **Without Spotify connected, playback is simulated** from your own catalogue so
+  the whole experience — transport, queue, album mode, live rating — works and can
+  be judged before you connect anything. It is labelled demo playback throughout.
 
 ---
 

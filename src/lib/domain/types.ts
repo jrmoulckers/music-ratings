@@ -191,7 +191,12 @@ export interface RatingScale {
 
 export type RatingConfidence = 'low' | 'medium' | 'high';
 
-export type RatingContext = 'queue' | 'detail' | 'duel' | 'import' | 'bulk';
+/**
+ * Where a rating was made. Descriptive only — it never changes the number, but
+ * it does let History say "you rated this while it was playing".
+ */
+export type RatingContext =
+  'queue' | 'detail' | 'duel' | 'import' | 'bulk' | 'now-playing' | 'album-listening';
 
 /* -------------------------------------------------------------------------- */
 /* Contextual ratings                                                         */

@@ -36,6 +36,7 @@ function response(body: unknown, status = 200): Response {
     status,
     headers: new Headers(),
     json: async () => body,
+    text: async () => (body === undefined ? '' : JSON.stringify(body)),
     clone() {
       return this;
     },

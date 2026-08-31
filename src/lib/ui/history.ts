@@ -1,5 +1,10 @@
 import { copySnapshot } from '../domain/context';
-import type { ContextSnapshot, RatingConfidence, RatingEvent } from '../domain/types';
+import type {
+  ContextSnapshot,
+  RatingConfidence,
+  RatingContext,
+  RatingEvent,
+} from '../domain/types';
 
 /**
  * What a history entry is, and what can be done to it.
@@ -61,4 +66,19 @@ export function seedFrom(event: RatingEvent): EntrySeed {
     ...(event.confidence ? { confidence: event.confidence } : {}),
     ...(contextual ? { contextual } : {}),
   };
+}
+
+/** How an entry says where it came from, in words rather than in field names. */
+const CONTEXT_WORDS: Record<RatingContext, string> = {
+  queue: 'from the queue',
+  detail: 'from its page',
+  duel: 'from a comparison',
+  import: 'brought in with your library',
+  bulk: 'rated in bulk',
+  'now-playing': 'while it was playing',
+  'album-listening': 'while listening to the release',
+};
+
+export function contextWords(context: RatingContext | undefined): string {
+  return context ? (CONTEXT_WORDS[context] ?? '') : '';
 }

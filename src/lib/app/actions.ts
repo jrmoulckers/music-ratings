@@ -7,6 +7,7 @@ import type {
   Entity,
   EntityId,
   RatingConfidence,
+  RatingContext,
 } from '../domain/types';
 import {
   clearQueueState,
@@ -33,7 +34,7 @@ export interface RateOptions {
   note?: string;
   tags?: string[];
   confidence?: RatingConfidence;
-  context?: 'queue' | 'detail' | 'duel' | 'import' | 'bulk';
+  context?: RatingContext;
   /**
    * Contextual facets judged in the same sitting. They ride on the event, so
    * one save writes one rating: adjusting a facet never records anything on

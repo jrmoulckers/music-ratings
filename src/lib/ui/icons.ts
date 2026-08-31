@@ -40,6 +40,24 @@ export const ICON_PATHS = {
   'thumb-up': 'M3 11H7V21H3ZM7 11L10.5 3H12L13 5L12 9H18L19.5 11L17.7 21H7Z',
   'thumb-down': 'M3 3H7V13H3ZM7 13L10.5 21H12L13 19L12 15H18L19.5 13L17.7 3H7Z',
 
+  /* Transport. The same hairline as everything else: a player that shouts is a
+     player you notice instead of the music. */
+  play: 'M7 4.5v15l13-7.5z',
+  pause: 'M8 4.5v15M16 4.5v15',
+  previous: 'M18 5v14L7 12zM5 5v14',
+  next: 'M6 5v14l11-7zM19 5v14',
+  volume: 'M4 9.5h3.5L12 5v14L7.5 14.5H4zM15.5 9.5a3.5 3.5 0 010 5M18 7a7 7 0 010 10',
+  mute: 'M4 9.5h3.5L12 5v14L7.5 14.5H4zM16 10l5 4M21 10l-5 4',
+  shuffle: 'M3 6h4l10 12h4M17 3l4 3-4 3M3 18h4l3-3.6M14.5 9.2L17 6h4M17 21l4-3-4-3',
+  repeat:
+    'M6 8h11a3 3 0 013 3v1M18 16H7a3 3 0 01-3-3v-1M8.5 5.5 6 8l2.5 2.5M15.5 13.5 18 16l-2.5 2.5',
+  'repeat-one':
+    'M6 8h11a3 3 0 013 3v1M18 16H7a3 3 0 01-3-3v-1M8.5 5.5 6 8l2.5 2.5M15.5 13.5 18 16l-2.5 2.5M11.5 10.5 13 9.5V15',
+  device: 'M5 4h14v12H5zM9 20h6M12 16v4',
+  speaker: 'M6 3h12v18H6zM12 10a4 4 0 100 8 4 4 0 100-8M12 6h.01',
+  phone: 'M7 2h10v20H7zM10 19h4',
+  'queue-add': 'M4 6h11M4 12h11M4 18h7M18 13v8M14 17h8',
+
   /* Kinds of things. One silhouette each, readable down to 14px: a figure, a
      sleeve, a note, a stack of lines, a broadcast, a play, a book, a leaf. */
   artist: 'M12 4a3.5 3.5 0 100 7 3.5 3.5 0 100-7M5 20v-1.5c0-2.5 3.1-4 7-4s7 1.5 7 4V20',
