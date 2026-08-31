@@ -12,15 +12,27 @@ import type { PlaybackSnapshot } from './types';
  * the tab, because "did I hear this today" is not a fact worth syncing.
  */
 
-export type AlbumTrackState = 'played' | 'current' | 'upcoming';
+/**
+ * Where a track sits relative to the needle. Position only — never a claim
+ * that it was heard, which is what `listened` is for.
+ */
+export type AlbumTrackState = 'earlier' | 'current' | 'upcoming';
 
 export interface AlbumTrackRow {
   entity: Entity;
   /** 1-based, as printed on the sleeve. */
   position: number;
   state: AlbumTrackState;
-  /** Heard during this sitting. */
+  /** Observed playing through, here, during this sitting. */
   listened: boolean;
+  /**
+   * Confirmed by Spotify's own record of what was played, within this sitting.
+   *
+   * Stronger than `listened`: this app watching a track run to its end is good
+   * evidence, but only `/me/recently-played` settles it. Nothing here fills
+   * this in yet, which is why the two are kept apart rather than merged.
+   */
+  confirmed: boolean;
   rated: boolean;
 }
 
@@ -30,6 +42,8 @@ export interface AlbumRowsInput {
   currentUri: string | null;
   listened: ReadonlySet<EntityId>;
   rated: ReadonlySet<EntityId>;
+  /** Plays Spotify has confirmed, already scoped to this sitting by the caller. */
+  confirmed?: ReadonlySet<EntityId>;
 }
 
 function uriOf(entity: Entity): string {
@@ -39,10 +53,11 @@ function uriOf(entity: Entity): string {
 /**
  * The track list, with each row's standing.
  *
- * Playing position decides "played" and "upcoming"; the session's own record of
- * what has been heard decides "listened". They differ whenever someone starts
- * mid-record, shuffles, or comes back to a record later — and both are true at
- * once, so both are kept.
+ * Two different facts, kept apart on purpose. Where the needle is decides
+ * `state` — earlier, current, later. Whether a track was actually heard decides
+ * `listened`, and only an observed play sets it. Start a record at track six
+ * and the first five are earlier without ever having been played, which is why
+ * position alone is never allowed to claim otherwise.
  */
 export function albumRows(input: AlbumRowsInput): AlbumTrackRow[] {
   const index = input.currentUri
@@ -51,10 +66,41 @@ export function albumRows(input: AlbumRowsInput): AlbumTrackRow[] {
   return input.tracks.map((entity, i) => ({
     entity,
     position: entity.trackNumber ?? i + 1,
-    state: index < 0 ? 'upcoming' : i < index ? 'played' : i === index ? 'current' : 'upcoming',
+    state: index < 0 ? 'upcoming' : i < index ? 'earlier' : i === index ? 'current' : 'upcoming',
     listened: input.listened.has(entity.id),
+    confirmed: input.confirmed?.has(entity.id) ?? false,
     rated: input.rated.has(entity.id),
   }));
+}
+
+/** A row's standing, in words: short enough for the column, full for a reader. */
+export interface AlbumTrackStatus {
+  text: string;
+  spoken: string;
+}
+
+/**
+ * What a row's standing is called.
+ *
+ * These are statuses, not buttons, so they read as descriptions of the track
+ * rather than as things you could do to it. "Passed" was neither: it implied
+ * you had skipped something you may simply have never reached.
+ *
+ * Three different claims are kept apart, in descending order of certainty.
+ * Spotify's own record settles a play. This app watching a track run through is
+ * strong evidence still waiting to be confirmed, and says so. Sitting above the
+ * needle in the track list is a position and nothing more — the word for that
+ * is "earlier", and it never becomes "played".
+ */
+export function albumTrackStatus(row: AlbumTrackRow): AlbumTrackStatus {
+  if (row.state === 'current') return { text: 'Now playing', spoken: 'Now playing' };
+  if (row.confirmed)
+    return { text: 'Played this session', spoken: 'Played this session, confirmed by Spotify' };
+  if (row.listened)
+    return { text: 'Awaiting Spotify', spoken: 'Played here; Spotify has not confirmed it yet' };
+  if (row.state === 'earlier')
+    return { text: 'Earlier track', spoken: 'Earlier track, not played this session' };
+  return { text: 'Up next', spoken: 'Up next' };
 }
 
 export interface AlbumProgress {

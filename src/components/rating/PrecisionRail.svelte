@@ -8,10 +8,10 @@
     railTicks,
     snapRaw,
     RAIL_DEFAULT_LABELS,
-  } from '../lib/domain/scales';
-  import type { RatingScale } from '../lib/domain/types';
-  import { canSaveDraft, restingValue, settleTyped, steppedFrom } from '../lib/ui/draft';
-  import Icon from '../lib/ui/Icon.svelte';
+  } from '../../lib/domain/scales';
+  import type { RatingScale } from '../../lib/domain/types';
+  import { canSaveDraft, restingValue, settleTyped, steppedFrom } from '../../lib/ui/draft';
+  import Icon from '../../lib/ui/Icon.svelte';
 
   /**
    * The rail, for scales too fine to seat one detent at a time.

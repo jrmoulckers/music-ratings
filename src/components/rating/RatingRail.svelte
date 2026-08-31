@@ -9,11 +9,11 @@
     isStarScale,
     markIcon,
     normalizedForDetent,
-  } from '../lib/domain/scales';
-  import type { RatingScale } from '../lib/domain/types';
-  import Icon from '../lib/ui/Icon.svelte';
-  import { ICON_PATHS, type IconName } from '../lib/ui/icons';
-  import { TIER_EDGE, TIER_INK, tierPalette } from '../lib/ui/tiers';
+  } from '../../lib/domain/scales';
+  import type { RatingScale } from '../../lib/domain/types';
+  import Icon from '../../lib/ui/Icon.svelte';
+  import { ICON_PATHS, type IconName } from '../../lib/ui/icons';
+  import { TIER_EDGE, TIER_INK, tierPalette } from '../../lib/ui/tiers';
   import PrecisionRail from './PrecisionRail.svelte';
   import StarRating from './StarRating.svelte';
 

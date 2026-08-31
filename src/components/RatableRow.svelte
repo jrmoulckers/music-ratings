@@ -15,7 +15,7 @@
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
   import EntityTypeIcon from './EntityTypeIcon.svelte';
-  import QuickRate from './QuickRate.svelte';
+  import InlineRating from './InlineRating.svelte';
   import RatePanel from './RatePanel.svelte';
   import ScoreMark from './ScoreMark.svelte';
 
@@ -171,31 +171,22 @@
     </div>
 
     <div class="slip__acts">
-      <QuickRate
+      <InlineRating
         {entity}
         value={existing?.normalized ?? null}
         disabled={busy}
         {where}
         onafter={() => onafter?.()}
-      />
-
-      {#if hasScore && breakdown}
-        <ScoreMark {breakdown} {scale} view={shownView} showKind={false} />
-      {/if}
-
-      {#if ontoggle}
-        <button
-          type="button"
-          bind:this={disclosure}
-          class="btn btn--small slip__open"
-          aria-expanded={expanded}
-          onclick={ontoggle}
-        >
-          <Icon name="chevron" size={12} class={expanded ? 'slip__turn' : ''} />
-          <span>{expanded ? 'Close' : existing ? 'Edit rating' : 'Rate'}</span>
-          <span class="sr-only">{entity.name}</span>
-        </button>
-      {/if}
+        ondetails={ontoggle}
+        detailsOpen={expanded}
+        detailsRef={(element) => (disclosure = element)}
+      >
+        {#snippet aside()}
+          {#if hasScore && breakdown}
+            <ScoreMark {breakdown} {scale} view={shownView} showKind={false} />
+          {/if}
+        {/snippet}
+      </InlineRating>
 
       {#if queueActions}
         <span class="slip__aside">
@@ -336,17 +327,9 @@
    * The row exists so you can judge the thing. Opening the full editor is the
    * point of it; skipping and snoozing are ways of declining. Three identical
    * quiet buttons would put "get rid of this" on equal footing with the reason
-   * the list is here at all, so the disclosure keeps its outline and the two
-   * dismissals sit back behind a hairline.
+   * the list is here at all, so the two dismissals sit back behind a hairline
+   * while the disclosure keeps the outline `InlineRating` gives it.
    */
-  .slip__open {
-    border-color: var(--border);
-    color: var(--ink);
-  }
-  .slip__open[aria-expanded='true'] {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
 
   .slip__aside {
     display: flex;

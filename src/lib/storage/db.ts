@@ -97,59 +97,111 @@ export function onDatabaseBlocked(handler: (message: string) => void): void {
 }
 
 export function db(): Promise<IDBPDatabase<AppDB>> {
-  if (!dbp) {
-    dbp = openDB<AppDB>(DB_NAME, DB_VERSION, {
-      upgrade(database, oldVersion, _newVersion, transaction) {
-        if (oldVersion < 1) {
-          const entities = database.createObjectStore('entities', { keyPath: 'id' });
-          entities.createIndex('byType', 'type');
-          entities.createIndex('byUpdated', 'updatedAt');
-
-          const memberships = database.createObjectStore('memberships', { keyPath: 'id' });
-          memberships.createIndex('byParent', 'parentId');
-          memberships.createIndex('byChild', 'childId');
-
-          const ratings = database.createObjectStore('ratings', { keyPath: 'id' });
-          ratings.createIndex('byEntity', 'entityId');
-          ratings.createIndex('byAt', 'at');
-          ratings.createIndex('byType', 'entityType');
-
-          const comparisons = database.createObjectStore('comparisons', { keyPath: 'id' });
-          comparisons.createIndex('byType', 'entityType');
-          comparisons.createIndex('byAt', 'at');
-
-          database.createObjectStore('queueStates', { keyPath: 'id' });
-          database.createObjectStore('annotations', { keyPath: 'id' });
-          database.createObjectStore('collections', { keyPath: 'id' });
-          database.createObjectStore('meta');
-        }
-        if (oldVersion < 2) {
-          // v2 introduced user-defined rating scales as first-class records.
-          database.createObjectStore('scales', { keyPath: 'id' });
-        }
-        if (oldVersion < 3) {
-          // v3 removed the seeded sample catalogue. Anything that came from it
-          // is purged outright rather than tombstoned: it was never real data,
-          // and leaving it behind is exactly the confusion the removal fixes.
-          purgeSeededSampleData(transaction);
-        }
-      },
-      blocked() {
-        blockedNotice?.(
-          'Another tab is using an older version of this app. Close it and reload to continue.',
-        );
-      },
-      blocking() {
-        // A newer version wants in. Let go so the other tab can upgrade.
-        void db().then((instance) => instance.close());
-        dbp = null;
-      },
-      terminated() {
-        dbp = null;
-      },
-    });
-  }
+  dbp ??= open().catch((error: unknown) => {
+    // Never cache a failure. Closing the other tab, or reloading, has to be
+    // enough to recover; a remembered rejection would outlive the cause.
+    dbp = null;
+    throw error;
+  });
   return dbp;
+}
+
+/**
+ * The version already on this device, or `null` when the browser will not say.
+ *
+ * Chromium and Safari answer `indexedDB.databases()`; older Firefox does not.
+ * Where it is unavailable the only way to learn a database is newer than this
+ * build expects is to be refused by it, which `open` handles.
+ */
+async function storedVersion(): Promise<number | null> {
+  try {
+    const list = await indexedDB.databases?.();
+    if (!list) return null;
+    return list.find((entry) => entry.name === DB_NAME)?.version ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+function isVersionError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'VersionError';
+}
+
+/**
+ * Opens the database, tolerating one that is newer than this build.
+ *
+ * IndexedDB refuses to open a database at a lower version than it already has,
+ * and refuses loudly: the promise rejects and every read after it fails. A user
+ * who ran a newer build once — a branch, a preview, a colleague's link — would
+ * come back to this one and find an app that loads nothing at all, with their
+ * data intact but unreachable.
+ *
+ * So this build asks for whichever is higher, its own version or the one on
+ * disk. Opening at the existing version runs no migration and touches nothing;
+ * stores this build does not know about are simply left alone. Refusing to
+ * start would protect nothing and cost the user everything.
+ */
+async function open(): Promise<IDBPDatabase<AppDB>> {
+  const found = await storedVersion();
+  try {
+    return await openAt(found === null ? DB_VERSION : Math.max(DB_VERSION, found));
+  } catch (error) {
+    if (found === null && isVersionError(error)) return await openAt(undefined);
+    throw error;
+  }
+}
+
+function openAt(version: number | undefined): Promise<IDBPDatabase<AppDB>> {
+  return openDB<AppDB>(DB_NAME, version, {
+    upgrade(database, oldVersion, _newVersion, transaction) {
+      if (oldVersion < 1) {
+        const entities = database.createObjectStore('entities', { keyPath: 'id' });
+        entities.createIndex('byType', 'type');
+        entities.createIndex('byUpdated', 'updatedAt');
+
+        const memberships = database.createObjectStore('memberships', { keyPath: 'id' });
+        memberships.createIndex('byParent', 'parentId');
+        memberships.createIndex('byChild', 'childId');
+
+        const ratings = database.createObjectStore('ratings', { keyPath: 'id' });
+        ratings.createIndex('byEntity', 'entityId');
+        ratings.createIndex('byAt', 'at');
+        ratings.createIndex('byType', 'entityType');
+
+        const comparisons = database.createObjectStore('comparisons', { keyPath: 'id' });
+        comparisons.createIndex('byType', 'entityType');
+        comparisons.createIndex('byAt', 'at');
+
+        database.createObjectStore('queueStates', { keyPath: 'id' });
+        database.createObjectStore('annotations', { keyPath: 'id' });
+        database.createObjectStore('collections', { keyPath: 'id' });
+        database.createObjectStore('meta');
+      }
+      if (oldVersion < 2) {
+        // v2 introduced user-defined rating scales as first-class records.
+        database.createObjectStore('scales', { keyPath: 'id' });
+      }
+      if (oldVersion < 3) {
+        // v3 removed the seeded sample catalogue. Anything that came from it
+        // is purged outright rather than tombstoned: it was never real data,
+        // and leaving it behind is exactly the confusion the removal fixes.
+        purgeSeededSampleData(transaction);
+      }
+    },
+    blocked() {
+      blockedNotice?.(
+        'Another tab is using an older version of this app. Close it and reload to continue.',
+      );
+    },
+    blocking() {
+      // A newer version wants in. Let go so the other tab can upgrade.
+      void db().then((instance) => instance.close());
+      dbp = null;
+    },
+    terminated() {
+      dbp = null;
+    },
+  });
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { ListeningSignals, PlaySignal, SavedSignal, TopSignal } from '../domain/suggestions';
-import type { Entity, EntityType, Membership } from '../domain/types';
+import type { Entity, EntityId, EntityType, Membership } from '../domain/types';
 import { entityId } from '../domain/ids';
 import { META_CURSORS, deleteMeta, readMeta, writeMeta } from '../storage/db';
 import { replaceChildren, saveMemberships, upsertEntities } from '../storage/repo';
@@ -384,8 +384,17 @@ export async function expandEntity(
 
   switch (entity.type) {
     case 'artist': {
-      const albums = await client.artistAlbums(id, { max: 200 });
-      return mergeResults(...albums.map((a) => mapAlbum(a, 'artist albums')));
+      // The artist record itself comes first: an artist reached through a track
+      // or a playback event carries a name and nothing else, and this is the
+      // one call that can give it a picture and its genres.
+      const [artist, albums] = await Promise.all([
+        client.artist(id),
+        client.artistAlbums(id, { max: 200 }),
+      ]);
+      return mergeResults(
+        { entities: [mapArtist(artist, 'artist detail')], memberships: [] },
+        ...albums.map((a) => mapAlbum(a, 'artist albums')),
+      );
     }
     case 'album': {
       const album = await client.album(id);
@@ -422,39 +431,106 @@ export async function expandEntity(
 }
 
 /** Search, mapped straight into domain records so results are ratable at once. */
+export interface SearchResult extends MapResult {
+  /**
+   * What Spotify actually answered with, in a balanced order.
+   *
+   * A catalogue search for one track drags in its release, its artists and the
+   * artists of every other release returned — real records, needed for the
+   * links, but not answers to the question. Listing `entities` directly buries
+   * the track you searched for under other people's metadata. So the direct
+   * hits are named here and interleaved a type at a time, which keeps the best
+   * artist, the best release and the best track all in the first three rows.
+   */
+  hits: EntityId[];
+}
+
 export async function searchCatalogue(
   client: SpotifyClient,
   query: string,
   types: readonly EntityType[],
-): Promise<MapResult> {
+): Promise<SearchResult> {
   const searchTypes = searchTypesFor(types);
-  if (!query.trim() || searchTypes.length === 0) return { entities: [], memberships: [] };
+  if (!query.trim() || searchTypes.length === 0) return { entities: [], memberships: [], hits: [] };
   const response = await client.search(query, searchTypes, SEARCH_LIMIT_MAX);
   const parts: MapResult[] = [];
+  const lanes: EntityId[][] = [];
 
-  for (const artist of response.artists?.items ?? []) {
-    if (artist) parts.push({ entities: [mapArtist(artist, 'search')], memberships: [] });
-  }
-  for (const album of response.albums?.items ?? []) {
-    if (album) parts.push(mapAlbum(album, 'search'));
-  }
-  for (const track of response.tracks?.items ?? []) {
-    if (track) parts.push(mapTrack(track, 'search'));
-  }
-  for (const playlist of response.playlists?.items ?? []) {
-    if (playlist) parts.push({ entities: [mapPlaylist(playlist, 'search')], memberships: [] });
-  }
-  for (const show of response.shows?.items ?? []) {
-    if (show) parts.push({ entities: [mapShow(show, 'search')], memberships: [] });
-  }
-  for (const episode of response.episodes?.items ?? []) {
-    if (episode) parts.push(mapEpisode(episode, 'search'));
-  }
-  for (const book of response.audiobooks?.items ?? []) {
-    if (book) parts.push({ entities: [mapAudiobook(book, 'search')], memberships: [] });
+  /** Keep one lane per kind: the answers, not what they happen to reference. */
+  function lane(results: MapResult[], pick: (r: MapResult) => EntityId | undefined) {
+    const ids: EntityId[] = [];
+    for (const result of results) {
+      parts.push(result);
+      const id = pick(result);
+      if (id) ids.push(id);
+    }
+    if (ids.length > 0) lanes.push(ids);
   }
 
-  return mergeResults(...parts);
+  const first = (r: MapResult) => r.entities[0]?.id;
+  const ofType = (type: EntityType) => (r: MapResult) =>
+    r.entities.find((e) => e.type === type)?.id;
+
+  lane(
+    (response.artists?.items ?? [])
+      .filter((a): a is NonNullable<typeof a> => !!a)
+      .map((a) => ({ entities: [mapArtist(a, 'search')], memberships: [] })),
+    first,
+  );
+  lane(
+    (response.albums?.items ?? [])
+      .filter((a): a is NonNullable<typeof a> => !!a)
+      .map((a) => mapAlbum(a, 'search')),
+    ofType('album'),
+  );
+  lane(
+    (response.tracks?.items ?? [])
+      .filter((t): t is NonNullable<typeof t> => !!t)
+      .map((t) => mapTrack(t, 'search')),
+    ofType('track'),
+  );
+  lane(
+    (response.playlists?.items ?? [])
+      .filter((p): p is NonNullable<typeof p> => !!p)
+      .map((p) => ({ entities: [mapPlaylist(p, 'search')], memberships: [] })),
+    first,
+  );
+  lane(
+    (response.shows?.items ?? [])
+      .filter((s): s is NonNullable<typeof s> => !!s)
+      .map((s) => ({ entities: [mapShow(s, 'search')], memberships: [] })),
+    first,
+  );
+  lane(
+    (response.episodes?.items ?? [])
+      .filter((e): e is NonNullable<typeof e> => !!e)
+      .map((e) => mapEpisode(e, 'search')),
+    ofType('episode'),
+  );
+  lane(
+    (response.audiobooks?.items ?? [])
+      .filter((b): b is NonNullable<typeof b> => !!b)
+      .map((b) => ({ entities: [mapAudiobook(b, 'search')], memberships: [] })),
+    first,
+  );
+
+  return { ...mergeResults(...parts), hits: interleave(lanes) };
+}
+
+/** One from each lane in turn, so no single kind pushes the others off the screen. */
+function interleave(lanes: readonly (readonly EntityId[])[]): EntityId[] {
+  const out: EntityId[] = [];
+  const seen = new Set<EntityId>();
+  const longest = Math.max(0, ...lanes.map((l) => l.length));
+  for (let i = 0; i < longest; i += 1) {
+    for (const lane of lanes) {
+      const id = lane[i];
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
 }
 
 /**

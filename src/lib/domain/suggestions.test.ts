@@ -758,3 +758,142 @@ describe('what the queue says about an item', () => {
     }
   });
 });
+
+describe('rating one thing never evicts its siblings', () => {
+  /**
+   * Coverage as the rollup really reports it, minimum included, so a test can
+   * watch a parent cross the threshold the way it does in the app.
+   */
+  function coverageOf(parent: Entity, rated: number, total: number) {
+    const ratio = total === 0 ? 0 : rated / total;
+    const breakdown: ScoreBreakdown = {
+      entityId: parent.id,
+      entityType: parent.type,
+      explicit: null,
+      contextScore: null,
+      contextAdjusted: null,
+      effectiveExplicit: null,
+      rollup: null,
+      blended: null,
+      channels: [],
+      coverage: { rated, total, ratio, meetsMinimum: total === 0 || ratio >= 0.25 },
+      confidence: 0.1,
+      method: 'mean',
+      exclusions: [],
+      computedAt: T0,
+    };
+    return new Map([[parent.id, breakdown]]);
+  }
+
+  /** Four tracks on one record, none of them judged yet. */
+  function record() {
+    const album = makeEntity('album', 'record');
+    const tracks = ['first', 'second', 'third', 'fourth'].map((n) => makeEntity('track', n));
+    return {
+      album,
+      tracks,
+      entities: [album, ...tracks],
+      memberships: tracks.map((t, i) => link(album, t, { position: i })),
+    };
+  }
+
+  it('keeps the unrated track below the one you just rated', () => {
+    const { album, tracks, entities, memberships } = record();
+
+    const before = scoreSuggestions(
+      input({ entities, memberships, overrides: { scores: coverageOf(album, 0, 4) } }),
+    ).map((s) => s.entityId);
+    for (const track of tracks) expect(before).toContain(track.id);
+
+    // One rating takes the record over the quarter-coverage minimum, which used
+    // to switch the whole parent's gap off and take three innocent tracks
+    // with it.
+    const after = scoreSuggestions(
+      input({
+        entities,
+        memberships,
+        ratings: [rate(tracks[0]!, 80)],
+        overrides: { scores: coverageOf(album, 1, 4) },
+      }),
+    ).map((s) => s.entityId);
+
+    expect(after).not.toContain(tracks[0]!.id);
+    for (const track of tracks.slice(1)) expect(after).toContain(track.id);
+  });
+
+  it('keeps a track by the same artist when you rate its neighbour', () => {
+    const artist = makeEntity('artist', 'same-artist');
+    const one = makeEntity('track', 'jolene');
+    const two = makeEntity('track', 'requiem');
+    const entities = [artist, one, two];
+    const memberships = [link(artist, one, { position: 0 }), link(artist, two, { position: 1 })];
+
+    const after = scoreSuggestions(
+      input({
+        entities,
+        memberships,
+        ratings: [rate(one, 80)],
+        overrides: { scores: coverageOf(artist, 1, 2) },
+      }),
+    ).map((s) => s.entityId);
+
+    expect(after).not.toContain(one.id);
+    expect(after).toContain(two.id);
+  });
+
+  it('keeps the rest of a record once coverage is comfortably past the minimum', () => {
+    // Three of four rated is well clear of any threshold, and the fourth track
+    // is still the one thing on the record nobody has judged.
+    const { album, tracks, entities, memberships } = record();
+    const out = scoreSuggestions(
+      input({
+        entities,
+        memberships,
+        ratings: tracks.slice(0, 3).map((t) => rate(t, 70)),
+        overrides: { scores: coverageOf(album, 3, 4) },
+      }),
+    );
+
+    const last = out.find((s) => s.entityId === tracks[3]!.id);
+    expect(last).toBeDefined();
+    expect(last!.reasons.some((r) => r.source === 'coverageGap')).toBe(true);
+  });
+
+  it('argues more quietly for a gap the further a parent gets through it', () => {
+    const { album, tracks, entities, memberships } = record();
+    const weightAt = (rated: number) =>
+      scoreSuggestions(
+        input({
+          entities,
+          memberships,
+          ratings: tracks.slice(0, rated).map((t) => rate(t, 70)),
+          overrides: { scores: coverageOf(album, rated, 4) },
+        }),
+      )
+        .find((s) => s.entityId === tracks[3]!.id)!
+        .reasons.find((r) => r.source === 'coverageGap')!.weight;
+
+    expect(weightAt(0)).toBeGreaterThan(weightAt(1));
+    expect(weightAt(1)).toBeGreaterThan(weightAt(3));
+  });
+
+  it('drops only the rated entity when the parent itself is what you rated', () => {
+    // Rating the artist is its own act: it does not judge the tracks, so every
+    // unrated track underneath is still worth asking about.
+    const artist = makeEntity('artist', 'rated-artist');
+    const one = makeEntity('track', 'ra1');
+    const two = makeEntity('track', 'ra2');
+    const out = scoreSuggestions(
+      input({
+        entities: [artist, one, two],
+        memberships: [link(artist, one, { position: 0 }), link(artist, two, { position: 1 })],
+        ratings: [rate(artist, 90)],
+      }),
+    );
+
+    const ids = out.map((s) => s.entityId);
+    expect(ids).not.toContain(artist.id);
+    expect(ids).toContain(one.id);
+    expect(ids).toContain(two.id);
+  });
+});

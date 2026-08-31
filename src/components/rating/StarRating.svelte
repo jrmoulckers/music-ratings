@@ -8,9 +8,9 @@
     starFills,
     starRawFromRatio,
     starValueText,
-  } from '../lib/domain/scales';
-  import type { RatingScale } from '../lib/domain/types';
-  import { ICON_PATHS } from '../lib/ui/icons';
+  } from '../../lib/domain/scales';
+  import type { RatingScale } from '../../lib/domain/types';
+  import { ICON_PATHS } from '../../lib/ui/icons';
 
   /**
    * Stars.

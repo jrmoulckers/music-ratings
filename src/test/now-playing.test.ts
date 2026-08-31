@@ -225,20 +225,6 @@ describe('the bar that follows you around', () => {
     flushSync();
     expect(commands).toContain('toggle');
   });
-});
-
-describe('the Now Playing screen', () => {
-  it('asks for the missing permission rather than showing a broken player', () => {
-    playback.set({ ...playingState(), status: 'needs-permission', snapshot: null });
-    render(NowPlaying);
-    expect(text()).toMatch(/permission/i);
-  });
-
-  it('says plainly that control needs Premium', () => {
-    playback.set({ ...playingState(), status: 'needs-premium' });
-    render(NowPlaying);
-    expect(text()).toMatch(/Premium/);
-  });
 
   it('disables a control Spotify has refused, and says why', () => {
     playback.set(
@@ -246,29 +232,23 @@ describe('the Now Playing screen', () => {
         snapshot: { ...playingState().snapshot!, disallows: { skippingPrevious: true } },
       }),
     );
-    render(NowPlaying);
+    render(MiniPlayer);
     const previous = control(/^Previous$/);
     expect(previous.disabled).toBe(true);
     expect(previous.title).toMatch(/nothing is queued before/i);
   });
 
-  it('shows the transport in the state the reading reports', () => {
-    playback.set(playingState({ snapshot: { ...playingState().snapshot!, shuffle: true } }));
-    render(NowPlaying);
-    expect(control(/Shuffle on/).getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('cycles repeat through off, the record and the track', () => {
+  it('carries the one scrubber in the app', () => {
     playback.set(playingState());
-    render(NowPlaying);
-    control(/^Repeat off$/).click();
-    flushSync();
-    expect(commands).toContain('repeat:context');
+    render(MiniPlayer);
+    expect(
+      host?.querySelectorAll('input[type="range"][aria-label^="Position in track"]'),
+    ).toHaveLength(1);
   });
 
   it('scrubs to where the listener let go, not to every value on the way', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     rail.value = '90000';
     rail.dispatchEvent(new Event('input', { bubbles: true }));
@@ -281,13 +261,13 @@ describe('the Now Playing screen', () => {
 
   it('moves in steps far finer than a second, so a drag is not a staircase', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     expect(Number(scrubber().step)).toBeLessThanOrEqual(100);
   });
 
   it('follows every input event while the finger is down', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     const seen: string[] = [];
     for (const value of ['31000', '31200', '31400', '31600']) {
@@ -305,7 +285,7 @@ describe('the Now Playing screen', () => {
 
   it('sends exactly one seek for one drag', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     for (const value of ['40000', '50000', '60000', '70000']) {
       rail.value = value;
@@ -319,7 +299,7 @@ describe('the Now Playing screen', () => {
 
   it('does not let a poll pull the thumb out from under a finger', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     rail.value = '90000';
     rail.dispatchEvent(new Event('input', { bubbles: true }));
@@ -333,7 +313,7 @@ describe('the Now Playing screen', () => {
 
   it('puts the thumb back where the music is when the drag is abandoned', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     rail.value = '90000';
     rail.dispatchEvent(new Event('input', { bubbles: true }));
@@ -347,7 +327,7 @@ describe('the Now Playing screen', () => {
 
   it('moves five seconds per arrow key, not one detent', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     flushSync();
@@ -360,7 +340,7 @@ describe('the Now Playing screen', () => {
 
   it('leaps by the page keys and lands on the ends with Home and End', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
     flushSync();
@@ -377,7 +357,7 @@ describe('the Now Playing screen', () => {
 
   it('never offers a position past the end of the track', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     const rail = scrubber();
     for (let i = 0; i < 60; i += 1) {
       rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
@@ -390,11 +370,50 @@ describe('the Now Playing screen', () => {
 
   it('shows the moving position from the frame clock, not from the poll', () => {
     playback.set(playingState());
-    render(NowPlaying);
+    render(MiniPlayer);
     expect(text()).toContain('0:30');
     playbackProgress.set(64_500);
     flushSync();
     expect(text()).toContain('1:04');
+  });
+});
+
+describe('the Now Playing screen', () => {
+  it('asks for the missing permission rather than showing a broken player', () => {
+    playback.set({ ...playingState(), status: 'needs-permission', snapshot: null });
+    render(NowPlaying);
+    expect(text()).toMatch(/permission/i);
+  });
+
+  it('says plainly that control needs Premium', () => {
+    playback.set({ ...playingState(), status: 'needs-premium' });
+    render(NowPlaying);
+    expect(text()).toMatch(/Premium/);
+  });
+
+  it('does not repeat the transport that lives in the bar', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    expect(
+      host?.querySelectorAll('input[type="range"][aria-label^="Position in track"]'),
+    ).toHaveLength(0);
+    for (const name of [/^Play$/, /^Pause$/, /^Previous$/, /^Next$/]) {
+      expect(() => control(name)).toThrow();
+    }
+  });
+
+  it('keeps the session controls the bar has no room for', () => {
+    playback.set(playingState({ snapshot: { ...playingState().snapshot!, shuffle: true } }));
+    render(NowPlaying);
+    expect(control(/Shuffle on/).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('cycles repeat through off, the record and the track', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    control(/^Repeat off$/).click();
+    flushSync();
+    expect(commands).toContain('repeat:context');
   });
 
   it('offers a way out to Spotify itself', () => {
@@ -411,5 +430,30 @@ describe('the Now Playing screen', () => {
       /open in spotify/i.test(a.textContent ?? ''),
     );
     expect(link?.getAttribute('href')).toBe('https://open.spotify.com/track/t1');
+  });
+
+  it('shows what is coming without being asked', () => {
+    playback.set(
+      playingState({
+        queue: [
+          {
+            id: 't2',
+            uri: 'spotify:track:t2',
+            kind: 'track',
+            name: 'Papa Got A Brand New Bag',
+            artists: [{ id: 'a1', name: 'James Brown' }],
+            release: { id: 'al1', uri: 'spotify:album:al1', name: 'Cold Sweat', totalTracks: 10 },
+            durationMs: 120_000,
+            isLocal: false,
+            playable: true,
+          },
+        ],
+      }),
+    );
+    render(NowPlaying);
+    const section = host?.querySelector('section[aria-label="Up next"]');
+    expect(section).not.toBeNull();
+    expect(section?.querySelector('button[aria-expanded="true"]')).not.toBeNull();
+    expect(text()).toContain('Brand New Bag');
   });
 });

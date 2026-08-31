@@ -279,7 +279,13 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     if (children.length === 0) continue;
 
     const coverage = parentScore?.coverage;
-    const shortOnCoverage = Boolean(coverage && coverage.total > 0 && !coverage.meetsMinimum);
+    // A gap is a fact about the child in front of you: it is unrated and its
+    // parent still has room. Gating on the parent's coverage *minimum* instead
+    // would let a single rating switch every remaining sibling off at once —
+    // rate one track of a four-track record and the other three vanish, though
+    // nothing about them changed. The weight below still falls as coverage
+    // rises, so a nearly-complete parent argues quietly rather than not at all.
+    const hasGap = Boolean(coverage && coverage.total > 0 && coverage.rated < coverage.total);
     // Named from the children this parent actually holds, so an artist that
     // only has releases recorded is never described as missing tracks.
     const childTypes = children.flatMap((edge) => {
@@ -306,7 +312,7 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
       // Only one of these two ever prints for the same parent: "you rated the
       // album but not this" and "no tracks from the album rated yet" are the
       // same observation, and stacking them reads like the queue is nagging.
-      if (shortOnCoverage && !parentRated) {
+      if (hasGap && !parentRated) {
         add(
           acc,
           graph,

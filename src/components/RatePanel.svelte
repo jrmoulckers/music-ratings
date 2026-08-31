@@ -23,13 +23,12 @@
   } from '../lib/domain/types';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
   import { swipe } from '../lib/ui/actions';
-  import { wideEnoughForRail } from '../lib/ui/media';
   import Icon from '../lib/ui/Icon.svelte';
   import { relative } from '../lib/ui/format';
   import Artwork from './Artwork.svelte';
   import ContextEditor from './ContextEditor.svelte';
   import EntityTypeIcon from './EntityTypeIcon.svelte';
-  import RatingRail from './RatingRail.svelte';
+  import InlineRating from './InlineRating.svelte';
 
   /**
    * The rating panel.
@@ -267,14 +266,17 @@
   {/if}
 
   <div class="panel__rail">
-    <RatingRail
-      {scale}
+    <InlineRating
+      {entity}
       value={seated}
+      variant="prominent"
+      {scale}
       label="Rating for {entity.name}"
-      orientation={$wideEnoughForRail ? 'horizontal' : 'vertical'}
-      mode={contextOpen ? 'compose' : 'commit'}
-      oncommit={(value) => (contextOpen ? (directDraft = value) : void commit(value))}
-      disabled={busy}
+      mode={contextOpen ? 'held' : 'commit'}
+      onrate={commit}
+      onvalue={(value) => (directDraft = value)}
+      {where}
+      {busy}
     />
   </div>
 
@@ -317,12 +319,12 @@
         onclick={() => (contextOpen = !contextOpen)}
       >
         <Icon name="chevron" size={13} />
-        <span>{contextOpen ? 'Rating in context' : 'Rate in context'}</span>
+        <span>Deeper rating</span>
         <span class="note note--small">
           {#if answered > 0}
             {answered} of {offered.length} answered
           {:else}
-            Optional — {offered.length} short questions
+            Optional · {offered.length} questions
           {/if}
         </span>
       </button>

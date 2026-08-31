@@ -134,6 +134,20 @@ function albumRecord(album: SpotifyAlbum, via: string, now: number): Entity {
   return entity;
 }
 
+/**
+ * Where a track sits on its release, across every disc.
+ *
+ * `track_number` restarts at 1 on each disc, so a two-disc set stored by track
+ * number alone interleaves: 1, 1, 2, 2, 3, 3. Folding the disc in above it
+ * keeps one ascending sequence for the whole record while leaving the number
+ * printed on the sleeve — `trackNumber` on the entity — untouched.
+ */
+const TRACKS_PER_DISC = 1000;
+
+function releasePosition(disc: number | undefined, track: number): number {
+  return Math.max(1, disc ?? 1) * TRACKS_PER_DISC + track;
+}
+
 export function mapTrack(track: SpotifyTrack, via = 'track', now = Date.now()): MapResult {
   // Local files carry no id and can never be looked up again, so they are
   // skipped rather than stored under a fabricated key.
@@ -163,7 +177,9 @@ export function mapTrack(track: SpotifyTrack, via = 'track', now = Date.now()): 
     Object.assign(entity, artworkOf(track.album.images));
     memberships.push(
       link(album.id, entity.id, 'album', 'track', now, {
-        ...(track.track_number !== undefined ? { position: track.track_number } : {}),
+        ...(track.track_number !== undefined
+          ? { position: releasePosition(track.disc_number, track.track_number) }
+          : {}),
       }),
     );
     const albumArtists = track.album.artists ?? [];

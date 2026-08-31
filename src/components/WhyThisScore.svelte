@@ -80,14 +80,14 @@
 
   {#if context}
     <div class="why__context">
-      <h4 class="label">Your rating, in context</h4>
+      <h4 class="label">Deeper rating</h4>
       <p class="why__blend">
         <span class="why__part">
           <span class="note note--small">Your rating</span>
           <span class="figure">{grade(breakdown.explicit, 'explicit')}</span>
         </span>
         <span class="why__part">
-          <span class="note note--small">Context</span>
+          <span class="note note--small">Deeper</span>
           <span class="figure">{grade(context.score, 'explicit')}</span>
         </span>
         {#if context.adjusted !== null}
@@ -104,19 +104,19 @@
             <span>{row.label}</span>
             <span class="figure">{grade(row.normalized, 'explicit')}</span>
             <span class="note">
-              {row.orphaned ? 'not counted' : `${percent(row.appliedWeight)} of context`}
+              {row.orphaned ? 'not counted' : `${percent(row.appliedWeight)} of deeper`}
             </span>
           </li>
         {/each}
       </ul>
 
       <p class="note note--small">
-        {context.coverage.rated} of {context.coverage.total} context questions answered.
+        {context.coverage.rated} of {context.coverage.total} deeper questions answered.
         {#if context.enabled && context.contribution > 0}
-          Context carries {percent(context.contribution)} of your rating, so the adjusted figure is what
+          Deeper carries {percent(context.contribution)} of your rating, so the adjusted figure is what
           the channel above uses.
         {:else}
-          Context contribution is switched off, so these answers are recorded but change nothing.
+          Deeper contribution is switched off, so these answers are recorded but change nothing.
         {/if}
         These are your judgements, not Spotify data.
       </p>

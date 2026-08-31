@@ -2,7 +2,14 @@
   import { onMount } from 'svelte';
 
   import { pin, setStandingNote, setTags } from '../lib/app/actions';
+  import { topUpArtistArtwork } from '../lib/app/artwork';
   import { notify } from '../lib/app/notices';
+  import {
+    ensureRelease,
+    releaseLooksComplete,
+    retryRelease,
+    type ReleaseFill,
+  } from '../lib/app/release';
   import { entityHref, href, navigate } from '../lib/app/router';
   import {
     annotationsById,
@@ -23,10 +30,11 @@
   import { startAlbumSession } from '../lib/playback/album';
   import { playbackEnqueue, playbackPlay } from '../lib/playback/store';
   import { SpotifyClient } from '../lib/spotify/client';
+  import { artistNeedsArtwork } from '../lib/spotify/artwork';
   import { expandEntity } from '../lib/spotify/library';
   import { spotifyConfig, spotifySession } from '../lib/spotify/session';
   import { deleteRating, saveMemberships, upsertEntities } from '../lib/storage/repo';
-  import { dateAndTime, duration, relative, releaseYear } from '../lib/ui/format';
+  import { dateAndTime, duration, plural, relative, releaseYear } from '../lib/ui/format';
   import { contextWords } from '../lib/ui/history';
   import Icon from '../lib/ui/Icon.svelte';
   import AutoLoad from '../components/AutoLoad.svelte';
@@ -81,6 +89,16 @@
     tagDraft = (annotation?.tags ?? []).join(', ');
   });
 
+  // Artists reached through a track, a playlist or a playback event carry a
+  // name and no picture. Ask for the ones this page is about to draw.
+  $effect(() => {
+    const nearby = [entity, ...children.map((e) => $graph.entity(e.childId))];
+    for (const edge of parents) nearby.push($graph.entity(edge.parentId));
+    void topUpArtistArtwork(
+      nearby.filter((e): e is Entity => e !== undefined).filter(artistNeedsArtwork),
+    );
+  });
+
   const position = $derived.by(() => {
     if (!entity) return null;
     const view = $settings.scoreView;
@@ -127,6 +145,58 @@
   }
 
   /**
+   * A record is shown whole or it says it is not.
+   *
+   * Tracks arrive here piecemeal — two heard last week, one from a search — and
+   * a thirteen-track album drawn from the two you happen to have played is a
+   * lie the page tells by omission. So opening a release asks for the rest of
+   * it before drawing the list, once, and says so plainly if it cannot.
+   */
+  let filling = $state(false);
+  let fill = $state<ReleaseFill | null>(null);
+
+  $effect(() => {
+    const subject = entity;
+    if (!subject || subject.type !== 'album') {
+      fill = null;
+      return;
+    }
+    // Read once, outside the async work, so a route change cannot land its
+    // answer on a different record.
+    const wanted = subject.id;
+    const seen = $graph;
+    filling = true;
+    void ensureRelease(subject, seen)
+      .then((result) => {
+        if (wanted !== entity?.id) return;
+        fill = result;
+      })
+      .finally(() => {
+        if (wanted === entity?.id) filling = false;
+      });
+  });
+
+  async function retryFill() {
+    if (!entity || filling) return;
+    filling = true;
+    fill = await retryRelease(entity, $graph);
+    filling = false;
+  }
+
+  /** Loaded, which is a different fact from rated and is labelled as one. */
+  const loadedTracks = $derived(
+    entity?.type === 'album' ? $graph.childrenOfType(entity.id, 'track').length : children.length,
+  );
+  const ratedChildren = $derived(
+    children.filter((edge) => $explicitRatings.has(edge.childId)).length,
+  );
+  const shortOfWhole = $derived(
+    entity?.type === 'album' &&
+      fill?.status === 'incomplete' &&
+      !releaseLooksComplete(entity, loadedTracks),
+  );
+
+  /**
    * Start playing this record and follow it track by track.
    *
    * The listening session is started before playback so the page you land on is
@@ -135,7 +205,18 @@
    */
   async function listenAndRate(subject: Entity) {
     const uri = `spotify:${subject.type}:${subject.providerId}`;
-    if (subject.type === 'album') startAlbumSession(subject.id, uri);
+    if (subject.type === 'album') {
+      // Never walk a record track by track from a set known to be partial —
+      // the session would silently skip whatever has not been discovered yet.
+      const whole = await ensureRelease(subject, $graph);
+      if (whole.status === 'incomplete') {
+        notify(
+          `Only ${whole.known} of ${whole.total ?? whole.known} tracks are loaded. ${whole.reason}`,
+          { tone: 'warn' },
+        );
+      }
+      startAlbumSession(subject.id, uri);
+    }
     navigate(href('/now-playing'));
     try {
       await playbackPlay({ contextUri: uri });
@@ -302,9 +383,49 @@
         <section aria-labelledby="contents-head">
           <div class="head">
             <h2 id="contents-head" class="title">What's inside</h2>
-            <span class="label">{children.length} of {entity.totalChildren ?? children.length}</span
-            >
+            <span class="label">
+              {#if entity.type === 'album'}
+                {plural(loadedTracks, 'track')}{#if ratedChildren > 0}
+                  · {ratedChildren} rated{/if}
+              {:else}
+                {plural(children.length, entityLabel(children[0]?.childType ?? 'track'))}
+              {/if}
+            </span>
           </div>
+
+          {#if filling && shortOfWhole !== true}
+            <p class="note note--small" role="status">Loading the rest of this release…</p>
+          {/if}
+
+          {#if shortOfWhole && fill?.status === 'incomplete'}
+            <div class="short panel panel--sunk stack stack--tight" role="status">
+              <p class="note">
+                This tracklist is incomplete — {loadedTracks} of {fill.total ?? loadedTracks} tracks loaded.
+                {fill.reason}
+              </p>
+              <div class="row">
+                <button
+                  type="button"
+                  class="btn btn--small"
+                  disabled={filling}
+                  onclick={() => void retryFill()}
+                >
+                  {filling ? 'Trying…' : 'Try again'}
+                </button>
+                {#if entity.externalUrl}
+                  <a
+                    class="btn btn--small btn--quiet"
+                    href={entity.externalUrl}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    Open in Spotify
+                  </a>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           <ul class="contents">
             {#each children.slice(0, childLimit) as edge (edge.childId)}
               {@const child = $graph.entity(edge.childId)}
@@ -312,7 +433,8 @@
                 <RatableRow
                   entity={child}
                   view={$settings.scoreView}
-                  position={edge.position !== undefined ? edge.position + 1 : undefined}
+                  position={child.trackNumber ??
+                    (edge.position !== undefined ? edge.position + 1 : undefined)}
                   expanded={openChildId === child.id}
                   ontoggle={() => (openChildId = openChildId === child.id ? null : child.id)}
                 />
@@ -326,6 +448,11 @@
             noun="entries"
             onload={() => (childLimit += 60)}
           />
+        </section>
+      {:else if entity.type === 'album' && filling}
+        <section>
+          <div class="head"><h2 class="title">What's inside</h2></div>
+          <p class="note" role="status">Loading this release…</p>
         </section>
       {:else if entity.provider === 'spotify' && $spotifySession.connected}
         <section>
@@ -489,6 +616,10 @@
   .rating__of {
     font-size: 0.875rem;
     color: var(--ink-faint);
+  }
+
+  .short {
+    margin-bottom: var(--s3);
   }
 
   .contents,

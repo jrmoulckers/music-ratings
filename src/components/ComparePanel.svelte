@@ -2,7 +2,8 @@
   import { submitComparison } from '../lib/app/actions';
   import { explicitRatings, rankings, scaleForType, scores } from '../lib/app/state';
   import { rankingConfidence } from '../lib/domain/elo';
-  import { formatComputedOn, formatNormalizedOn } from '../lib/domain/scales';
+  import { ratingWords } from '../lib/domain/phrases';
+  import { denormalize, formatComputedOn } from '../lib/domain/scales';
   import type { Comparison, Entity } from '../lib/domain/types';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
@@ -36,7 +37,8 @@
   function standing(entity: Entity): string {
     const scale = $scaleForType(entity.type);
     const explicit = $explicitRatings.get(entity.id);
-    if (explicit) return `you rated it ${formatNormalizedOn(scale, explicit.normalized)}`;
+    if (explicit)
+      return `you rated it ${ratingWords(scale, denormalize(scale, explicit.normalized)).text}`;
     const rollup = $scores.get(entity.id)?.rollup;
     if (rollup !== null && rollup !== undefined) return `score ${formatComputedOn(scale, rollup)}`;
     return 'no score yet';

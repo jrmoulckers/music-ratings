@@ -1,8 +1,8 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import PrecisionRail from '../components/PrecisionRail.svelte';
-import StarRating from '../components/StarRating.svelte';
+import PrecisionRail from '../components/rating/PrecisionRail.svelte';
+import StarRating from '../components/rating/StarRating.svelte';
 import { BUILTIN_SCALES, findScale } from '../lib/domain/scales';
 import type { RatingScale } from '../lib/domain/types';
 

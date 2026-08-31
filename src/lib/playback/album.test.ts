@@ -5,11 +5,13 @@ import {
   albumProgress,
   albumRows,
   albumSession,
+  albumTrackStatus,
   clearAlbumSession,
   endAlbumSession,
   noteListened,
   startAlbumSession,
   stillOnAlbum,
+  type AlbumTrackRow,
 } from './album';
 import type { Entity, EntityId } from '../domain/types';
 import type { PlaybackSnapshot } from './types';
@@ -56,14 +58,14 @@ function snapshot(over: Partial<PlaybackSnapshot> = {}): PlaybackSnapshot {
 beforeEach(() => clearAlbumSession());
 
 describe('albumRows', () => {
-  it('marks what has passed, what is playing and what is still to come', () => {
+  it('marks what came before, what is playing and what is still to come', () => {
     const rows = albumRows({
       tracks,
       currentUri: 'spotify:track:t3',
       listened: new Set(),
       rated: new Set(),
     });
-    expect(rows.map((r) => r.state)).toEqual(['played', 'played', 'current', 'upcoming']);
+    expect(rows.map((r) => r.state)).toEqual(['earlier', 'earlier', 'current', 'upcoming']);
   });
 
   it('treats the whole record as still to come when nothing from it is playing', () => {
@@ -88,6 +90,114 @@ describe('albumRows', () => {
       albumRows({ tracks: unnumbered, currentUri: null, listened: new Set(), rated: new Set() })[0]
         ?.position,
     ).toBe(1);
+  });
+});
+
+/**
+ * What each row is called, and what it is not allowed to claim.
+ *
+ * The word "passed" made a status look like something you had done. Worse, it
+ * was applied to tracks that were merely above the needle — start a record at
+ * track six and the first five were reported as if you had skipped them. Three
+ * separate claims are kept apart here, and only Spotify's own record settles a
+ * play.
+ */
+describe('albumTrackStatus', () => {
+  const row = (over: Partial<AlbumTrackRow> = {}): AlbumTrackRow => ({
+    entity: track(1),
+    position: 1,
+    state: 'upcoming',
+    listened: false,
+    confirmed: false,
+    rated: false,
+    ...over,
+  });
+
+  it('calls the current track now playing, whatever else is true of it', () => {
+    expect(albumTrackStatus(row({ state: 'current', confirmed: true })).text).toBe('Now playing');
+  });
+
+  it('claims a play only when Spotify has confirmed one', () => {
+    expect(albumTrackStatus(row({ state: 'earlier', confirmed: true })).text).toBe(
+      'Played this session',
+    );
+  });
+
+  it('says a locally observed play is still waiting on Spotify', () => {
+    const status = albumTrackStatus(row({ state: 'earlier', listened: true }));
+    expect(status.text).toBe('Awaiting Spotify');
+    expect(status.spoken).toMatch(/not confirmed it yet/);
+  });
+
+  it('never lets position alone claim a play', () => {
+    expect(albumTrackStatus(row({ state: 'earlier' })).text).toBe('Earlier track');
+  });
+
+  it('does not describe an earlier track as something you did', () => {
+    for (const state of ['earlier', 'upcoming'] as const) {
+      expect(albumTrackStatus(row({ state })).text.toLowerCase()).not.toMatch(/passed|skipped/);
+    }
+  });
+
+  it('calls later tracks up next', () => {
+    expect(albumTrackStatus(row({ state: 'upcoming' })).text).toBe('Up next');
+  });
+
+  it('reads as a status rather than a control, in sentence case', () => {
+    const all = [
+      row({ state: 'current' }),
+      row({ confirmed: true }),
+      row({ listened: true }),
+      row({ state: 'earlier' }),
+      row(),
+    ].map((r) => albumTrackStatus(r).text);
+    for (const text of all) {
+      expect(text).toBe(text[0]?.toUpperCase() + text.slice(1));
+      expect(text).not.toBe(text.toUpperCase());
+    }
+  });
+
+  it('gives every status something a screen reader can say', () => {
+    for (const r of [row({ state: 'current' }), row({ confirmed: true }), row()]) {
+      expect(albumTrackStatus(r).spoken.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('starting a record at track six does not report the first five as played', () => {
+    const six = Array.from({ length: 8 }, (_, i) => track(i + 1));
+    const rows = albumRows({
+      tracks: six,
+      currentUri: 'spotify:track:t6',
+      listened: new Set(),
+      rated: new Set(),
+    });
+
+    expect(rows.slice(0, 5).map((r) => albumTrackStatus(r).text)).toEqual([
+      'Earlier track',
+      'Earlier track',
+      'Earlier track',
+      'Earlier track',
+      'Earlier track',
+    ]);
+    expect(albumTrackStatus(rows[5]!).text).toBe('Now playing');
+    expect(rows.slice(6).map((r) => albumTrackStatus(r).text)).toEqual(['Up next', 'Up next']);
+  });
+
+  it('follows a jump backwards without inventing plays', () => {
+    const rows = albumRows({
+      tracks,
+      currentUri: 'spotify:track:t2',
+      listened: new Set(['track:spotify:t4' as EntityId]),
+      confirmed: new Set(['track:spotify:t4' as EntityId]),
+      rated: new Set(),
+    });
+
+    expect(rows.map((r) => albumTrackStatus(r).text)).toEqual([
+      'Earlier track',
+      'Now playing',
+      'Up next',
+      'Played this session',
+    ]);
   });
 });
 

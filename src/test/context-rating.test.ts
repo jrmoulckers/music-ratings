@@ -2,7 +2,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import ContextEditor from '../components/ContextEditor.svelte';
-import PrecisionRail from '../components/PrecisionRail.svelte';
+import PrecisionRail from '../components/rating/PrecisionRail.svelte';
 import RatePanel from '../components/RatePanel.svelte';
 import { defaultFacets, type ContextConfig } from '../lib/domain/context';
 import { BUILTIN_SCALES } from '../lib/domain/scales';
@@ -72,7 +72,7 @@ describe('the context section in the shared editor', () => {
     const disclose = root.querySelector<HTMLButtonElement>('.panel__disclose');
     expect(disclose).not.toBeNull();
     expect(disclose?.getAttribute('aria-expanded')).toBe('false');
-    expect(disclose?.textContent).toContain('Rate in context');
+    expect(disclose?.textContent).toContain('Deeper rating');
     expect(root.querySelector('.ctx')).toBeNull();
   });
 
@@ -95,7 +95,7 @@ describe('the context section in the shared editor', () => {
     flushSync();
     const lede = root.querySelector('.ctx__lede')?.textContent ?? '';
     expect(lede).toContain('Released in 1970');
-    expect(lede).toContain('your judgements, not Spotify');
+    expect(lede).toContain('Your judgements, not Spotify');
   });
 
   it('takes the save away from the rail while it is open, and gives back one', () => {
@@ -190,8 +190,8 @@ describe('the context editor', () => {
   it('says there is no context score before anything is answered', () => {
     const { root } = editor({});
     const figures = [...root.querySelectorAll('.ctx__part')].map((n) => n.textContent);
-    expect(figures.some((t) => t?.includes('Context') && t.includes('—'))).toBe(true);
-    expect(root.textContent).toContain('Nothing answered yet');
+    expect(figures.some((t) => t?.includes('Deeper') && t.includes('—'))).toBe(true);
+    expect(root.textContent).toContain('No answers yet');
     expect(root.querySelector('.ctx__how')).toBeNull();
   });
 
@@ -205,7 +205,7 @@ describe('the context editor', () => {
     });
     const said = root.querySelector('.ctx__tally')?.textContent?.replace(/\s+/g, ' ') ?? '';
     expect(said).toContain('Your rating 7.0');
-    expect(said).toContain('Context 8.8');
+    expect(said).toContain('Deeper 8.8');
     expect(said).toContain('Adjusted 7.4');
   });
 
@@ -216,7 +216,7 @@ describe('the context editor', () => {
 
   it('says answers are recorded but uncounted when contribution is off', () => {
     const { root } = editor({ enjoyment: judgement('enjoyment', 70) }, { enabled: false });
-    expect(root.textContent).toContain('not counted in any score');
+    expect(root.textContent).toContain('not counted');
     expect(root.querySelector('.ctx__part--out')).toBeNull();
   });
 
@@ -235,7 +235,9 @@ describe('the context editor', () => {
     const table = root.querySelector('.ctx__table')?.textContent?.replace(/\s+/g, ' ') ?? '';
     expect(table).toContain('Enjoyment');
     expect(table).toContain('50%');
-    expect(root.querySelector('.ctx__how')?.textContent).toContain('weighted average');
+    // With a contribution set, the one disclosure worth printing is the
+    // arithmetic that moved the number, not a definition of an average.
+    expect(root.querySelector('.ctx__how')?.textContent).toContain('of the way towards');
   });
 });
 

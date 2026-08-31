@@ -6,7 +6,7 @@
   import { onboardingResumePath } from './lib/app/onboarding';
   import { navigate, route, startRouter } from './lib/app/router';
   import { closeSearch, openSearch, searchOpen } from './lib/app/search-overlay';
-  import { ready, settings, startStateSync } from './lib/app/state';
+  import { bootFailure, ready, settings, startStateSync } from './lib/app/state';
   import { startSyncController } from './lib/app/sync';
   import NavRail from './components/NavRail.svelte';
   import MiniPlayer from './components/MiniPlayer.svelte';
@@ -89,7 +89,15 @@
   {/if}
 
   <main id="main" tabindex="-1">
-    {#if !$ready}
+    {#if $bootFailure}
+      <div class="booting booting--failed" role="alert">
+        <p class="title">Your ratings could not be opened</p>
+        <p class="note booting__why">{$bootFailure}</p>
+        <button type="button" class="btn btn--small" onclick={() => location.reload()}>
+          Try again
+        </button>
+      </div>
+    {:else if !$ready}
       <div class="booting" role="status">
         <span class="label">Loading your ratings…</span>
       </div>
@@ -125,7 +133,7 @@
   </main>
 </div>
 
-{#if showRail && $ready && $route.name !== 'now-playing'}
+{#if showRail && $ready}
   <MiniPlayer />
 {/if}
 
@@ -159,6 +167,17 @@
 
   .booting {
     padding: var(--s7) var(--s5);
+  }
+
+  .booting--failed {
+    display: grid;
+    gap: var(--s3);
+    justify-items: start;
+    max-width: 46ch;
+  }
+
+  .booting__why {
+    margin: 0;
   }
 
   .update {

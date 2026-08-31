@@ -1,5 +1,6 @@
 <script lang="ts">
   import { notify } from '../lib/app/notices';
+  import { RECENT_LIMIT, clearRecentSearches, recentSearches } from '../lib/app/recent-searches';
   import { installApp, pwa } from '../lib/app/pwa';
   import { href } from '../lib/app/router';
   import {
@@ -474,13 +475,13 @@
 
     <!-- ---------------------------------------------------------------- -->
     <section class="group" aria-labelledby="s-context">
-      <h2 id="s-context" class="group__head title">Rating in context</h2>
+      <h2 id="s-context" class="group__head title">Deeper rating</h2>
 
       <p class="note">
         Beside your own rating you can answer a few optional questions — how original it was for its
-        time, how well it holds up, how well made it is. Those answers make a context score. Context
-        scores are your judgements, not Spotify data. They only affect rankings and computed scores
-        when context contribution is switched on below.
+        time, how well it holds up, how well made it is. Those answers make a deeper score, which is
+        your judgement rather than Spotify data. It only moves rankings and computed scores when you
+        switch it on below.
       </p>
 
       <label class="check">
@@ -489,13 +490,13 @@
           checked={$settings.contextEnabled}
           onchange={(event) => void updateSettings({ contextEnabled: event.currentTarget.checked })}
         />
-        <span>Let context change your ratings</span>
+        <span>Let deeper answers change your ratings</span>
       </label>
 
       <label class="field">
         <span class="label">
           {$settings.contextEnabled
-            ? `Context carries ${Math.round($settings.contextContribution * 100)}% of a rating`
+            ? `Deeper carries ${Math.round($settings.contextContribution * 100)}% of a rating`
             : 'Recorded but not counted — answers are saved either way'}
         </span>
         <input
@@ -511,7 +512,7 @@
         />
       </label>
       <p class="note note--small">
-        Capped at {Math.round(MAX_CONTEXT_CONTRIBUTION * 100)}%. Context is there to inform your
+        Capped at {Math.round(MAX_CONTEXT_CONTRIBUTION * 100)}%. It is there to inform your
         judgement, never to outvote it.
       </p>
 
@@ -1136,6 +1137,24 @@
           onchange={(event) => void importBackup(event)}
         />
         <a class="btn btn--quiet" href={href('/diagnostics')}>Data health</a>
+      </div>
+
+      <div class="setting">
+        <div>
+          <p class="label">Recent searches</p>
+          <p class="note note--small">
+            The last {RECENT_LIMIT} things you searched for, kept in this browser only — never in your
+            library and never synced.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn btn--small"
+          disabled={$recentSearches.length === 0}
+          onclick={() => clearRecentSearches()}
+        >
+          {$recentSearches.length === 0 ? 'None kept' : `Clear ${$recentSearches.length}`}
+        </button>
       </div>
 
       <div class="danger">

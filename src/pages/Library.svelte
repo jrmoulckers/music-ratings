@@ -1,7 +1,9 @@
 <script lang="ts">
   import { navigate } from '../lib/app/router';
+  import { topUpArtistArtwork } from '../lib/app/artwork';
   import { entityLabelCap, graph, scaleForType, scores, settings } from '../lib/app/state';
   import { ENTITY_TYPES, type EntityType } from '../lib/domain/types';
+  import { artistNeedsArtwork } from '../lib/spotify/artwork';
   import { autofocus } from '../lib/ui/actions';
   import Icon from '../lib/ui/Icon.svelte';
   import AutoLoad from '../components/AutoLoad.svelte';
@@ -67,6 +69,13 @@
       return a.name.localeCompare(b.name);
     });
     return matched;
+  });
+
+  // An artist imported from a track or a playlist arrives as a name and an id.
+  // The picture is a separate request, so it is made for the artists actually
+  // on screen and nothing else.
+  $effect(() => {
+    void topUpArtistArtwork(results.slice(0, limit).filter(artistNeedsArtwork));
   });
 
   // Keeps the address bar in step so a search can be shared or bookmarked.

@@ -1,19 +1,24 @@
 <script lang="ts">
   import { rate } from '../lib/app/actions';
+  import { topUpArtistArtwork } from '../lib/app/artwork';
   import { notify } from '../lib/app/notices';
+  import { rememberSearch } from '../lib/app/recent-searches';
   import { entityHref } from '../lib/app/router';
   import { closeSearch } from '../lib/app/search-overlay';
   import { entityLabelCap, explicitRatings, graph, scaleForType, settings } from '../lib/app/state';
   import { formatComputedOn } from '../lib/domain/scales';
+  import { editionMarks } from '../lib/domain/editions';
   import type { Entity, Membership } from '../lib/domain/types';
   import { SpotifyClient } from '../lib/spotify/client';
+  import { artistNeedsArtwork } from '../lib/spotify/artwork';
   import { searchCatalogue } from '../lib/spotify/library';
   import { spotifyConfig, spotifySession } from '../lib/spotify/session';
   import { saveMemberships, upsertEntities } from '../lib/storage/repo';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
   import EntityTypeIcon from './EntityTypeIcon.svelte';
-  import RatingRail from './RatingRail.svelte';
+  import InlineRating from './InlineRating.svelte';
+  import RecentSearches from './RecentSearches.svelte';
 
   /**
    * Search anything, rate it on the spot.
@@ -28,9 +33,10 @@
   let picked = $state<Entity | null>(null);
   let running = $state(false);
   let error = $state<string | null>(null);
-  let remote = $state<{ entities: Entity[]; memberships: Membership[] }>({
+  let remote = $state<{ entities: Entity[]; memberships: Membership[]; hits: string[] }>({
     entities: [],
     memberships: [],
+    hits: [],
   });
   /** The term `remote` and `error` belong to, so neither outlives its query. */
   let resultsFor = $state<string | null>(null);
@@ -45,6 +51,8 @@
   const mine = $derived.by(() => {
     if (needle.length < 1) return [];
     const enabled = new Set($settings.enabledTypes);
+    // The graph is keyed by canonical id, so the same record can never appear
+    // twice here. Two rows that look identical are two real Spotify editions.
     return $graph
       .allEntities()
       .filter(
@@ -56,22 +64,35 @@
       .slice(0, 40);
   });
 
+  /** Marks only for rows that would otherwise be impossible to tell apart. */
+  const mineMarks = $derived(editionMarks(mine));
+
   // Editing the term invalidates the last answer rather than leaving it on
   // screen, so results and errors always belong to what is in the box.
   const current = $derived(resultsFor === needle);
   const searched = $derived(current && resultsFor !== null);
   const failure = $derived(current ? error : null);
 
-  // Anything Spotify returned that is genuinely new; the rest is already listed above.
-  const fresh = $derived(
-    current ? remote.entities.filter((entity) => !$graph.has(entity.id)).slice(0, 20) : [],
-  );
+  // Anything Spotify answered with that is genuinely new. Ordered by Spotify's
+  // own answer rather than by the metadata those answers dragged along, so a
+  // track search is not led by four artists nobody asked about.
+  const fresh = $derived.by((): Entity[] => {
+    if (!current) return [];
+    const byId = new Map(remote.entities.map((e) => [e.id, e]));
+    return remote.hits
+      .map((id) => byId.get(id as Entity['id']))
+      .filter((e): e is Entity => e !== undefined && !$graph.has(e.id))
+      .slice(0, 20);
+  });
+
+  const freshMarks = $derived(editionMarks(fresh));
 
   async function searchSpotify() {
     if (!needle || running) return;
     running = true;
     error = null;
     const asked = needle;
+    const spelling = term.trim();
     try {
       const client = new SpotifyClient({
         config: spotifyConfig(),
@@ -79,8 +100,9 @@
           notify(`Spotify asked us to wait ${seconds}s. Holding off, then retrying.`),
       });
       remote = await searchCatalogue(client, term, $settings.enabledTypes);
+      rememberSearch(spelling);
     } catch (caught) {
-      remote = { entities: [], memberships: [] };
+      remote = { entities: [], memberships: [], hits: [] };
       error = caught instanceof Error ? caught.message : 'The search failed.';
     } finally {
       // Attribute the outcome to the term that was asked for, not to whatever
@@ -88,6 +110,19 @@
       resultsFor = asked;
       running = false;
     }
+  }
+
+  /** Choosing a result is proof the search worked, whether or not Spotify was asked. */
+  function choose(entity: Entity) {
+    rememberSearch(term.trim());
+    picked = entity;
+  }
+
+  /** Run a remembered query: fill the field, then search as if it had been typed. */
+  function rerun(recent: string) {
+    term = recent;
+    input?.focus();
+    void searchSpotify();
   }
 
   /** Pulls a catalogue result into the library, then puts it in front of you to rate. */
@@ -102,6 +137,8 @@
     if (related.length > 0) await upsertEntities(related);
     if (links.length > 0) await saveMemberships(links);
     picked = entity;
+    // Catalogue search returns artists on a track without their pictures.
+    void topUpArtistArtwork([entity, ...related].filter(artistNeedsArtwork));
   }
 
   async function commit(normalized: number) {
@@ -167,12 +204,15 @@
     {#if picked}
       {@const scale = $scaleForType(picked.type)}
       {@const existing = $explicitRatings.get(picked.id)}
+      {@const mark = mineMarks.get(picked.id) ?? freshMarks.get(picked.id)}
       <div class="seat">
         <div class="seat__head">
           <Artwork src={picked.artworkThumbUrl} name={picked.name} size="md" />
           <div class="seat__id">
             <h2 class="title">{picked.name}</h2>
-            {#if picked.subtitle}<p class="note">{picked.subtitle}</p>{/if}
+            {#if picked.subtitle || mark}
+              <p class="note">{[picked.subtitle, mark].filter(Boolean).join(' · ')}</p>
+            {/if}
             <p class="label seat__kind">
               <EntityTypeIcon type={picked.type} size={14} />
               <span>{entityLabelCap(picked.type)}</span>
@@ -186,14 +226,13 @@
           </button>
         </div>
 
-        <RatingRail
-          {scale}
+        <InlineRating
+          entity={picked}
           value={existing?.normalized ?? null}
-          orientation="horizontal"
-          showMarks
-          disabled={busy}
-          label="Rating for {picked.name}"
-          oncommit={(value) => void commit(value)}
+          variant="prominent"
+          {busy}
+          onrate={commit}
+          where="detail"
         />
 
         <a class="panel__more" href={entityHref(picked.id)} onclick={() => closeSearch()}>
@@ -203,6 +242,7 @@
     {:else}
       <div class="panel__body">
         {#if needle.length === 0}
+          <RecentSearches id="overlay-recent" onpick={rerun} />
           <p class="note panel__hint">
             Type to find anything in your library. Press Enter to search the Spotify catalogue as
             well.
@@ -214,12 +254,14 @@
               {#each mine as entity (entity.id)}
                 {@const existing = $explicitRatings.get(entity.id)}
                 <li>
-                  <button type="button" class="row" onclick={() => (picked = entity)}>
+                  <button type="button" class="row" onclick={() => choose(entity)}>
                     <Artwork src={entity.artworkThumbUrl} name={entity.name} size="sm" />
                     <span class="row__id">
                       <span class="row__name">{entity.name}</span>
-                      {#if entity.subtitle}
-                        <span class="note note--small">{entity.subtitle}</span>
+                      {#if entity.subtitle || mineMarks.has(entity.id)}
+                        <span class="note note--small">
+                          {[entity.subtitle, mineMarks.get(entity.id)].filter(Boolean).join(' · ')}
+                        </span>
                       {/if}
                     </span>
                     <span class="label row__kind">
@@ -259,8 +301,10 @@
                     <Artwork src={entity.artworkThumbUrl} name={entity.name} size="sm" />
                     <span class="row__id">
                       <span class="row__name">{entity.name}</span>
-                      {#if entity.subtitle}
-                        <span class="note note--small">{entity.subtitle}</span>
+                      {#if entity.subtitle || freshMarks.has(entity.id)}
+                        <span class="note note--small">
+                          {[entity.subtitle, freshMarks.get(entity.id)].filter(Boolean).join(' · ')}
+                        </span>
                       {/if}
                     </span>
                     <span class="label row__kind">

@@ -90,17 +90,40 @@ export function beginRatePass(): void {
 
 let queue: Promise<void> = Promise.resolve();
 
+/**
+ * Why the app could not start, when it could not.
+ *
+ * A failed open used to leave `ready` false and nothing else, so the first
+ * screen said "Loading your ratings…" and kept saying it. Silence is the worst
+ * possible answer here: the data is on the device and reachable, and the user
+ * needs to know that before they start deleting things to fix it.
+ */
+export const bootFailure = writable<string | null>(null);
+
+function describeBootFailure(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'VersionError')
+    return 'Your saved ratings were written by a newer version of this app. Nothing has been lost — open the newer version, or reload once this one has caught up.';
+  const detail = error instanceof Error ? error.message : String(error);
+  return `Your ratings are stored on this device and could not be opened. Nothing has been deleted. ${detail}`;
+}
+
 export async function loadAll(): Promise<void> {
-  const [stored, loaded, storedSignals] = await Promise.all([
-    readSettings(),
-    loadWorld(),
-    readSignals(),
-  ]);
-  settings.set(hydrateSettings(stored));
-  world.set(loaded);
-  applySignals(storedSignals);
-  clock.set(Date.now());
-  ready.set(true);
+  try {
+    const [stored, loaded, storedSignals] = await Promise.all([
+      readSettings(),
+      loadWorld(),
+      readSignals(),
+    ]);
+    settings.set(hydrateSettings(stored));
+    world.set(loaded);
+    applySignals(storedSignals);
+    clock.set(Date.now());
+    bootFailure.set(null);
+    ready.set(true);
+  } catch (error) {
+    console.error('music-ratings: could not open stored data', error);
+    bootFailure.set(describeBootFailure(error));
+  }
 }
 
 /** Reloads stored data without touching settings, after any mutation. */

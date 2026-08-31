@@ -3,29 +3,34 @@
 
   import { href, navigate } from '../lib/app/router';
   import { explicitRatings, graph } from '../lib/app/state';
-  import { allows } from '../lib/playback/model';
+  import { allows, refusalReason } from '../lib/playback/model';
   import { playingEntityIds } from '../lib/playback/entities';
   import { watchMediaSession } from '../lib/playback/media-session';
   import {
     playback,
     playbackNext,
     playbackPrevious,
-    playbackProgress,
     playbackToggle,
+    playbackVolume,
     watchPlayback,
   } from '../lib/playback/store';
-  import { clockTime } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
-  import QuickRate from './QuickRate.svelte';
+  import InlineRating from './InlineRating.svelte';
+  import PlaybackScrubber from './PlaybackScrubber.svelte';
 
   /**
    * The player that follows you around.
    *
-   * A single ruled band at the foot of the app: what is playing, the three
-   * controls worth reaching for without thinking, and the same rating control
-   * used everywhere else — because the whole point of knowing what is playing
-   * is being able to say what you think of it.
+   * A single ruled band at the foot of the app, present on every route
+   * including Now Playing: what is playing, the controls worth reaching for
+   * without thinking, the scrubber, and the same rating control used
+   * everywhere else — because the whole point of knowing what is playing is
+   * being able to say what you think of it.
+   *
+   * It is the app's only transport. Nothing else renders play, previous, next
+   * or a position rail; a second set would be a second answer to the same
+   * question and the two would disagree the moment a poll landed between them.
    *
    * It publishes its own height as `--player-h` so the shell, the notices and
    * the update prompt move up by exactly the right amount instead of guessing.
@@ -45,10 +50,6 @@
   const snapshot = $derived($playback.snapshot);
   const item = $derived(snapshot?.item ?? null);
   const playing = $derived(snapshot?.playing === true);
-  const elapsed = $derived($playbackProgress);
-  const fraction = $derived(
-    snapshot && snapshot.durationMs > 0 ? elapsed / snapshot.durationMs : 0,
-  );
 
   const ids = $derived(playingEntityIds(item));
   const entity = $derived(ids.track ? $graph.entity(ids.track) : undefined);
@@ -58,6 +59,13 @@
   const shown = $derived(Boolean(item) || idle);
 
   const artists = $derived(item?.artists.map((a) => a.name).join(', ') ?? '');
+
+  const volume = $derived(snapshot?.device?.volumePercent ?? null);
+  const canVolume = $derived(snapshot?.device?.supportsVolume === true && volume !== null);
+
+  function setVolume(event: Event) {
+    playbackVolume(Number((event.currentTarget as HTMLInputElement).value));
+  }
 
   // Every layout the bar can take publishes the same measurement, so nothing
   // downstream has to know which one is on screen.
@@ -85,10 +93,9 @@
 
 {#if shown}
   <aside class="mini" class:mini--idle={idle} bind:this={bar} aria-label="Now playing">
-    <!-- The travelled rail. The scrubber proper lives on the Now Playing page,
-         where a drag cannot be a mis-tap on the way to something else. -->
-    <div class="mini__rail" aria-hidden="true">
-      <span class="mini__travelled" style="transform: scaleX({fraction.toFixed(5)})"></span>
+    <!-- The scrubber. One in the app, and it lives here. -->
+    <div class="mini__scrub">
+      <PlaybackScrubber compact />
     </div>
 
     {#if item}
@@ -106,6 +113,7 @@
             type="button"
             class="btn btn--small mini__btn"
             disabled={!allows(snapshot, 'previous')}
+            title={allows(snapshot, 'previous') ? 'Previous' : refusalReason('previous')}
             onclick={() => void playbackPrevious()}
           >
             <Icon name="previous" size={14} />
@@ -114,6 +122,8 @@
           <button
             type="button"
             class="btn btn--small mini__btn mini__btn--play"
+            disabled={playing ? !allows(snapshot, 'pause') : !allows(snapshot, 'resume')}
+            title={playing ? 'Pause' : 'Play'}
             onclick={() => void playbackToggle()}
           >
             <Icon name={playing ? 'pause' : 'play'} size={14} />
@@ -123,6 +133,7 @@
             type="button"
             class="btn btn--small mini__btn"
             disabled={!allows(snapshot, 'next')}
+            title={allows(snapshot, 'next') ? 'Next' : refusalReason('next')}
             onclick={() => void playbackNext()}
           >
             <Icon name="next" size={14} />
@@ -130,19 +141,36 @@
           </button>
         </div>
 
-        <span class="mini__time mono">
-          {clockTime(elapsed)} / {clockTime(snapshot?.durationMs ?? 0)}
-        </span>
-
         <div class="mini__rate">
           {#if entity}
-            <QuickRate {entity} value={rating?.normalized ?? null} where="now-playing" />
+            <InlineRating
+              {entity}
+              value={rating?.normalized ?? null}
+              variant="player"
+              where="now-playing"
+            />
           {:else}
             <span class="note">Not rateable</span>
           {/if}
         </div>
 
         <div class="mini__aside">
+          {#if canVolume}
+            <label class="mini__volume">
+              <Icon name={volume === 0 ? 'mute' : 'volume'} size={14} />
+              <span class="sr-only">Volume</span>
+              <input
+                class="slider"
+                type="range"
+                min="0"
+                max="100"
+                value={volume}
+                aria-label="Volume"
+                aria-valuetext="{volume}%"
+                oninput={setVolume}
+              />
+            </label>
+          {/if}
           {#if snapshot?.device}
             <span class="label mini__device">{snapshot.device.name}</span>
           {/if}
@@ -178,24 +206,13 @@
     }
   }
 
-  .mini__rail {
-    height: var(--rule-weight);
-    background: var(--border-faint);
-  }
-  .mini__travelled {
-    display: block;
-    width: 100%;
-    height: 100%;
-    background: var(--accent);
-    /* Scaled rather than resized: the rail is repainted every frame while the
-       music plays, and a transform costs the compositor nothing. */
-    transform-origin: left center;
-    will-change: transform;
+  .mini__scrub {
+    padding: var(--s2) var(--s5) 0;
   }
 
   .mini__body {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     align-items: center;
     gap: var(--s4);
     padding: var(--s2) var(--s5);
@@ -256,16 +273,17 @@
     border-color: var(--ink);
   }
 
-  .mini__time {
-    font-size: 0.75rem;
-    color: var(--ink-quiet);
-    white-space: nowrap;
-  }
-
   .mini__aside {
     display: flex;
     align-items: center;
     gap: var(--s3);
+  }
+  .mini__volume {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    width: 8rem;
+    color: var(--ink-quiet);
   }
   .mini__device {
     max-width: 10rem;
@@ -274,15 +292,18 @@
     text-overflow: ellipsis;
   }
 
-  /* Phones keep what is playing, one control and the rating; everything else
-     is a tap away on the page. */
+  /* Phones keep what is playing, one control and the rating; the volume, the
+     device and the second and third transport buttons are a tap away on the
+     page. The rail stays: it is the only one in the app. */
   @media (max-width: 48rem) {
+    .mini__scrub {
+      padding-inline: var(--s4);
+    }
     .mini__body {
       grid-template-columns: minmax(0, 1fr) auto auto;
       gap: var(--s3);
       padding: var(--s2) var(--s4);
     }
-    .mini__time,
     .mini__aside {
       display: none;
     }

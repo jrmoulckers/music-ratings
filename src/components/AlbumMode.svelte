@@ -5,6 +5,7 @@
     albumProgress,
     albumRows,
     albumSession,
+    albumTrackStatus,
     clearAlbumSession,
     endAlbumSession,
     noteListened,
@@ -14,7 +15,7 @@
   import type { Entity } from '../lib/domain/types';
   import { formatComputedOn } from '../lib/domain/scales';
   import Artwork from './Artwork.svelte';
-  import QuickRate from './QuickRate.svelte';
+  import InlineRating from './InlineRating.svelte';
   import RatableRow from './RatableRow.svelte';
   import RatePanel from './RatePanel.svelte';
 
@@ -108,7 +109,7 @@
         </div>
         <div class="row">
           <span class="label">Your rating of the record</span>
-          <QuickRate
+          <InlineRating
             entity={album}
             value={albumRating?.normalized ?? null}
             where="album-listening"
@@ -181,18 +182,20 @@
     {:else}
       <ol class="album__tracks">
         {#each shown as row (row.entity.id)}
-          <li class="album__track" class:album__track--now={row.state === 'current'}>
+          {@const status = albumTrackStatus(row)}
+          <li
+            class="album__track"
+            class:album__track--now={row.state === 'current'}
+            aria-current={row.state === 'current' ? 'true' : undefined}
+          >
             <span class="album__no mono" aria-hidden="true">{row.position}</span>
-            <span class="album__state label">
-              {#if row.state === 'current'}
-                playing
-              {:else if row.listened}
-                heard
-              {:else if row.state === 'played'}
-                passed
-              {:else}
-                &nbsp;
-              {/if}
+            <span
+              class="album__state"
+              class:album__state--now={row.state === 'current'}
+              title={status.spoken}
+            >
+              <span aria-hidden="true">{row.state === 'upcoming' ? '' : status.text}</span>
+              <span class="sr-only">{status.spoken}</span>
             </span>
             <div class="album__row">
               <RatableRow
@@ -243,7 +246,7 @@
 
   .album__track {
     display: grid;
-    grid-template-columns: 1.75rem 4rem minmax(0, 1fr);
+    grid-template-columns: 1.75rem 6rem minmax(0, 1fr);
     align-items: center;
     gap: var(--s2);
   }
@@ -259,9 +262,17 @@
     color: var(--ink-faint);
     text-align: right;
   }
+  /* Statuses, not controls: sentence case and quiet, so the eye reads them as
+     descriptions of the row rather than as things to press. The playing row is
+     told apart by weight and by the accent rail, never by colour alone. */
   .album__state {
     font-size: 0.6875rem;
+    line-height: 1.2;
     color: var(--ink-faint);
+  }
+  .album__state--now {
+    font-weight: 600;
+    color: var(--ink-quiet);
   }
   .album__row {
     min-width: 0;
@@ -271,8 +282,15 @@
     .album__track {
       grid-template-columns: 1.5rem minmax(0, 1fr);
     }
+    /* The column goes, the status does not: a screen reader still needs to know
+       which row is playing. Clipped rather than removed. */
     .album__state {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
   }
 </style>

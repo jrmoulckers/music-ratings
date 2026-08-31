@@ -2,6 +2,7 @@
   import { announce } from '../lib/app/notices';
   import { entityHref } from '../lib/app/router';
   import {
+    allScales,
     contextConfig,
     entityLabelCap,
     explicitRatings,
@@ -11,6 +12,7 @@
     world,
   } from '../lib/app/state';
   import { explainContext } from '../lib/domain/context';
+  import { eventWords } from '../lib/domain/phrases';
   import { formatScore } from '../lib/domain/ratings';
   import type { EntityType, RatingEvent } from '../lib/domain/types';
   import { deleteRating, retractRating } from '../lib/storage/repo';
@@ -20,7 +22,7 @@
   import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
   import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
-  import QuickRate from '../components/QuickRate.svelte';
+  import InlineRating from '../components/InlineRating.svelte';
   import RatePanel from '../components/RatePanel.svelte';
 
   /**
@@ -90,6 +92,22 @@
     const text = formatScore(event.normalized, scale);
     return { text, swatch: isTierScale(scale) ? tierColor(text) : null };
   }
+
+  /**
+   * What the entry says, in words, on the scale it was actually made on.
+   *
+   * The mark in the margin is today's scale, because a column of marks has to
+   * be comparable down the page. The sentence is the entry's own scale,
+   * because that is what the person chose — and when the two are different
+   * scales the row says so, quietly, rather than quietly rewriting history.
+   */
+  const wordsFor = $derived((event: RatingEvent) => {
+    const today = $scaleForType(event.entityType);
+    return {
+      words: eventWords($allScales, event, today),
+      moved: event.scaleId !== today.id,
+    };
+  });
 
   const scaleFor = $derived((type: EntityType) => $scaleForType(type));
 
@@ -174,6 +192,7 @@
                 {@const entity = $graph.entity(event.entityId)}
                 {@const stands = standing(event)}
                 {@const mark = markFor(event)}
+                {@const said = wordsFor(event)}
                 {@const ctx = explainFor(event)}
                 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
                 <li
@@ -190,7 +209,8 @@
                       style:--tier-ink={TIER_INK}
                       style:--tier-edge={TIER_EDGE}
                     >
-                      {mark.text}
+                      <span aria-hidden="true">{mark.text}</span>
+                      <span class="sr-only">{said.words.spoken}</span>
                     </span>
 
                     <span class="entry__body">
@@ -217,6 +237,9 @@
                             Replaced by a later rating
                           {/if}
                         </span>
+                        {#if said.moved}
+                          · <span class="entry__was">{said.words.text} at the time</span>
+                        {/if}
                       </span>
                       {#if event.note}<span class="note">“{event.note}”</span>{/if}
                       {#if ctx}
@@ -235,7 +258,7 @@
 
                     <span class="entry__acts">
                       {#if entity}
-                        <QuickRate {entity} value={event.normalized} />
+                        <InlineRating {entity} value={event.normalized} />
                         <button
                           type="button"
                           class="btn btn--small entry__open"
@@ -488,6 +511,11 @@
   }
   .entry__state--odd {
     color: var(--accent-ink);
+  }
+  /* Said only when the scale has changed since, so it is rare enough to read
+     as a footnote rather than as a second score. */
+  .entry__was {
+    color: var(--ink-faint);
   }
 
   .entry__acts {

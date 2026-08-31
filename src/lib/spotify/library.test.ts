@@ -267,6 +267,127 @@ describe('searchCatalogue', () => {
     await searchCatalogue(new SpotifyClient({ config }), '   ', ['artist']);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  /**
+   * Searching for a track used to answer with a screenful of artists.
+   *
+   * Mapping a track pulls in its release and everyone credited on both, and all
+   * of that landed in `entities` ahead of the track itself. `hits` names only
+   * what Spotify was asked about, and takes one of each kind in turn so no
+   * single lane pushes the others below the fold.
+   */
+  const CROWDED = {
+    artists: {
+      items: [
+        { id: 'a1', name: 'Kestrel Harbour', images: [], genres: [], popularity: 40 },
+        { id: 'a2', name: 'Kestrel Harbour Trio', images: [], genres: [], popularity: 20 },
+      ],
+    },
+    albums: {
+      items: [
+        {
+          id: 'al1',
+          name: 'Low Tide',
+          images: [],
+          total_tracks: 9,
+          artists: [{ id: 'a9', name: 'Session Player' }],
+        },
+      ],
+    },
+    tracks: {
+      items: [
+        {
+          id: 't1',
+          name: 'Kestrel',
+          duration_ms: 200_000,
+          track_number: 3,
+          artists: [{ id: 'a8', name: 'Guest Vocalist' }],
+          album: { id: 'al7', name: 'Another Record', images: [], artists: [] },
+        },
+      ],
+    },
+  };
+
+  it('names only what Spotify was asked about as a result', async () => {
+    respondWith(CROWDED);
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'kestrel', [
+      'artist',
+      'album',
+      'track',
+    ]);
+
+    expect(result.hits).toEqual([
+      'artist:spotify:a1',
+      'album:spotify:al1',
+      'track:spotify:t1',
+      'artist:spotify:a2',
+    ]);
+  });
+
+  it('still carries the referenced records so a result can be adopted whole', async () => {
+    respondWith(CROWDED);
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'kestrel', [
+      'artist',
+      'album',
+      'track',
+    ]);
+
+    const ids = result.entities.map((e) => e.id);
+    expect(ids).toContain('album:spotify:al7');
+    expect(ids).toContain('artist:spotify:a8');
+    expect(result.entities.length).toBeGreaterThan(result.hits.length);
+  });
+
+  it('leads with a real answer rather than an artist nobody searched for', async () => {
+    respondWith(CROWDED);
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'kestrel', [
+      'artist',
+      'album',
+      'track',
+    ]);
+
+    expect(result.hits.slice(0, 3)).not.toContain('artist:spotify:a8');
+    expect(result.hits.slice(0, 3)).not.toContain('artist:spotify:a9');
+  });
+
+  it('spends a result slot once when the same record comes back twice', async () => {
+    // Spotify can repeat a release across a paged answer, and a track's own
+    // album can arrive again as an album hit. Either way the row is one row —
+    // and collapsing happens before the balancing, so the duplicate does not
+    // push a real answer off the list.
+    respondWith({
+      albums: {
+        items: [
+          { id: 'al1', name: 'Low Tide', images: [], total_tracks: 9, artists: [] },
+          { id: 'al1', name: 'Low Tide', images: [], total_tracks: 9, artists: [] },
+          { id: 'al2', name: 'High Water', images: [], total_tracks: 7, artists: [] },
+        ],
+      },
+    });
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'tide', ['album']);
+    expect(result.hits).toEqual(['album:spotify:al1', 'album:spotify:al2']);
+    expect(new Set(result.hits).size).toBe(result.hits.length);
+    expect(result.entities.filter((e) => e.id === 'album:spotify:al1')).toHaveLength(1);
+  });
+
+  it('keeps two editions of one title as two results', async () => {
+    respondWith({
+      albums: {
+        items: [
+          { id: 'lb69', name: 'Let It Bleed', images: [], total_tracks: 9, artists: [] },
+          { id: 'lb19', name: 'Let It Bleed', images: [], total_tracks: 18, artists: [] },
+        ],
+      },
+    });
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'let it bleed', ['album']);
+    expect(result.hits).toHaveLength(2);
+  });
+
+  it('answers with an empty hit list when nothing was found', async () => {
+    respondWith({ artists: { items: [] } });
+    const result = await searchCatalogue(new SpotifyClient({ config }), 'kestrel', ['artist']);
+    expect(result.hits).toEqual([]);
+  });
 });
 
 describe('importListening', () => {

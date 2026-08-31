@@ -12,10 +12,10 @@
   import type { Entity, FacetJudgement, RatingScale } from '../lib/domain/types';
   import { CONTEXT_SCHEMA_VERSION } from '../lib/domain/types';
   import Icon from '../lib/ui/Icon.svelte';
-  import CompactRating from './CompactRating.svelte';
+  import InlineRating from './InlineRating.svelte';
 
   /**
-   * Rating something in context.
+   * Rating something in more depth.
    *
    * Three numbers are kept apart on purpose. **Your rating** is what you think
    * of it. **Context** is a weighted answer to a handful of optional questions.
@@ -78,7 +78,7 @@
 
 <div class="ctx">
   <p class="ctx__lede note">
-    Optional. Answer as many or as few as you like — these are your judgements, not Spotify's.
+    Consider craft, influence, and its time. Your judgements, not Spotify's.
     {#if showsEra}
       <span class="ctx__fact">Released in {releaseYear}.</span>
     {/if}
@@ -93,14 +93,15 @@
           <span class="note note--small">{facet.description}</span>
         </div>
         <div class="ctx__set">
-          <CompactRating
+          <InlineRating
+            {entity}
             {scale}
             value={held}
+            variant="compact"
             mode="held"
             label="{facet.label} for {entity.name}"
-            subject="{facet.label} for {entity.name}"
             {disabled}
-            oncommit={(normalized) => set(facet.id, normalized)}
+            onvalue={(normalized) => set(facet.id, normalized)}
           />
           {#if held !== null}
             <button
@@ -126,7 +127,7 @@
         <span class="figure">{say(direct)}</span>
       </span>
       <span class="ctx__part">
-        <span class="label">Context</span>
+        <span class="label">Deeper</span>
         <span class="figure">{say(score)}</span>
       </span>
       {#if contribution > 0}
@@ -140,12 +141,11 @@
     <p class="note note--small">
       {coverage.rated} of {coverage.total} answered.
       {#if score === null}
-        Nothing answered yet, so there is no context score.
+        No answers yet, so no deeper score.
       {:else if contribution > 0}
-        Context carries {Math.round(contribution * 100)}% of the result.
+        Deeper carries {Math.round(contribution * 100)}% of the result.
       {:else}
-        Saved with this rating, but not counted in any score — turn on context contribution in
-        Settings to let it count.
+        Saved with this rating but not counted — turn on deeper rating in Settings.
       {/if}
     </p>
 
@@ -173,12 +173,12 @@
           </tbody>
         </table>
         <p class="note note--small">
-          Context is the weighted average of what you answered, so the shares always add up to a
-          hundred over the questions you actually answered.
           {#if contribution > 0 && direct !== null}
             Adjusted is {say(direct)} moved {Math.round(contribution * 100)}% of the way towards {say(
               score,
             )}.
+          {:else}
+            Deeper is the weighted average of what you answered.
           {/if}
         </p>
       </details>

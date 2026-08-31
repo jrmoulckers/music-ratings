@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
 
   import { entityHref } from '../lib/app/router';
+  import { topUpArtistArtwork } from '../lib/app/artwork';
+  import { notify } from '../lib/app/notices';
+  import { ensureRelease } from '../lib/app/release';
   import { explicitRatings, graph, settings } from '../lib/app/state';
   import { albumSession, startAlbumSession } from '../lib/playback/album';
   import { playingEntityIds } from '../lib/playback/entities';
@@ -9,39 +12,34 @@
   import { browserPlayer } from '../lib/playback/sdk';
   import {
     playback,
-    playbackNext,
     playbackNow,
     playbackPlay,
-    playbackPrevious,
-    playbackProgress,
     playbackRepeat,
-    playbackSeek,
     playbackShuffle,
-    playbackToggle,
-    playbackVolume,
     refreshDevices,
     refreshPlayback,
     refreshQueue,
     watchPlayback,
   } from '../lib/playback/store';
   import type { RepeatMode } from '../lib/playback/types';
+  import { artistNeedsArtwork } from '../lib/spotify/artwork';
   import { connectSpotify } from '../lib/spotify/session';
-  import { clockTime } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import AlbumMode from '../components/AlbumMode.svelte';
   import Artwork from '../components/Artwork.svelte';
   import DevicePicker from '../components/DevicePicker.svelte';
-  import QuickRate from '../components/QuickRate.svelte';
+  import InlineRating from '../components/InlineRating.svelte';
   import RatableRow from '../components/RatableRow.svelte';
   import RatePanel from '../components/RatePanel.svelte';
 
   /**
    * Now Playing.
    *
-   * A remote control that knows what you think. The transport is the plain,
-   * expected set of controls — no invention, because a scrubber that behaves
-   * unusually is a scrubber that gets mis-used — and the rating is the same
-   * control as everywhere else in the app, sitting where your hand already is.
+   * The page beneath the bar. The transport — play, previous, next, the
+   * scrubber, the volume — is the persistent player at the foot of every
+   * screen, and it is not repeated here. What this page adds is everything
+   * that bar has no room for: the record at full size, the rating in full,
+   * the shape of the session, and what is coming next.
    */
 
   onMount(() => {
@@ -53,15 +51,17 @@
   const player = $derived($playback);
   const snapshot = $derived(player.snapshot);
   const item = $derived(snapshot?.item ?? null);
-  const playing = $derived(snapshot?.playing === true);
-  const duration = $derived(snapshot?.durationMs ?? 0);
-  const elapsed = $derived($playbackProgress);
 
   const ids = $derived(playingEntityIds(item));
   const track = $derived(ids.track ? $graph.entity(ids.track) : undefined);
   const release = $derived(ids.release ? $graph.entity(ids.release) : undefined);
   const artist = $derived(ids.artists[0] ? $graph.entity(ids.artists[0]) : undefined);
-  const rating = $derived(track ? $explicitRatings.get(track.id) : undefined);
+
+  // Playback names the artist but never pictures them, so the artist beside the
+  // record you are hearing is completed once, when it first appears.
+  $effect(() => {
+    void topUpArtistArtwork(artist && artistNeedsArtwork(artist) ? [artist] : []);
+  });
 
   const inAlbumSession = $derived($albumSession.albumId !== null);
 
@@ -80,69 +80,20 @@
     return $graph.entity(`album:spotify:${id}`) ?? null;
   });
 
-  function beginAlbumSession() {
+  async function beginAlbumSession() {
     if (!albumOffer) return;
-    startAlbumSession(albumOffer.id, snapshot?.context?.uri ?? null);
-  }
-
-  /* ---------------------------------------------------------------------- */
-  /* Scrubbing                                                              */
-  /* ---------------------------------------------------------------------- */
-
-  /**
-   * The rail moves with the finger; the seek is sent when the finger lets go.
-   *
-   * A drag is a hundred input events, and each one is not a request to jump the
-   * music. So the display follows every event and the transport hears exactly
-   * one — on release, on keypress, or not at all if the drag is abandoned. The
-   * poll cannot overwrite the value under a finger that is still holding it.
-   */
-  let dragging = $state(false);
-  let dragged = $state(0);
-  const position = $derived(dragging ? dragged : elapsed);
-  const fraction = $derived(duration > 0 ? position / duration : 0);
-
-  /** A keyboard nudge is a distance a person can reason about, not a detent. */
-  const NUDGE_MS = 5_000;
-  const LEAP_MS = 30_000;
-
-  function scrub(event: Event) {
-    dragged = Number((event.currentTarget as HTMLInputElement).value);
-    dragging = true;
-  }
-
-  function commitScrub() {
-    if (!dragging) return;
-    dragging = false;
-    playbackSeek(dragged);
-  }
-
-  /** Abandoning a drag puts the thumb back where the music actually is. */
-  function cancelScrub() {
-    dragging = false;
-  }
-
-  function scrubKey(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      cancelScrub();
-      return;
+    // The album-mode list is the whole record or it is nothing useful; fetch
+    // any tracks this app has not met before starting to walk through it.
+    const whole = await ensureRelease(albumOffer, $graph);
+    if (whole.status === 'incomplete') {
+      notify(
+        `Only ${whole.known} of ${whole.total ?? whole.known} tracks are loaded. ${whole.reason}`,
+        {
+          tone: 'warn',
+        },
+      );
     }
-    const from = dragging ? dragged : elapsed;
-    let to: number | null = null;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') to = from + NUDGE_MS;
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') to = from - NUDGE_MS;
-    else if (event.key === 'PageUp') to = from + LEAP_MS;
-    else if (event.key === 'PageDown') to = from - LEAP_MS;
-    else if (event.key === 'Home') to = 0;
-    else if (event.key === 'End') to = duration;
-    if (to === null) return;
-    // The browser's own arrow handling would move by the drag step, which is
-    // deliberately far too small to be a useful keystroke.
-    event.preventDefault();
-    dragged = Math.max(0, Math.min(duration, Math.round(to)));
-    dragging = true;
-    // Held keys repeat; the transport coalesces them into one seek.
-    commitScrub();
+    startAlbumSession(albumOffer.id, snapshot?.context?.uri ?? null);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -184,7 +135,7 @@
 
   let devicesOpen = $state(false);
   let secondaryOpen = $state<'release' | 'artist' | null>(null);
-  let queueOpen = $state(false);
+  let queueOpen = $state(true);
 
   const repeatOrder: RepeatMode[] = ['off', 'context', 'track'];
   const repeatWord: Record<RepeatMode, string> = {
@@ -197,13 +148,6 @@
     const mode = snapshot?.repeat ?? 'off';
     const next = repeatOrder[(repeatOrder.indexOf(mode) + 1) % repeatOrder.length] ?? 'off';
     void playbackRepeat(next);
-  }
-
-  const volume = $derived(snapshot?.device?.volumePercent ?? null);
-  const canVolume = $derived(snapshot?.device?.supportsVolume === true && volume !== null);
-
-  function setVolume(event: Event) {
-    playbackVolume(Number((event.currentTarget as HTMLInputElement).value));
   }
 
   async function startDemo() {
@@ -303,18 +247,18 @@
 
       <div class="now__rate stack">
         {#if track}
-          <div class="row row--between">
-            <span class="label">Your rating</span>
-            <QuickRate entity={track} value={rating?.normalized ?? null} where="now-playing" />
-          </div>
+          <!-- The quick rating for this track lives in the bar below, where it
+               is on every page. What the page adds is everything the bar has no
+               room for: the note, the confidence, the deeper rating. -->
           <button
             type="button"
-            class="btn btn--small btn--quiet now__deep"
+            class="btn btn--primary now__deep"
             aria-expanded={deepOpen}
             onclick={() => (deepOpen ? closeDeep() : openDeep())}
           >
-            {deepOpen ? 'Close' : 'Note, confidence and context'}
+            {deepOpen ? 'Close rating details' : 'Rate in detail'}
           </button>
+          <p class="note note--small">Note, confidence and deeper rating.</p>
         {:else}
           <p class="note">
             {item.isLocal
@@ -347,80 +291,26 @@
       </section>
     {/if}
 
-    <!-- The rail. Everything else on this page is arranged around it. -->
-    <section class="transport panel" aria-label="Playback controls">
-      <div class="transport__rail">
-        <input
-          class="slider slider--played"
-          type="range"
-          min="0"
-          max={Math.max(1, duration)}
-          step="100"
-          value={position}
-          style="--played: {fraction}"
-          disabled={!allows(snapshot, 'seek')}
-          aria-label="Position in track. Arrow keys move five seconds, Page keys thirty."
-          aria-valuetext="{clockTime(position)} of {clockTime(duration)}"
-          oninput={scrub}
-          onchange={commitScrub}
-          onkeydown={scrubKey}
-          onpointercancel={cancelScrub}
-          onblur={commitScrub}
-        />
-        <div class="transport__times mono">
-          <span>{clockTime(position)}</span>
-          <span>−{clockTime(Math.max(0, duration - position))}</span>
-        </div>
-      </div>
-
-      <div class="transport__row">
+    <!-- The transport is the bar along the bottom, on this page as on every
+         other. What stays here is the shape of the session: where it is
+         playing, and how it moves through a record. -->
+    <section class="options panel" aria-label="Playback options">
+      <div class="options__row">
         <button
           type="button"
-          class="btn transport__btn"
+          class="btn options__btn"
           disabled={!allows(snapshot, 'shuffle')}
           aria-pressed={snapshot?.shuffle === true}
           title={allows(snapshot, 'shuffle') ? 'Shuffle' : refusalReason('shuffle')}
           onclick={() => void playbackShuffle(!(snapshot?.shuffle === true))}
         >
           <Icon name="shuffle" size={16} />
-          <span class="sr-only">Shuffle {snapshot?.shuffle ? 'on' : 'off'}</span>
+          <span>{snapshot?.shuffle ? 'Shuffle on' : 'Shuffle off'}</span>
         </button>
 
         <button
           type="button"
-          class="btn transport__btn"
-          disabled={!allows(snapshot, 'previous')}
-          title={allows(snapshot, 'previous') ? 'Previous' : refusalReason('previous')}
-          onclick={() => void playbackPrevious()}
-        >
-          <Icon name="previous" size={18} />
-          <span class="sr-only">Previous</span>
-        </button>
-
-        <button
-          type="button"
-          class="btn btn--primary transport__btn transport__btn--play"
-          disabled={playing ? !allows(snapshot, 'pause') : !allows(snapshot, 'resume')}
-          onclick={() => void playbackToggle()}
-        >
-          <Icon name={playing ? 'pause' : 'play'} size={20} />
-          <span class="sr-only">{playing ? 'Pause' : 'Play'}</span>
-        </button>
-
-        <button
-          type="button"
-          class="btn transport__btn"
-          disabled={!allows(snapshot, 'next')}
-          title={allows(snapshot, 'next') ? 'Next' : refusalReason('next')}
-          onclick={() => void playbackNext()}
-        >
-          <Icon name="next" size={18} />
-          <span class="sr-only">Next</span>
-        </button>
-
-        <button
-          type="button"
-          class="btn transport__btn"
+          class="btn options__btn"
           disabled={!allows(snapshot, 'repeat')}
           aria-pressed={(snapshot?.repeat ?? 'off') !== 'off'}
           title={allows(snapshot, 'repeat')
@@ -432,41 +322,22 @@
             name={(snapshot?.repeat ?? 'off') === 'track' ? 'repeat-one' : 'repeat'}
             size={16}
           />
-          <span class="sr-only">{repeatWord[snapshot?.repeat ?? 'off']}</span>
+          <span>{repeatWord[snapshot?.repeat ?? 'off']}</span>
         </button>
       </div>
 
-      <div class="transport__aside">
-        {#if canVolume}
-          <label class="transport__volume">
-            <Icon name={volume === 0 ? 'mute' : 'volume'} size={14} />
-            <span class="sr-only">Volume</span>
-            <input
-              class="slider"
-              type="range"
-              min="0"
-              max="100"
-              value={volume}
-              aria-label="Volume"
-              aria-valuetext="{volume}%"
-              oninput={setVolume}
-            />
-          </label>
-        {/if}
-
-        <button
-          type="button"
-          class="btn btn--small btn--quiet"
-          aria-expanded={devicesOpen}
-          onclick={() => {
-            devicesOpen = !devicesOpen;
-            if (devicesOpen) void refreshDevices();
-          }}
-        >
-          <Icon name="device" size={14} />
-          <span>{snapshot?.device?.name ?? 'Devices'}</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        class="btn btn--quiet options__btn"
+        aria-expanded={devicesOpen}
+        onclick={() => {
+          devicesOpen = !devicesOpen;
+          if (devicesOpen) void refreshDevices();
+        }}
+      >
+        <Icon name="device" size={14} />
+        <span>{snapshot?.device?.name ?? 'Devices'}</span>
+      </button>
     </section>
 
     {#if devicesOpen}
@@ -506,7 +377,7 @@
     {:else if albumOffer}
       <section class="panel row row--between">
         <p class="note">You are listening to a record from start to finish.</p>
-        <button type="button" class="btn btn--small" onclick={beginAlbumSession}>
+        <button type="button" class="btn btn--small" onclick={() => void beginAlbumSession()}>
           Rate it track by track
         </button>
       </section>
@@ -540,7 +411,7 @@
                   <span class="note">{next.artists.map((a) => a.name).join(', ')}</span>
                 </span>
                 {#if queuedEntity}
-                  <QuickRate
+                  <InlineRating
                     entity={queuedEntity}
                     value={$explicitRatings.get(queuedEntity.id)?.normalized ?? null}
                     where="now-playing"
@@ -641,48 +512,20 @@
     cursor: pointer;
   }
 
-  .transport {
-    display: grid;
+  .options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
     gap: var(--s4);
   }
-
-  .transport__rail {
+  .options__row {
     display: flex;
-    flex-direction: column;
-    gap: var(--s2);
-  }
-  .transport__times {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.75rem;
-    color: var(--ink-quiet);
-  }
-
-  .transport__row {
-    display: flex;
-    justify-content: center;
     gap: var(--s3);
   }
-  .transport__btn {
-    padding-inline: var(--s4);
-    /* These five are the controls a thumb reaches for while walking. */
+  .options__btn {
+    /* Reached for by a thumb, standing up, in the dark. */
     min-height: 44px;
-  }
-  .transport__btn--play {
-    padding-inline: var(--s6);
-  }
-
-  .transport__aside {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--s4);
-  }
-  .transport__volume {
-    display: flex;
-    align-items: center;
-    gap: var(--s2);
-    max-width: 12rem;
   }
 
   .queue {
@@ -725,8 +568,9 @@
       align-items: stretch;
       min-width: 0;
     }
-    .transport__aside {
-      flex-wrap: wrap;
+    .options {
+      flex-direction: column;
+      align-items: stretch;
     }
   }
 </style>
