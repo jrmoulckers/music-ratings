@@ -1,4 +1,5 @@
 import { uid } from '../domain/ids';
+import type { AlbumCompletion, CompletionPrompt, PlayEvent } from '../domain/listening';
 import type {
   Collection,
   Comparison,
@@ -307,6 +308,184 @@ export async function listScales(): Promise<RatingScale[]> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Listening history                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Write confirmed plays, skipping any the store already holds.
+ *
+ * Play ids are deterministic, so "already holds" is a key lookup rather than a
+ * comparison: the same play arriving from a second refresh, a second device or
+ * a sync merge lands on the same row and is dropped here. The whole batch runs
+ * in one transaction so an interrupted refresh cannot leave half a window in.
+ */
+export async function insertPlays(plays: readonly PlayEvent[]): Promise<PlayEvent[]> {
+  if (plays.length === 0) return [];
+  const database = await db();
+  const tx = database.transaction('plays', 'readwrite');
+  const inserted: PlayEvent[] = [];
+  const offered = new Set<string>();
+
+  for (const play of plays) {
+    if (offered.has(play.id)) continue;
+    offered.add(play.id);
+    const existing = await tx.store.getKey(play.id);
+    if (existing !== undefined) continue;
+    void tx.store.put(raw(play));
+    inserted.push(play);
+  }
+  await tx.done;
+  if (inserted.length > 0) markDataChanged();
+  return inserted;
+}
+
+export async function listPlays(): Promise<PlayEvent[]> {
+  return allLive('plays');
+}
+
+/** Plays of one entity inside a half-open window, straight off the index. */
+export async function playsForEntityBetween(
+  entityId: EntityId,
+  from: number,
+  to: number,
+): Promise<PlayEvent[]> {
+  const database = await db();
+  const range = IDBKeyRange.bound([entityId, from], [entityId, to]);
+  const rows = await database.getAllFromIndex('plays', 'byEntityAt', range);
+  return rows.filter((row) => !row.deleted);
+}
+
+/**
+ * Plays of many entities inside a window, in one transaction.
+ *
+ * The completion engine needs exactly this shape and nothing wider: one range
+ * query per track of the album being evaluated, never a pass over the log.
+ */
+export async function playsForEntitiesBetween(
+  entityIds: readonly EntityId[],
+  from: number,
+  to: number,
+): Promise<PlayEvent[]> {
+  if (entityIds.length === 0) return [];
+  const database = await db();
+  const tx = database.transaction('plays', 'readonly');
+  const index = tx.store.index('byEntityAt');
+  const out: PlayEvent[] = [];
+  for (const entityId of entityIds) {
+    const rows = await index.getAll(IDBKeyRange.bound([entityId, from], [entityId, to]));
+    for (const row of rows) if (!row.deleted) out.push(row);
+  }
+  await tx.done;
+  return out;
+}
+
+/**
+ * How many plays are actually held.
+ *
+ * Tombstones are excluded: after deleting the log the count has to read zero,
+ * or the figure beside the delete button contradicts the button.
+ */
+export async function countPlays(): Promise<number> {
+  const database = await db();
+  let live = 0;
+  let cursor = await database.transaction('plays').store.openCursor();
+  while (cursor) {
+    if (!cursor.value.deleted) live += 1;
+    cursor = await cursor.continue();
+  }
+  return live;
+}
+
+/** Delete the listening log outright, leaving synced tombstones behind. */
+export async function purgeListeningHistory(): Promise<{ plays: number; completions: number }> {
+  const database = await db();
+  const now = Date.now();
+  let plays = 0;
+  let completions = 0;
+
+  const tx = database.transaction(['plays', 'completions'], 'readwrite');
+  for await (const cursor of tx.objectStore('plays')) {
+    if (cursor.value.deleted) continue;
+    void cursor.update(raw({ ...cursor.value, deleted: now, updatedAt: now }));
+    plays += 1;
+  }
+  for await (const cursor of tx.objectStore('completions')) {
+    if (cursor.value.deleted) continue;
+    void cursor.update(raw({ ...cursor.value, deleted: now, updatedAt: now }));
+    completions += 1;
+  }
+  await tx.done;
+  markDataChanged();
+  return { plays, completions };
+}
+
+/**
+ * Drop plays older than the retention floor.
+ *
+ * Tombstoned rather than deleted outright, so a device that has been offline
+ * for a month does not helpfully sync them all back. Completions are left
+ * alone: each one carries its own evidence, and a record of having finished an
+ * album should not evaporate because the individual plays aged out.
+ *
+ * Walks the timestamp index and stops at the floor, so the cost is the number
+ * of rows actually expiring, not the size of the log.
+ */
+export async function prunePlaysBefore(floor: number): Promise<number> {
+  const database = await db();
+  const tx = database.transaction('plays', 'readwrite');
+  const now = Date.now();
+  let pruned = 0;
+  let cursor = await tx.store.index('byAt').openCursor(IDBKeyRange.upperBound(floor, true));
+  while (cursor) {
+    if (!cursor.value.deleted) {
+      void cursor.update(raw({ ...cursor.value, deleted: now, updatedAt: now }));
+      pruned += 1;
+    }
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+  if (pruned > 0) markDataChanged();
+  return pruned;
+}
+
+export async function saveCompletions(completions: readonly AlbumCompletion[]): Promise<void> {
+  await putRecords('completions', completions);
+  markDataChanged();
+}
+
+export async function listCompletions(): Promise<AlbumCompletion[]> {
+  return allLive('completions');
+}
+
+export async function completionsForAlbum(albumId: EntityId): Promise<AlbumCompletion[]> {
+  const database = await db();
+  const rows = await database.getAllFromIndex('completions', 'byAlbum', albumId);
+  return rows.filter((row) => !row.deleted);
+}
+
+/**
+ * Answer a completion prompt.
+ *
+ * Only the prompt state moves. The evidence — which plays, which window, when
+ * the set closed — is what happened, and answering the prompt does not change
+ * what happened.
+ */
+export async function setCompletionPrompt(
+  id: string,
+  prompt: CompletionPrompt,
+  extra: { snoozeUntil?: number; ratingId?: string } = {},
+): Promise<void> {
+  const existing = await getRecord('completions', id);
+  if (!existing) return;
+  const next: AlbumCompletion = { ...existing, prompt, updatedAt: Date.now() };
+  if (extra.snoozeUntil !== undefined) next.snoozeUntil = extra.snoozeUntil;
+  else delete next.snoozeUntil;
+  if (extra.ratingId !== undefined) next.ratingId = extra.ratingId;
+  await putRecord('completions', next);
+  markDataChanged();
+}
+
+/* -------------------------------------------------------------------------- */
 
 export async function loadWorld(): Promise<{
   entities: Entity[];
@@ -317,6 +496,8 @@ export async function loadWorld(): Promise<{
   annotations: EntityAnnotation[];
   collections: Collection[];
   scales: RatingScale[];
+  plays: PlayEvent[];
+  completions: AlbumCompletion[];
 }> {
   const [
     entities,
@@ -327,6 +508,8 @@ export async function loadWorld(): Promise<{
     annotations,
     collections,
     scales,
+    plays,
+    completions,
   ] = await Promise.all([
     allLive('entities'),
     allLive('memberships'),
@@ -336,6 +519,8 @@ export async function loadWorld(): Promise<{
     allLive('annotations'),
     allLive('collections'),
     allLive('scales'),
+    allLive('plays'),
+    allLive('completions'),
   ]);
   return {
     entities,
@@ -346,6 +531,8 @@ export async function loadWorld(): Promise<{
     annotations,
     collections,
     scales,
+    plays,
+    completions,
   };
 }
 

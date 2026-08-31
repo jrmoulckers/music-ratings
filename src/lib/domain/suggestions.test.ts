@@ -8,6 +8,7 @@ import {
   DEFAULT_SUGGESTION_WEIGHTS,
   EMPTY_SIGNALS,
   SKIP_PASS_GRACE_MS,
+  TIER_FINISHED_ALBUM,
   TIER_INFERRED,
   TIER_JUST_PLAYED,
   collapsePlays,
@@ -756,5 +757,71 @@ describe('what the queue says about an item', () => {
       const sources = suggestion.reasons.map((r) => r.source);
       expect(sources.includes('unratedChild') && sources.includes('coverageGap')).toBe(false);
     }
+  });
+});
+
+describe('a record heard end to end', () => {
+  const finished = (album: Entity, over: Partial<SuggestionInput> = {}) =>
+    input({
+      entities: [album],
+      overrides: {
+        finishedAlbums: [{ albumId: album.id, endAt: T0 - 2 * 3600_000, trackCount: 11 }],
+        ...over,
+      },
+    });
+
+  it('offers the record with a reason that names what happened', () => {
+    const album = makeEntity('album', 'finished');
+    const out = scoreSuggestions(finished(album));
+    const hit = out.find((s) => s.entityId === album.id);
+    expect(hit).toBeTruthy();
+    const reason = hit?.reasons.find((r) => r.source === 'finishedAlbum');
+    expect(reason?.detail).toContain('all 11 tracks');
+  });
+
+  it('does not ask again once the record has a rating', () => {
+    const album = makeEntity('album', 'already-rated');
+    const out = scoreSuggestions(
+      input({
+        entities: [album],
+        ratings: [rate(album, 80, { at: T0 - DAY })],
+        overrides: {
+          finishedAlbums: [{ albumId: album.id, endAt: T0 - 3600_000, trackCount: 9 }],
+        },
+      }),
+    );
+    const hit = out.find((s) => s.entityId === album.id);
+    expect(hit?.reasons.some((r) => r.source === 'finishedAlbum')).toBeFalsy();
+  });
+
+  it('sits below what is playing and above anything merely inferred', () => {
+    const album = makeEntity('album', 'banded');
+    const played = makeEntity('track', 'just-played');
+    const guessed = makeEntity('track', 'guessed');
+    const out = scoreSuggestions(
+      input({
+        entities: [album, played, guessed],
+        signals: {
+          recentlyPlayed: [{ entityId: played.id, at: T0 - 600_000, index: 0 }],
+          saved: [{ entityId: guessed.id, savedAt: T0 - 5 * DAY }],
+        },
+        overrides: {
+          finishedAlbums: [{ albumId: album.id, endAt: T0 - 2 * 3600_000, trackCount: 11 }],
+        },
+      }),
+    );
+    const tierOf = (id: string) => out.find((s) => s.entityId === id)?.tier;
+    expect(tierOf(played.id)).toBe(TIER_JUST_PLAYED);
+    expect(tierOf(album.id)).toBe(TIER_FINISHED_ALBUM);
+    expect(tierOf(guessed.id)).toBe(TIER_INFERRED);
+    // Bands decide the order, so a pile of weak guesses cannot bury it.
+    const order = out.map((s) => s.entityId);
+    expect(order.indexOf(album.id)).toBeLessThan(order.indexOf(guessed.id));
+  });
+
+  it('is absent when nothing has been finished', () => {
+    const album = makeEntity('album', 'untouched');
+    const out = scoreSuggestions(input({ entities: [album] }));
+    expect(out.some((s) => s.reasons.some((r) => r.source === 'finishedAlbum'))).toBe(false);
   });
 });

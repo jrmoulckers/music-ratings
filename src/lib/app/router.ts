@@ -17,6 +17,7 @@ export type RouteName =
   | 'rankings'
   | 'history'
   | 'insights'
+  | 'listening'
   | 'now-playing'
   | 'settings'
   | 'diagnostics'
@@ -44,6 +45,7 @@ const PATTERNS: { name: RouteName; pattern: RegExp; keys: string[] }[] = [
   { name: 'rankings', pattern: /^\/rankings\/?$/, keys: [] },
   { name: 'history', pattern: /^\/history\/?$/, keys: [] },
   { name: 'insights', pattern: /^\/insights\/?$/, keys: [] },
+  { name: 'listening', pattern: /^\/listening\/?$/, keys: [] },
   { name: 'now-playing', pattern: /^\/now-playing\/?$/, keys: [] },
   { name: 'settings', pattern: /^\/settings\/?$/, keys: [] },
   { name: 'diagnostics', pattern: /^\/diagnostics\/?$/, keys: [] },

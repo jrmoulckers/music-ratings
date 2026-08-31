@@ -16,6 +16,7 @@ import {
 } from './auth';
 import { SpotifyApiError, SpotifyClient } from './client';
 import { importLibrary, importListening, readSignals, type ImportStep } from './library';
+import { recordListening } from '../listening/record';
 
 /**
  * The connection to Spotify, as the screens see it.
@@ -169,6 +170,7 @@ export async function runImport(): Promise<void> {
         })),
     });
     await refreshWorld();
+    await recordListening(result.recent);
     importProgress.update((p) => ({ ...p, running: false, finishedAt: Date.now() }));
     notify(
       `Library read: ${result.entities} items and ${result.memberships} links. Partial results are kept.`,
@@ -243,6 +245,7 @@ export async function refreshListening(): Promise<void> {
       const client = new SpotifyClient({ config: spotifyConfig() });
       const report = await importListening({ client });
       await refreshWorld();
+      await recordListening(report.items);
       listeningStatus.set({ running: false, fetchedAt: report.fetchedAt, error: null });
     } catch (error) {
       const message =

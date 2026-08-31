@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DB_NAME, closeDatabase, countAll, db, raw, readMeta, writeMeta } from './db';
+import { DB_NAME, DB_VERSION, closeDatabase, countAll, db, raw, readMeta, writeMeta } from './db';
 import {
   amendRating,
   clearQueueState,
@@ -62,9 +62,11 @@ describe('database shape', () => {
       'annotations',
       'collections',
       'comparisons',
+      'completions',
       'entities',
       'memberships',
       'meta',
+      'plays',
       'queueStates',
       'ratings',
       'scales',
@@ -110,7 +112,7 @@ describe('database shape', () => {
     });
 
     const database = await db();
-    expect(database.version).toBe(3);
+    expect(database.version).toBe(DB_VERSION);
     expect(database.objectStoreNames.contains('scales')).toBe(true);
     expect(await getEntity(makeEntity('album', 'legacy').id)).toBeTruthy();
   });
@@ -165,7 +167,7 @@ describe('database shape', () => {
     });
 
     const database = await db();
-    expect(database.version).toBe(3);
+    expect(database.version).toBe(DB_VERSION);
     expect(await getEntity('album:spotify:real')).toBeTruthy();
     expect(await getEntity('album:demo:fake')).toBeUndefined();
     expect((await countAll()).ratings).toBe(0);

@@ -2,6 +2,12 @@ import { DEFAULT_SCALE_ID } from '../domain/scales';
 import { DEFAULT_SUGGESTION_WEIGHTS } from '../domain/suggestions';
 import { defaultRollupConfigByType } from '../domain/rollup';
 import { DEFAULT_CONTEXT_CONTRIBUTION, clampContribution, defaultFacets } from '../domain/context';
+import {
+  DEFAULT_COMPLETION_WINDOW_DAYS,
+  DEFAULT_RECOMPLETION,
+  DEFAULT_RECOMPLETION_COOLDOWN_DAYS,
+  type RecompletionMode,
+} from '../domain/completion';
 import type {
   EntityType,
   FacetConfig,
@@ -15,6 +21,7 @@ export type MotionChoice = 'system' | 'reduce' | 'full';
 export type DensityChoice = 'cozy' | 'compact';
 export type ArtworkChoice = 'full' | 'thumbnails' | 'none';
 export type PollingChoice = 'responsive' | 'relaxed' | 'manual';
+export type ListeningBasis = 'plays' | 'minutes';
 
 export interface AppSettings {
   /* ---- portable: the user's judgement, synced everywhere ---- */
@@ -45,6 +52,30 @@ export interface AppSettings {
   showExplicitContent: boolean;
   goalsEnabled: boolean;
   dailyGoal: number;
+  /**
+   * Record what Spotify confirms you played. Off until it is asked for: a
+   * listening log is a diary, and one is not started on someone's behalf.
+   */
+  listeningEnabled: boolean;
+  /**
+   * Epoch ms the log started. Everything the Listening surface says is qualified
+   * by this date, because there is no honest way to talk about what happened
+   * before the app was looking. Merged as the *earliest* of the two, so syncing
+   * a newer device never shortens the observed record.
+   */
+  listeningObservedFrom: number;
+  /** Days a record's tracks must all be heard within to count as one listen. */
+  completionWindowDays: number;
+  /** When a record may be recorded as completed again. */
+  recompletionMode: RecompletionMode;
+  /** Days between completions when `recompletionMode` is `cooldown`. */
+  recompletionCooldownDays: number;
+  /** Offer to rate a record once it has been heard all the way through. */
+  completionPrompts: boolean;
+  /** Whether the Listening surface ranks by plays or by estimated minutes. */
+  listeningBasis: ListeningBasis;
+  /** Discard plays older than this. 0 keeps everything. */
+  listeningRetentionDays: number;
   updatedAt: number;
 
   /* ---- device-local: never leaves this browser ---- */
@@ -96,6 +127,14 @@ export const PORTABLE_SETTINGS = [
   'showExplicitContent',
   'goalsEnabled',
   'dailyGoal',
+  'listeningEnabled',
+  'listeningObservedFrom',
+  'completionWindowDays',
+  'recompletionMode',
+  'recompletionCooldownDays',
+  'completionPrompts',
+  'listeningBasis',
+  'listeningRetentionDays',
   'updatedAt',
 ] as const;
 
@@ -147,6 +186,14 @@ export function defaultSettings(): AppSettings {
     showExplicitContent: true,
     goalsEnabled: false,
     dailyGoal: 10,
+    listeningEnabled: false,
+    listeningObservedFrom: 0,
+    completionWindowDays: DEFAULT_COMPLETION_WINDOW_DAYS,
+    recompletionMode: DEFAULT_RECOMPLETION,
+    recompletionCooldownDays: DEFAULT_RECOMPLETION_COOLDOWN_DAYS,
+    completionPrompts: true,
+    listeningBasis: 'plays',
+    listeningRetentionDays: 0,
     updatedAt: 0,
 
     theme: 'system',
@@ -189,8 +236,31 @@ export function hydrateSettings(stored: Partial<AppSettings> | undefined): AppSe
   );
   merged.contextByType = clampByType(stored.contextByType);
   merged.facets = hydrateFacets(stored.facets);
+  merged.listeningEnabled = stored.listeningEnabled === true;
+  merged.completionWindowDays = clampInt(
+    stored.completionWindowDays,
+    base_.completionWindowDays,
+    1,
+    365,
+  );
+  merged.recompletionCooldownDays = clampInt(
+    stored.recompletionCooldownDays,
+    base_.recompletionCooldownDays,
+    1,
+    3650,
+  );
+  merged.listeningRetentionDays = clampInt(stored.listeningRetentionDays, 0, 0, 3650);
+  merged.listeningObservedFrom =
+    typeof stored.listeningObservedFrom === 'number' && stored.listeningObservedFrom > 0
+      ? stored.listeningObservedFrom
+      : 0;
   merged.schemaVersion = SETTINGS_SCHEMA_VERSION;
   return merged;
+}
+
+function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function clampByType(
@@ -257,13 +327,36 @@ export function localSettings(settings: AppSettings): Pick<AppSettings, Local> {
 /**
  * Device settings always come from this device. Portable settings follow the
  * newest edit, so changing your scale on your phone reaches your laptop.
+ *
+ * The one exception is the observation start date. It is not a preference — it
+ * is a claim about when this app began watching, and the honest answer across
+ * two devices is the earlier of the two. Taking the newer edit wholesale would
+ * quietly shorten the record and make every "since" line on the Listening
+ * surface wrong.
  */
 export function mergeSettings(
   local: AppSettings,
   remote: Partial<AppSettings> | undefined,
 ): AppSettings {
   if (!remote) return local;
+  const observedFrom = earliestObservation(
+    local.listeningObservedFrom,
+    remote.listeningObservedFrom,
+  );
   const remoteAt = remote.updatedAt ?? 0;
-  if (remoteAt <= (local.updatedAt ?? 0)) return local;
-  return { ...local, ...portableSettings(hydrateSettings({ ...local, ...remote })) };
+  if (remoteAt <= (local.updatedAt ?? 0)) {
+    return observedFrom === local.listeningObservedFrom
+      ? local
+      : { ...local, listeningObservedFrom: observedFrom };
+  }
+  const merged = { ...local, ...portableSettings(hydrateSettings({ ...local, ...remote })) };
+  merged.listeningObservedFrom = observedFrom;
+  return merged;
+}
+
+function earliestObservation(local: number | undefined, remote: number | undefined): number {
+  const candidates = [local, remote].filter(
+    (value): value is number => typeof value === 'number' && value > 0,
+  );
+  return candidates.length === 0 ? 0 : Math.min(...candidates);
 }

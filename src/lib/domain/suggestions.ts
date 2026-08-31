@@ -87,6 +87,12 @@ export interface SuggestionInput {
    */
   passStartedAt?: number;
   pinnedIds?: ReadonlySet<EntityId>;
+  /**
+   * Albums heard end to end, newest first. Only unresolved ones belong here:
+   * a record whose prompt has been rated or dismissed has had its answer and
+   * should not keep asking through the queue.
+   */
+  finishedAlbums?: readonly { albumId: EntityId; endAt: number; trackCount: number }[];
   now?: number;
 }
 
@@ -101,6 +107,7 @@ export const DEFAULT_SUGGESTION_WEIGHTS: SuggestionWeights = {
   lowConfidenceRank: 0.4,
   coverageGap: 0.55,
   pinned: 0.8,
+  finishedAlbum: 1,
 };
 
 const DAY = 86_400_000;
@@ -110,9 +117,17 @@ const DAY = 86_400_000;
  * mind right now; every other source is an inference about what they might be
  * willing to judge. Bands keep the two from competing on score, which is the
  * only way "what I just listened to" reliably stays at the front.
+ *
+ * A record heard end to end sits between them. It is confirmed listening rather
+ * than an inference, so it should not have to out-score a stack of weak guesses
+ * to be seen; but it is a considered judgement rather than the thing playing a
+ * minute ago, so it does not push past what is on right now. The queue entry is
+ * a way back to a finished record, not the experience itself — that lives in
+ * its own band on Home and Rate and is not reachable by score.
  */
 export const TIER_JUST_PLAYED = 0;
-export const TIER_INFERRED = 1;
+export const TIER_FINISHED_ALBUM = 1;
+export const TIER_INFERRED = 2;
 
 /**
  * How long a skip holds.
@@ -239,6 +254,25 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     );
     const item = acc.get(play.entityId);
     if (item) item.lastPlayedAt = Math.max(item.lastPlayedAt ?? 0, play.at);
+  }
+
+  /* --- records you heard all the way through ---------------------------- */
+
+  // These do not decay the way a stray play does. Having sat with a whole record
+  // is a reason to have an opinion for as long as the opinion is missing, and
+  // the band above keeps it from being outvoted rather than out-scored.
+  for (const finished of input.finishedAlbums ?? []) {
+    if (input.explicit.has(finished.albumId)) continue;
+    add(
+      acc,
+      graph,
+      enabled,
+      finished.albumId,
+      'finishedAlbum',
+      0.85 + 0.15 * decay(now - finished.endAt, 30),
+      w.finishedAlbum,
+      `You heard all ${finished.trackCount} tracks ${relativeDays(now - finished.endAt)}.`,
+    );
   }
 
   for (const top of input.signals.top) {
@@ -386,7 +420,11 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     if (!(score > 0)) continue;
     // Something you actually pressed play on beats anything the rules merely
     // inferred, however many weak reasons that inference managed to stack up.
-    const tier = item.reasons.has('recentlyPlayed') ? TIER_JUST_PLAYED : TIER_INFERRED;
+    const tier = item.reasons.has('recentlyPlayed')
+      ? TIER_JUST_PLAYED
+      : item.reasons.has('finishedAlbum')
+        ? TIER_FINISHED_ALBUM
+        : TIER_INFERRED;
     out.push({
       entityId: item.entityId,
       entityType: item.entityType,
@@ -439,6 +477,8 @@ export function suggestionSourceLabel(source: SuggestionSource): string {
       return 'Coverage';
     case 'pinned':
       return 'Pinned';
+    case 'finishedAlbum':
+      return 'Finished';
     default:
       return source;
   }

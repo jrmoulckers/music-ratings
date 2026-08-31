@@ -287,7 +287,9 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - **Mini player** (`MiniPlayer`) — one ruled band at the foot of the app, present on every page except Now Playing itself, where it would be a second copy of the page you are on. Sleeve, title, performer, previous/play/next, elapsed and length, the device name, and the same `QuickRate` used in every list — because the point of knowing what is playing is being able to say what you think of it while it plays. It measures itself and publishes `--player-h`, which the shell, the notices and the update prompt clear by exactly; nothing guesses a bar height. With nothing playing it offers a device rather than sitting there blank, and it vanishes entirely when there is no device either.
 - **Now Playing** (`NowPlaying`) — a remote control that knows what you think. The sleeve sets the height and the identity and rating sit against its middle. Transport is the plain expected set — shuffle, previous, play/pause, next, repeat, a scrubber that reports only on release, volume where the device has any — because a scrubber that behaves unusually is a scrubber that gets mis-used. Every control Spotify refuses is disabled with the reason on it rather than failing after the press. The rating is the shared `QuickRate` with the shared `RatePanel` behind **Note, confidence and context**; when the track changes under an open editor the editor stays pinned to what you were rating and says so, because silently moving an unsaved draft onto a different track would record an opinion nobody held.
 - **Device picker** (`DevicePicker`) — the sheet listing what Spotify can see, each with its kind, whether it is active, and whether it is restricted. Transfer moves playback; a restricted device says why it cannot. With nothing listed it gives the three real recoveries — open Spotify somewhere, look again, or turn this browser into a device — rather than an empty list.
-- **Album mode** (`AlbumMode`) — a record listened to in order and rated as it goes. Track list with played / playing / to come, each row a `RatableRow`, the current one highlighted but never scrolled to while you are editing another. `x of y rated` and an **Unrated from this record** filter make the gap the thing you close. The record's own rating is a separate control that stays separate: tracks never silently become an album rating, and the computed rollup is shown beside the direct one with its usual breakdown.
+- **Album mode** (`AlbumMode`) — a record listened to in order and rated as it goes. Track list with played / playing / to come, each row a `RatableRow`, the current one highlighted but never scrolled to while you are editing another. `x of y rated` and an **Unrated from this record** filter make the gap the thing you close. The record's own rating is a separate control that stays separate: tracks never silently become an album rating, and the computed rollup is shown beside the direct one with its usual breakdown. Because the app also keeps a confirmed listening log, the track column distinguishes **confirmed** — Spotify reported the play — from **heard here**, which is only what this session watched go past; a legend says which is which, and local progress is never promoted to the stronger word.
+- **Completed rail** (`TrackRail`) — the signature rail, reused to state a fact rather than take a rating. Cut detents, one per track, filled to the number heard. It is the same object as the rating rail on purpose: the rail is how this app draws a position on a scale, and "all 12 tracks" is a position on a scale. Inert, unfocusable, labelled in words beside it, and swept once in ink when a completion has just arrived — the only celebration the moment gets.
+- **Album complete** (`AlbumComplete`) — the earned moment, and deliberately not a queue suggestion: the queue offers guesses about what you might rate, this states something that happened and shows its evidence. Artwork, name, performer, the completed rail, when it happened and over how long, tracks rated, observed plays, the current rating or rollup, and the provenance line **Confirmed from Spotify recently played**. Primary action opens the shared `RatePanel`; **Review tracks**, **Later** and **Dismiss** sit beside it. It is a stored record, not a toast: it survives dismissal of the page, navigation, reload and sync until it is answered, it never blocks playback, and it never steals an editor that is already open on something else. Its `quiet` form drops the actions and becomes a history row, marked with what was done about it.
 - **Search overlay** — `/` or Ctrl/Cmd+K from anywhere. Answers instantly and offline from your own library; searching the Spotify catalogue is a deliberate second step.
 - **Empty states** — every one names what is missing and offers the action that fixes it.
 
@@ -295,7 +297,7 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 
 ### Do
 
-- Do name a page for what it does — Home, Rate, Compare, Library, Rankings, History, Insights, Settings.
+- Do name a page for what it does — Home, Rate, Compare, Library, Rankings, History, Listening, Insights, Settings.
 - Do render an explicit rating in `--ink` and a computed rollup in `--ink-quiet`, so the two are never confused.
 - Do draw a rating in the shape its scale already has: five stars for stars, the tier list's own six colours for S–F. A control nobody has to learn beats a consistent one they do.
 - Do make a dense scale composed and then saved — draft, **Save rating**, Cancel — and never let a resting placeholder become a recorded value.
@@ -308,6 +310,8 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Do write a suggestion reason as a sentence a person would say: "Played 2 hours ago.", "#3 in your all-time listening.", "No tracks from Rain Ledger rated yet."
 - Do disable a playback control Spotify has refused and put the reason on it, rather than letting the press fail.
 - Do keep an unsaved rating draft pinned to the thing it was opened on when playback moves on.
+- Do print a share with its numerator and denominator beside it — "34 of 52 known tracks (65%)" — so the reader can check the arithmetic and see what the denominator actually was.
+- Do qualify every observed figure with the date observation began, and say plainly where the record has holes.
 
 ### Don't
 
@@ -316,6 +320,8 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Don't offer two record actions on one entry. Withdraw is reachable while a rating counts; delete is reachable only after it has stopped.
 - Don't repeat a surface inside itself: the mini player is hidden on Now Playing, where the same track, the same transport and the same rating are already full size.
 - Don't build a now-playing display that only displays. Every visible piece of state is a control, and the rating beside it is the real one.
+- Don't claim a standing among other listeners. Spotify publishes no population data, so "top 1% listener" would be invented; say what share of _your own_ observed listening something was instead.
+- Don't celebrate a completed record with confetti or a modal. It is an earned statement of fact with its evidence attached, and it waits rather than interrupting.
 
 - Don't reach for marketing hero type, pill spam, or an icon that is only decorative.
 - Don't set small text in `--accent` rather than `--accent-ink`.

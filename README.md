@@ -35,6 +35,13 @@ belonging to anyone but you.
   devices, queue, and — if you want it — this browser as a Connect device of its
   own. Rate the track, the record and the performer without leaving the music, and
   sit with an album track by track while it plays.
+- **Keep a record of what you actually played**, taken only from Spotify's
+  recently-played list, and tell you what it shows: most played tracks, releases
+  and artists, how much of a record or an artist's catalogue you have heard,
+  repeat listening, what is new, and where your listening and your ratings
+  disagree. When every available track on one album edition has a confirmed play
+  inside the completion window, the record is marked finished and offered for a
+  rating — once, when the last track lands.
 - **Work offline**, install to your home screen or dock, and sync between your own
   devices through your own OneDrive.
 
@@ -171,6 +178,18 @@ Other honest limits:
   results changes.
 - **Recently played is capped at 50 items** by Spotify, and covers tracks only.
   Music Ratings stores each fetch so history accumulates over time on your device.
+  This makes the listening record a log of what this app observed, not a lifetime
+  history: anything played while the app was closed for a while was never visible
+  to it. Every figure on the Listening screen is qualified by the date observation
+  started, and a fetch that comes back full is recorded as a possible gap rather
+  than passed off as complete.
+- **There is no listener percentile or population comparison** in the Spotify API.
+  Music Ratings therefore never shows a "top 1% listener" figure. It reports only
+  shares of your own observed listening, always with the numerator and denominator
+  visible — `18% of your observed plays`, `34 of 52 known tracks`.
+- **Listening time is estimated from track lengths**, because recently-played says
+  a track was played, not how much of it was heard. It is labelled as an estimate
+  everywhere it appears.
 - **Audiobooks are available in the US, UK, Canada, Ireland, New Zealand and
   Australia only.** Outside those markets the entity type degrades to
   "unavailable" rather than silently returning nothing.
@@ -308,6 +327,13 @@ redirect.
 - **Settings → Data** can export everything, import it elsewhere, or erase all of
   it — including revoking the Spotify connection and forgetting the OneDrive
   account.
+- **Listening history is optional and separately erasable.** Turning off
+  **Settings → Listening → Keep a record of what I played** stops new plays being
+  recorded. **Delete listening history** removes the log and the completions on
+  their own, leaving every rating untouched, and writes tombstones so the deletion
+  reaches your other devices instead of being undone by the next sync. A retention
+  setting can cap how far back the log is kept, and the log can be exported by
+  itself.
 
 ---
 
@@ -317,7 +343,13 @@ redirect.
 - `src/lib/domain/` is pure, framework-independent TypeScript: scales, Elo,
   containment graph, rating events, the rollup engine, suggestion scoring, insights
   and list building. It has no imports from Svelte or the DOM, and it is where the
-  tests are concentrated.
+  tests are concentrated. Album completion and the listening aggregates live here
+  too, as pure functions over a play log, so what the app claims about your
+  listening can be tested without a browser or an account.
+- `src/lib/listening/` is the only door between Spotify's recently-played endpoint
+  and the durable log: it deduplicates by a deterministic play identity, folds
+  coverage, and re-evaluates completion for the touched albums alone rather than
+  recomputing everything.
 - `src/lib/storage/` owns IndexedDB (via `idb`), schema migrations, snapshots and
   the sync protocol. `src/lib/spotify/` owns PKCE auth, the rate-limited API client,
   and mapping Spotify's shapes into the domain's.

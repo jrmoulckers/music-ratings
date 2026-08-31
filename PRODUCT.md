@@ -47,6 +47,9 @@ The data is the user's own: local-first, offline-capable, synced to the user's o
 - Explicit ratings and computed rollups are stored separately and never overwrite each other. Explicit-only, rollup-only, and blended views are all available.
 - Rollup weights are user-customisable per parent type. Defaults: parent explicit 50%, direct child explicit 30%, descendant 10%, comparison-derived 10%, renormalised over whatever evidence actually exists.
 - Containment: artist → releases/tracks, album → tracks, playlist → tracks, show → episodes, audiobook → chapters. A track reachable by several paths must not be counted twice. Various-artists releases and multi-artist tracks allocate contribution fairly. A playlist's explicit rating is independent of its tracks' ratings.
+- **Listening is observed, never inferred.** A track counts as heard only when Spotify's recently-played endpoint reports it. Local playback progress, percentage played and reaching the final seconds prove nothing and are never promoted to a confirmed play. Play events are deduplicated by a deterministic identity so a refresh, a reload or a second device cannot double-count one listen.
+- **Album completion** is recorded when every currently known available track on one exact album edition has a confirmed play inside a rolling window (30 days by default). It is offered once, at the moment the last missing track is ingested, and never declared while the app does not yet know the album's full track list. Completing a record never rates it; the two stay independent.
+- **Listening statistics are local observations, stated as such.** Shares are of the user's own observed listening with numerator and denominator shown; listening time is estimated from track lengths and labelled as an estimate. There is no population percentile, because the API cannot support one.
 
 ### Technical constraints
 
@@ -54,6 +57,7 @@ The data is the user's own: local-first, offline-capable, synced to the user's o
 - **Spotify APIs that must not be depended on:** recommendations, related-artists, audio-features, audio-analysis. Rating suggestions are therefore built deterministically from recently played (max 50), top tracks/artists (short/medium/long term), saved library, unrated children of rated parents, stale ratings due for review, low-confidence rankings, and coverage gaps.
 - Rate limiting (`Retry-After`), token refresh, auth expiry, revoked scopes, partial data, pagination, market/unavailable content, deleted playlist items, and offline mode are all explicit product states, not error pages.
 - **Storage.** IndexedDB locally; optional sync to a sandboxed Microsoft Graph app folder as JSON, with lazily loaded MSAL, ETag optimistic concurrency, explicit conflict surfacing, per-entity merges and tombstones, and full export/import. No hosted database.
+- **The listening log is user-owned, portable data**, synced and merged like ratings rather than treated as a device cache: it carries tombstones, can be exported and deleted on its own, and records where observation began so no screen can imply the log covers more than it does. Recently-played returns at most 50 items per request, so gaps are expected, detected and disclosed instead of being smoothed over.
 - **Distribution.** Installable, responsive PWA suitable for static hosting.
 
 ### Deliberately undecided

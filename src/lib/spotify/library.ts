@@ -4,7 +4,7 @@ import { entityId } from '../domain/ids';
 import { META_CURSORS, deleteMeta, readMeta, writeMeta } from '../storage/db';
 import { replaceChildren, saveMemberships, upsertEntities } from '../storage/repo';
 import { SEARCH_LIMIT_MAX } from './capabilities';
-import { SpotifyApiError, type SpotifyClient } from './client';
+import { SpotifyApiError, type PlayHistory, type SpotifyClient } from './client';
 import {
   mapAlbum,
   mapArtist,
@@ -41,6 +41,8 @@ export interface ImportReport {
   steps: ImportStep[];
   entities: number;
   memberships: number;
+  /** The recently-played window this pass read, for the listening log. */
+  recent: PlayHistory[];
 }
 
 export interface StoredSignals extends ListeningSignals {
@@ -90,6 +92,7 @@ export async function importLibrary(options: ImportOptions): Promise<ImportRepor
   const plays: PlaySignal[] = [];
   const top: TopSignal[] = [];
   const saved: SavedSignal[] = [];
+  let recent: PlayHistory[] = [];
 
   const run = async (
     key: string,
@@ -134,6 +137,7 @@ export async function importLibrary(options: ImportOptions): Promise<ImportRepor
 
   await run('recent', 'Recently played', null, async () => {
     const { items } = await client.recentlyPlayed(req);
+    recent = [...items];
     items.forEach((item, index) => {
       if (!item.track?.id) return;
       results.push(mapTrack(item.track, 'recently played'));
@@ -303,6 +307,7 @@ export async function importLibrary(options: ImportOptions): Promise<ImportRepor
     steps,
     entities: merged.entities.length,
     memberships: merged.memberships.length,
+    recent,
   };
 }
 
@@ -313,6 +318,13 @@ export interface ListeningReport {
   /** Distinct tracks in the returned window. */
   plays: number;
   entities: number;
+  /**
+   * The raw window, handed back so the caller can fold it into the durable
+   * listening log *after* the tracks and their albums are stored. Completion
+   * has to be judged against a catalogue that already knows the album, so the
+   * two steps cannot be reordered.
+   */
+  items: PlayHistory[];
 }
 
 /**
@@ -368,6 +380,7 @@ export async function importListening(options: {
     fetchedAt,
     plays: new Set(plays.map((p) => p.entityId)).size,
     entities: merged.entities.length,
+    items: [...items],
   };
 }
 

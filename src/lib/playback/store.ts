@@ -513,10 +513,32 @@ function bind(): void {
   playback.subscribe((state) => {
     const item = state.snapshot?.item ?? null;
     const playing = state.snapshot?.playing === true;
-    if (!sameItem(item, last) || playing !== wasPlaying) {
+    const changed = !sameItem(item, last);
+    if (changed || playing !== wasPlaying) {
+      const previous = last;
       last = item;
       wasPlaying = playing;
       if (watchers > 0) schedule();
+      // Moving off a track is the cue to ask Spotify what it recorded. The
+      // change itself proves nothing — a skip looks exactly like a finish from
+      // here — so this only asks the question, and the answer comes from
+      // `/recently-played` or not at all.
+      if (changed && previous) trackChanged?.();
     }
   });
+}
+
+let trackChanged: (() => void) | null = null;
+
+/**
+ * Ask to be told when playback moves off a track.
+ *
+ * Deliberately a bare notification with no payload: nothing downstream should
+ * be able to mistake "the player moved on" for "the track was listened to".
+ */
+export function onTrackChange(handler: () => void): () => void {
+  trackChanged = handler;
+  return () => {
+    if (trackChanged === handler) trackChanged = null;
+  };
 }

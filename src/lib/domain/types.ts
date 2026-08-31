@@ -550,6 +550,7 @@ export const SUGGESTION_SOURCES = [
   'lowConfidenceRank',
   'coverageGap',
   'pinned',
+  'finishedAlbum',
 ] as const;
 
 export type SuggestionSource = (typeof SUGGESTION_SOURCES)[number];
