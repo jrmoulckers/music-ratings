@@ -3,6 +3,7 @@
   import { entityHref } from '../lib/app/router';
   import {
     allScales,
+    canonical,
     contextConfig,
     entityLabelCap,
     explicitRatings,
@@ -82,9 +83,15 @@
     return [...groups.entries()];
   });
 
-  /** Where this entry stands: the rating in force, an earlier one, or withdrawn. */
+  /**
+   * Where this entry stands: the rating in force, an earlier one, or withdrawn.
+   *
+   * Read against the canonical record, so an entry made on a copy that has
+   * since been combined into another is still recognised as the rating in
+   * force rather than silently demoted to "an earlier rating".
+   */
   function standing(event: RatingEvent) {
-    return entryStanding(event, $explicitRatings.get(event.entityId)?.eventId);
+    return entryStanding(event, $explicitRatings.get($canonical.resolve(event.entityId))?.eventId);
   }
 
   function markFor(event: RatingEvent): { text: string; swatch: string | null } {

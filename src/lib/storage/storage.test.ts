@@ -3,23 +3,34 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DB_NAME, DB_VERSION, closeDatabase, countAll, db, raw, readMeta, writeMeta } from './db';
 import {
   amendRating,
+  canonicalIndex,
   clearQueueState,
+  combineEntities,
+  CombineError,
   deleteRating,
   getEntity,
+  listAnnotations,
+  listCanonicalGroups,
   listComparisons,
   listEntities,
   listMemberships,
   listQueueStates,
   listRatings,
   loadStoreForSync,
+  loadWorld,
   patchAnnotation,
+  patchCanonicalAnnotation,
+  previewCombine,
   ratingsFor,
   recordComparison,
   recordRating,
   replaceChildren,
   retractRating,
+  revertCombine,
   saveMemberships,
+  setGroupPrimary,
   setQueueState,
+  uncombineGroup,
   upsertEntities,
 } from './repo';
 import { currentDataVersion } from './changes';
@@ -30,10 +41,13 @@ import {
   serializeSnapshot,
   snapshotCounts,
   SnapshotError,
+  SNAPSHOT_VERSION,
   migrateSnapshot,
   emptySnapshot,
 } from './snapshot';
 import { currentRating, indexCurrentRatings } from '../domain/ratings';
+import { buildCanonicalIndex } from '../domain/canonical';
+import { BUILTIN_SCALES, findScale } from '../domain/scales';
 import { link, makeEntity, resetFixtureCounters } from '../../test/fixtures';
 
 async function wipe(): Promise<void> {
@@ -43,6 +57,56 @@ async function wipe(): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => resolve();
     request.onblocked = () => resolve();
+  });
+}
+
+function createV3Stores(database: IDBDatabase): void {
+  const entities = database.createObjectStore('entities', { keyPath: 'id' });
+  entities.createIndex('byType', 'type');
+  entities.createIndex('byUpdated', 'updatedAt');
+  const memberships = database.createObjectStore('memberships', { keyPath: 'id' });
+  memberships.createIndex('byParent', 'parentId');
+  memberships.createIndex('byChild', 'childId');
+  const ratings = database.createObjectStore('ratings', { keyPath: 'id' });
+  ratings.createIndex('byEntity', 'entityId');
+  ratings.createIndex('byAt', 'at');
+  ratings.createIndex('byType', 'entityType');
+  const comparisons = database.createObjectStore('comparisons', { keyPath: 'id' });
+  comparisons.createIndex('byType', 'entityType');
+  comparisons.createIndex('byAt', 'at');
+  database.createObjectStore('queueStates', { keyPath: 'id' });
+  database.createObjectStore('annotations', { keyPath: 'id' });
+  database.createObjectStore('collections', { keyPath: 'id' });
+  database.createObjectStore('meta');
+  database.createObjectStore('scales', { keyPath: 'id' });
+}
+
+async function createBranchV4(kind: 'insights' | 'canonical'): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 4);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      createV3Stores(database);
+      if (kind === 'insights') {
+        const plays = database.createObjectStore('plays', { keyPath: 'id' });
+        plays.createIndex('byAt', 'at');
+        plays.createIndex('byEntity', 'entityId');
+        plays.createIndex('byEntityAt', ['entityId', 'at']);
+        plays.createIndex('byUpdated', 'updatedAt');
+        const completions = database.createObjectStore('completions', { keyPath: 'id' });
+        completions.createIndex('byAlbum', 'albumId');
+        completions.createIndex('byAt', 'endAt');
+        completions.createIndex('byUpdated', 'updatedAt');
+      } else {
+        const groups = database.createObjectStore('canonicalGroups', { keyPath: 'id' });
+        groups.createIndex('byType', 'entityType');
+      }
+    };
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+    request.onerror = () => reject(request.error);
   });
 }
 
@@ -60,6 +124,7 @@ describe('database shape', () => {
     const database = await db();
     expect([...database.objectStoreNames].sort()).toEqual([
       'annotations',
+      'canonicalGroups',
       'collections',
       'comparisons',
       'completions',
@@ -72,6 +137,29 @@ describe('database shape', () => {
       'scales',
     ]);
   });
+
+  for (const branch of ['insights', 'canonical'] as const) {
+    it(`upgrades the ${branch}-only v4 shape without assuming the other v4`, async () => {
+      await createBranchV4(branch);
+      const database = await db();
+      expect(database.version).toBe(DB_VERSION);
+      expect(database.objectStoreNames.contains('plays')).toBe(true);
+      expect(database.objectStoreNames.contains('completions')).toBe(true);
+      expect(database.objectStoreNames.contains('canonicalGroups')).toBe(true);
+      expect([...database.transaction('plays').store.indexNames].sort()).toEqual([
+        'byAt',
+        'byEntity',
+        'byEntityAt',
+        'byUpdated',
+      ]);
+      expect([...database.transaction('completions').store.indexNames].sort()).toEqual([
+        'byAlbum',
+        'byAt',
+        'byUpdated',
+      ]);
+      expect([...database.transaction('canonicalGroups').store.indexNames]).toEqual(['byType']);
+    });
+  }
 
   it('upgrades an old database without losing what was in it', async () => {
     await closeDatabase();
@@ -171,6 +259,74 @@ describe('database shape', () => {
     expect(await getEntity('album:spotify:real')).toBeTruthy();
     expect(await getEntity('album:demo:fake')).toBeUndefined();
     expect((await countAll()).ratings).toBe(0);
+  });
+
+  it('migrates a legacy duplicateOf pointer into a real canonical group', async () => {
+    await closeDatabase();
+    // A v3 database holding the old one-way "this is a duplicate of that" note.
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 3);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        const entities = database.createObjectStore('entities', { keyPath: 'id' });
+        entities.createIndex('byType', 'type');
+        entities.createIndex('byUpdated', 'updatedAt');
+        const memberships = database.createObjectStore('memberships', { keyPath: 'id' });
+        memberships.createIndex('byParent', 'parentId');
+        memberships.createIndex('byChild', 'childId');
+        const ratings = database.createObjectStore('ratings', { keyPath: 'id' });
+        ratings.createIndex('byEntity', 'entityId');
+        ratings.createIndex('byAt', 'at');
+        ratings.createIndex('byType', 'entityType');
+        const comparisons = database.createObjectStore('comparisons', { keyPath: 'id' });
+        comparisons.createIndex('byType', 'entityType');
+        comparisons.createIndex('byAt', 'at');
+        database.createObjectStore('queueStates', { keyPath: 'id' });
+        database.createObjectStore('annotations', { keyPath: 'id' });
+        database.createObjectStore('collections', { keyPath: 'id' });
+        database.createObjectStore('meta');
+        database.createObjectStore('scales', { keyPath: 'id' });
+      };
+      request.onsuccess = () => {
+        const database = request.result;
+        const tx = database.transaction(['entities', 'annotations'], 'readwrite');
+        const store = tx.objectStore('entities');
+        store.put(makeEntity('album', 'original'));
+        store.put(makeEntity('album', 'remaster'));
+        tx.objectStore('annotations').put({
+          id: 'album:local:remaster',
+          tags: ['loud'],
+          duplicateOf: 'album:local:original',
+          updatedAt: 1,
+        });
+        // A pointer across kinds is nonsense and must not become a group.
+        tx.objectStore('annotations').put({
+          id: 'track:local:stray',
+          tags: [],
+          duplicateOf: 'album:local:original',
+          updatedAt: 1,
+        });
+        tx.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    const database = await db();
+    expect(database.version).toBe(DB_VERSION);
+    const groups = await listCanonicalGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.primaryId).toBe('album:local:original');
+    expect(groups[0]!.memberIds.sort()).toEqual(['album:local:original', 'album:local:remaster']);
+    expect(groups[0]!.entityType).toBe('album');
+    // The annotation is left exactly as it was: rewriting it would push a stale
+    // edit at any device still running the older version.
+    const annotation = (await listAnnotations()).find((a) => a.id === 'album:local:remaster');
+    expect(annotation?.duplicateOf).toBe('album:local:original');
+    expect(annotation?.tags).toEqual(['loud']);
   });
 
   it('strips reactive proxies before writing', () => {
@@ -384,6 +540,436 @@ describe('comparisons, queue states and notes', () => {
   });
 });
 
+describe('combining duplicates', () => {
+  const scale = findScale(BUILTIN_SCALES, 'int-10')!;
+  const original = makeEntity('album', 'original', { name: 'Kid A' });
+  const remaster = makeEntity('album', 'remaster', { name: 'Kid A (2016 Remaster)' });
+  const third = makeEntity('album', 'third', { name: 'Kid A (Japanese Edition)' });
+  const song = makeEntity('track', 'song', { name: 'Kid A' });
+
+  async function library(): Promise<void> {
+    await upsertEntities([original, remaster, third, song]);
+  }
+
+  it('averages two current ratings into exactly one new entry', async () => {
+    await library();
+    await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    await recordRating({
+      entityId: remaster.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+
+    const before = currentDataVersion();
+    const result = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+
+    // One mutation, one bump: the group, its tombstones and the averaged entry
+    // all land together or not at all.
+    expect(currentDataVersion()).toBe(before + 1);
+    expect(result.plan.rating.kind).toBe('averaged');
+    expect(result.averaged?.normalized).toBe(80);
+    expect(result.averaged?.value).toBe(8);
+    expect(result.averaged?.entityId).toBe(original.id);
+    expect(result.averaged?.context).toBe('combine');
+    expect(result.averaged?.origin?.sourceEventIds).toHaveLength(2);
+
+    // The two originals are untouched, and the new entry is the third row.
+    const events = await listRatings();
+    expect(events).toHaveLength(3);
+    expect(events.filter((e) => e.retracted)).toHaveLength(0);
+
+    const index = buildCanonicalIndex(await listCanonicalGroups());
+    expect(index.resolve(remaster.id)).toBe(original.id);
+    expect(indexCurrentRatings(events, index.resolver).get(original.id)?.normalized).toBe(80);
+  });
+
+  it('lets a single rating stand for the group without inventing an entry', async () => {
+    await library();
+    await recordRating({
+      entityId: remaster.id,
+      entityType: 'album',
+      normalized: 60,
+      value: 6,
+      scaleId: 'int-10',
+    });
+
+    const result = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(result.plan.rating.kind).toBe('carried');
+    expect(result.averaged).toBeNull();
+    expect(await listRatings()).toHaveLength(1);
+
+    const index = buildCanonicalIndex(await listCanonicalGroups());
+    const current = indexCurrentRatings(await listRatings(), index.resolver);
+    expect(current.get(original.id)?.normalized).toBe(60);
+  });
+
+  it('ignores ratings that were withdrawn or deleted', async () => {
+    await library();
+    const withdrawn = await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 20,
+      value: 2,
+      scaleId: 'int-10',
+    });
+    await retractRating(withdrawn.id);
+    await recordRating({
+      entityId: remaster.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+
+    const result = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(result.plan.rating.kind).toBe('carried');
+    expect(result.averaged).toBeNull();
+  });
+
+  it('refuses to combine different kinds, and refuses a group of one', async () => {
+    await library();
+    await expect(
+      combineEntities({ entityIds: [original.id, song.id], primaryId: original.id, scale }),
+    ).rejects.toBeInstanceOf(CombineError);
+    await expect(
+      combineEntities({ entityIds: [original.id], primaryId: original.id, scale }),
+    ).rejects.toThrow(/two different items/i);
+    expect(await listCanonicalGroups()).toHaveLength(0);
+  });
+
+  it('extends the group it is given rather than making a second one', async () => {
+    await library();
+    await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+
+    await combineEntities({
+      entityIds: [remaster.id, third.id],
+      primaryId: remaster.id,
+      scale,
+    });
+
+    const live = await listCanonicalGroups();
+    expect(live).toHaveLength(1);
+    expect(live[0]!.memberIds.sort()).toEqual([original.id, remaster.id, third.id].sort());
+    expect(live[0]!.primaryId).toBe(remaster.id);
+
+    const index = buildCanonicalIndex(live);
+    expect(index.resolve(third.id)).toBe(remaster.id);
+    expect(index.resolve(original.id)).toBe(remaster.id);
+  });
+
+  it('does not count a previous combine average and its source ratings twice', async () => {
+    await library();
+    await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    await recordRating({
+      entityId: remaster.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+    const base = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(base.averaged?.normalized).toBe(80);
+    await recordRating({
+      entityId: third.id,
+      entityType: 'album',
+      normalized: 60,
+      value: 6,
+      scaleId: 'int-10',
+    });
+
+    const grown = await combineEntities({
+      entityIds: [original.id, third.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(grown.plan.rating.sources.map((source) => source.normalized)).toEqual([80, 60]);
+    expect(grown.averaged?.normalized).toBe(70);
+  });
+
+  it('clears edited annotation fields from aliases so they cannot reappear', async () => {
+    await library();
+    await patchAnnotation(remaster.id, {
+      tags: ['vinyl'],
+      note: 'old edition note',
+      pinned: 'favorite',
+    });
+    const { group } = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    await patchCanonicalAnnotation(group.primaryId, group.memberIds, {
+      tags: [],
+      note: undefined,
+      pinned: undefined,
+    });
+
+    const annotations = await listAnnotations();
+    const alias = annotations.find((annotation) => annotation.id === remaster.id);
+    expect(alias?.tags).toEqual([]);
+    expect(alias?.note).toBeUndefined();
+    expect(alias?.pinned).toBeUndefined();
+  });
+
+  it('can separate a legacy alias without letting duplicateOf recreate it', async () => {
+    await library();
+    await patchAnnotation(remaster.id, { tags: [], duplicateOf: original.id });
+    const legacy = await canonicalIndex();
+    const synthetic = legacy.group(original.id);
+    expect(synthetic?.id).toMatch(/^legacy:/);
+
+    const plan = await uncombineGroup(synthetic!.id);
+    expect(plan?.memberIds.sort()).toEqual([original.id, remaster.id].sort());
+    expect((await canonicalIndex()).group(original.id)).toBeUndefined();
+    expect(
+      (await listAnnotations()).find((row) => row.id === remaster.id)?.duplicateOf,
+    ).toBeUndefined();
+  });
+
+  it('absorbs a second group instead of leaving a source in two of them', async () => {
+    const fourth = makeEntity('album', 'fourth', { name: 'Kid A (Mono)' });
+    await library();
+    await upsertEntities([fourth]);
+
+    const first = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    const second = await combineEntities({
+      entityIds: [third.id, fourth.id],
+      primaryId: third.id,
+      scale,
+    });
+    expect(await listCanonicalGroups()).toHaveLength(2);
+
+    await combineEntities({ entityIds: [original.id, third.id], primaryId: original.id, scale });
+
+    const live = await listCanonicalGroups();
+    expect(live).toHaveLength(1);
+    expect(live[0]!.id).toBe(first.group.id);
+    expect(live[0]!.memberIds.sort()).toEqual(
+      [original.id, remaster.id, third.id, fourth.id].sort(),
+    );
+    // The swallowed group leaves a tombstone so the merge travels to other devices.
+    const stored = await loadStoreForSync('canonicalGroups');
+    expect(stored).toHaveLength(2);
+    expect(stored.find((g) => g.id === second.group.id)?.deleted).toBeGreaterThan(0);
+
+    const index = buildCanonicalIndex(live);
+    expect(index.members(fourth.id)).toHaveLength(4);
+    expect(index.resolve(fourth.id)).toBe(original.id);
+  });
+
+  it('previews the same plan it would carry out', async () => {
+    await library();
+    await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    await recordRating({
+      entityId: remaster.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+    const before = currentDataVersion();
+    const preview = await previewCombine({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(preview.rating.event?.normalized).toBe(80);
+    // A preview writes nothing at all.
+    expect(currentDataVersion()).toBe(before);
+    expect(await listCanonicalGroups()).toHaveLength(0);
+
+    const done = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(done.plan.rating.event?.normalized).toBe(preview.rating.event?.normalized);
+  });
+
+  it('changes which source represents the group without touching history', async () => {
+    await library();
+    await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    const { group } = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+
+    const before = currentDataVersion();
+    const moved = await setGroupPrimary(group.id, remaster.id);
+    expect(currentDataVersion()).toBe(before + 1);
+    expect(moved?.primaryId).toBe(remaster.id);
+
+    const index = buildCanonicalIndex(await listCanonicalGroups());
+    expect(index.resolve(original.id)).toBe(remaster.id);
+    // The event still names the source it was made against.
+    expect((await listRatings())[0]!.entityId).toBe(original.id);
+    // And the rating still answers for the group under its new primary.
+    expect(
+      indexCurrentRatings(await listRatings(), index.resolver).get(remaster.id)?.normalized,
+    ).toBe(70);
+
+    await expect(setGroupPrimary(group.id, song.id)).rejects.toBeInstanceOf(CombineError);
+  });
+
+  it('separates again, withdrawing only the entry combining wrote', async () => {
+    await library();
+    await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    await recordRating({
+      entityId: remaster.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+    const { group, averaged } = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+
+    const before = currentDataVersion();
+    const plan = await uncombineGroup(group.id);
+    expect(currentDataVersion()).toBe(before + 1);
+    expect(plan?.withdrawEventIds).toEqual([averaged!.id]);
+
+    // Nothing was destroyed: three events remain, one of them withdrawn.
+    const events = await listRatings();
+    expect(events).toHaveLength(3);
+    expect(events.find((e) => e.id === averaged!.id)?.retracted).toBeGreaterThan(0);
+    expect(await listCanonicalGroups()).toHaveLength(0);
+
+    const current = indexCurrentRatings(events);
+    expect(current.get(original.id)?.normalized).toBe(70);
+    expect(current.get(remaster.id)?.normalized).toBe(90);
+  });
+
+  it('undoes a combine exactly, whether or not a group already existed', async () => {
+    const fourth = makeEntity('album', 'fourth', { name: 'Kid A (Mono)' });
+    await library();
+    await upsertEntities([fourth]);
+    await recordRating({
+      entityId: original.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    await recordRating({
+      entityId: third.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+
+    // A fresh combine undoes to nothing at all.
+    const fresh = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    await revertCombine(fresh);
+    expect(await listCanonicalGroups()).toHaveLength(0);
+
+    // A combine that grew an existing group undoes back to that group, not
+    // past it into three separate records.
+    const base = await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    const grown = await combineEntities({
+      entityIds: [original.id, third.id, fourth.id],
+      primaryId: original.id,
+      scale,
+    });
+    expect(grown.previous?.id).toBe(base.group.id);
+    expect(grown.averaged).not.toBeNull();
+
+    await revertCombine(grown);
+    const live = await listCanonicalGroups();
+    expect(live).toHaveLength(1);
+    expect(live[0]!.memberIds.sort()).toEqual([original.id, remaster.id].sort());
+    // The averaged entry it wrote is withdrawn, so the ratings are as they were.
+    const events = await listRatings();
+    expect(events.find((e) => e.id === grown.averaged!.id)?.retracted).toBeGreaterThan(0);
+    const index = buildCanonicalIndex(live);
+    const current = indexCurrentRatings(events, index.resolver);
+    expect(current.get(original.id)?.normalized).toBe(70);
+    expect(current.get(third.id)?.normalized).toBe(90);
+  });
+
+  it('carries combined groups through the world load', async () => {
+    await library();
+    await combineEntities({
+      entityIds: [original.id, remaster.id],
+      primaryId: original.id,
+      scale,
+    });
+    const world = await loadWorld();
+    expect(world.canonicalGroups).toHaveLength(1);
+    // And the resolver can be had without a world at all.
+    expect((await canonicalIndex()).resolve(remaster.id)).toBe(original.id);
+  });
+});
+
 describe('snapshots', () => {
   it('round-trips through export and import', async () => {
     const album = makeEntity('album', 'al');
@@ -405,6 +991,46 @@ describe('snapshots', () => {
     await restoreSnapshot(parseSnapshot(text));
     expect(await listEntities()).toHaveLength(1);
     expect((await listRatings())[0]!.normalized).toBe(80);
+  });
+
+  it('round-trips a combined group, its sources and its averaged entry', async () => {
+    const scale = findScale(BUILTIN_SCALES, 'int-10')!;
+    const one = makeEntity('album', 'one', { name: 'Kid A' });
+    const two = makeEntity('album', 'two', { name: 'Kid A (2016 Remaster)' });
+    await upsertEntities([one, two]);
+    await recordRating({
+      entityId: one.id,
+      entityType: 'album',
+      normalized: 70,
+      value: 7,
+      scaleId: 'int-10',
+    });
+    await recordRating({
+      entityId: two.id,
+      entityType: 'album',
+      normalized: 90,
+      value: 9,
+      scaleId: 'int-10',
+    });
+    await combineEntities({ entityIds: [one.id, two.id], primaryId: one.id, scale });
+
+    const text = serializeSnapshot(await buildSnapshot());
+    expect(
+      snapshotCounts(parseSnapshot(text)).find((c) => c.label === 'combined items')?.count,
+    ).toBe(1);
+
+    await wipe();
+    await restoreSnapshot(parseSnapshot(text));
+
+    const groups = await listCanonicalGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.memberIds.sort()).toEqual([one.id, two.id].sort());
+    // Both source entities survive the trip, and so does the averaged entry.
+    expect(await listEntities()).toHaveLength(2);
+    const index = buildCanonicalIndex(groups);
+    expect(indexCurrentRatings(await listRatings(), index.resolver).get(one.id)?.normalized).toBe(
+      80,
+    );
   });
 
   it('carries tombstones so a deletion survives a restore', async () => {
@@ -453,7 +1079,36 @@ describe('snapshots', () => {
     const old = { ...emptySnapshot('X'), version: 0 } as unknown as Parameters<
       typeof migrateSnapshot
     >[0];
-    expect(migrateSnapshot(old).version).toBe(1);
+    const migrated = migrateSnapshot(old);
+    expect(migrated.version).toBe(SNAPSHOT_VERSION);
+    expect(migrated.canonicalGroups).toEqual([]);
+  });
+
+  it('reads a format-1 file, which had no combined groups in it', () => {
+    const legacy = { ...emptySnapshot('X'), version: 1 } as Record<string, unknown>;
+    delete legacy.canonicalGroups;
+    const parsed = parseSnapshot(JSON.stringify(legacy));
+    expect(parsed.canonicalGroups).toEqual([]);
+    expect(parsed.version).toBe(SNAPSHOT_VERSION);
+  });
+
+  it('reads either branch snapshot with the other branch collections empty', () => {
+    const insights = parseSnapshot(
+      JSON.stringify({ ...emptySnapshot('I'), version: 1, canonicalGroups: undefined }),
+    );
+    const canonical = parseSnapshot(
+      JSON.stringify({
+        ...emptySnapshot('C'),
+        version: 2,
+        plays: undefined,
+        completions: undefined,
+      }),
+    );
+    expect(insights.canonicalGroups).toEqual([]);
+    expect(canonical.plays).toEqual([]);
+    expect(canonical.completions).toEqual([]);
+    expect(insights.version).toBe(SNAPSHOT_VERSION);
+    expect(canonical.version).toBe(SNAPSHOT_VERSION);
   });
 
   it('summarises a backup in plain language', async () => {

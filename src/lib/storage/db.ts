@@ -6,7 +6,9 @@ import {
   type StoreNames,
 } from 'idb';
 
+import { uid } from '../domain/ids';
 import type {
+  CanonicalGroup,
   Collection,
   Comparison,
   Entity,
@@ -22,7 +24,7 @@ import type { AlbumCompletion, PlayEvent } from '../domain/listening';
 import type { AppSettings } from './settings';
 
 export const DB_NAME = 'music-ratings';
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 /**
  * Everything the app knows lives here, on this device, in the user's browser.
@@ -75,6 +77,12 @@ export interface AppDB extends DBSchema {
     value: AlbumCompletion;
     indexes: { byAlbum: EntityId; byAt: number; byUpdated: number };
   };
+  /** Sources the user has declared to be one record. */
+  canonicalGroups: {
+    key: string;
+    value: CanonicalGroup;
+    indexes: { byType: EntityType };
+  };
   /** Free-form singletons: settings, sync bookkeeping, provider cursors. */
   meta: { key: string; value: unknown };
 }
@@ -90,6 +98,7 @@ export type StoreName =
   | 'scales'
   | 'plays'
   | 'completions'
+  | 'canonicalGroups'
   | 'meta';
 
 /** Stores whose records take part in sync. `meta` is handled separately. */
@@ -104,6 +113,7 @@ export const SYNCED_STORES = [
   'scales',
   'plays',
   'completions',
+  'canonicalGroups',
 ] as const satisfies readonly StoreName[];
 
 export type SyncedStore = (typeof SYNCED_STORES)[number];
@@ -213,20 +223,7 @@ function openAt(version: number | undefined): Promise<IDBPDatabase<AppDB>> {
         // and leaving it behind is exactly the confusion the removal fixes.
         purgeSeededSampleData(transaction);
       }
-      if (oldVersion < 4) {
-        // v4 added the listening log. Confirmed plays are indexed by entity
-        // and time together so an album's window can be read without a scan.
-        const plays = database.createObjectStore('plays', { keyPath: 'id' });
-        plays.createIndex('byAt', 'at');
-        plays.createIndex('byEntity', 'entityId');
-        plays.createIndex('byEntityAt', ['entityId', 'at']);
-        plays.createIndex('byUpdated', 'updatedAt');
-
-        const completions = database.createObjectStore('completions', { keyPath: 'id' });
-        completions.createIndex('byAlbum', 'albumId');
-        completions.createIndex('byAt', 'endAt');
-        completions.createIndex('byUpdated', 'updatedAt');
-      }
+      if (oldVersion < 5) ensureIntegratedStores(database, transaction);
     },
     blocked() {
       blockedNotice?.(
@@ -242,6 +239,38 @@ function openAt(version: number | undefined): Promise<IDBPDatabase<AppDB>> {
       dbp = null;
     },
   });
+}
+
+/**
+ * Both feature branches shipped a different v4. The v5 upgrade therefore
+ * detects structure rather than trusting the version number.
+ */
+function ensureIntegratedStores(
+  database: IDBPDatabase<AppDB>,
+  transaction: IDBPTransaction<AppDB, ArrayLike<StoreNames<AppDB>>, 'versionchange'>,
+): void {
+  const plays = database.objectStoreNames.contains('plays')
+    ? transaction.objectStore('plays')
+    : database.createObjectStore('plays', { keyPath: 'id' });
+  if (!plays.indexNames.contains('byAt')) plays.createIndex('byAt', 'at');
+  if (!plays.indexNames.contains('byEntity')) plays.createIndex('byEntity', 'entityId');
+  if (!plays.indexNames.contains('byEntityAt')) plays.createIndex('byEntityAt', ['entityId', 'at']);
+  if (!plays.indexNames.contains('byUpdated')) plays.createIndex('byUpdated', 'updatedAt');
+
+  const completions = database.objectStoreNames.contains('completions')
+    ? transaction.objectStore('completions')
+    : database.createObjectStore('completions', { keyPath: 'id' });
+  if (!completions.indexNames.contains('byAlbum')) completions.createIndex('byAlbum', 'albumId');
+  if (!completions.indexNames.contains('byAt')) completions.createIndex('byAt', 'endAt');
+  if (!completions.indexNames.contains('byUpdated'))
+    completions.createIndex('byUpdated', 'updatedAt');
+
+  const hadGroups = database.objectStoreNames.contains('canonicalGroups');
+  const groups = hadGroups
+    ? transaction.objectStore('canonicalGroups')
+    : database.createObjectStore('canonicalGroups', { keyPath: 'id' });
+  if (!groups.indexNames.contains('byType')) groups.createIndex('byType', 'entityType');
+  if (!hadGroups) bridgeDuplicateAnnotations(transaction);
 }
 
 /**
@@ -275,6 +304,69 @@ function purgeSeededSampleData(
   purge('comparisons', (v) => [(v as { aId?: unknown }).aId, (v as { bId?: unknown }).bId]);
   purge('queueStates', (v) => [(v as { id?: unknown }).id]);
   purge('annotations', (v) => [(v as { id?: unknown }).id]);
+}
+
+/**
+ * Turns every legacy `duplicateOf` pointer into a real canonical group.
+ *
+ * Before v4 an alternate release was recorded as a one-way note on the copy
+ * that lost: it excluded that copy from rollups and did nothing else — no
+ * shared rating, no way back. Each pointer becomes a group here so the same
+ * intention now behaves the way the feature does, and can be undone.
+ *
+ * The annotations themselves are left exactly as they are. Rewriting them would
+ * bump their `updatedAt` and push a device that has not upgraded yet into
+ * losing an edit it made in the meantime; and the reader bridges any pointer
+ * that arrives later from such a device anyway.
+ */
+function bridgeDuplicateAnnotations(
+  transaction: IDBPTransaction<AppDB, ArrayLike<StoreNames<AppDB>>, 'versionchange'>,
+): void {
+  const typeOf = (id: string): string => {
+    const first = id.indexOf(':');
+    return first > 0 ? id.slice(0, first) : '';
+  };
+
+  const byCanonical = new Map<string, Set<string>>();
+  const groups = transaction.objectStore('canonicalGroups');
+  const now = Date.now();
+
+  void transaction
+    .objectStore('annotations')
+    .openCursor()
+    .then(function step(cursor): unknown {
+      if (!cursor) {
+        for (const [canonicalId, aliases] of byCanonical) {
+          const memberIds = [...new Set([canonicalId, ...aliases])].sort();
+          if (memberIds.length < 2) continue;
+          void groups.put({
+            id: uid('grp'),
+            entityType: typeOf(canonicalId) as EntityType,
+            primaryId: canonicalId,
+            memberIds,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+        return undefined;
+      }
+      const value = cursor.value as { id?: unknown; duplicateOf?: unknown; deleted?: unknown };
+      const aliasId = value.id;
+      const canonicalId = value.duplicateOf;
+      if (
+        !value.deleted &&
+        typeof aliasId === 'string' &&
+        typeof canonicalId === 'string' &&
+        aliasId !== canonicalId &&
+        typeOf(aliasId) !== '' &&
+        typeOf(aliasId) === typeOf(canonicalId)
+      ) {
+        const set = byCanonical.get(canonicalId);
+        if (set) set.add(aliasId);
+        else byCanonical.set(canonicalId, new Set([aliasId]));
+      }
+      return cursor.continue().then(step);
+    });
 }
 
 /** For tests and for "erase everything" in settings. */

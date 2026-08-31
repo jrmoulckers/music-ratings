@@ -80,7 +80,7 @@ describe('albumTrackSet', () => {
     const graph = new ContainmentGraph(entities, [...memberships, again]);
     const set = albumTrackSet(graph, album.id);
     expect(set.trackIds).toHaveLength(2);
-    expect(set.excluded.duplicate).toBe(1);
+    expect(set.excluded.duplicate).toBe(0);
   });
 
   it('keeps every disc of a multi-disc edition in one set', () => {

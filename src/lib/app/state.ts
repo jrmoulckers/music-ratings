@@ -1,5 +1,14 @@
 import { derived, get, writable, type Readable } from 'svelte/store';
 
+import {
+  buildCanonicalIndex,
+  legacyAliases,
+  resolveAnnotations,
+  resolveCollections,
+  resolveQueueStates,
+  resolveSignalIds,
+  type CanonicalIndex,
+} from '../domain/canonical';
 import { computeRankings, type RankingTable } from '../domain/elo';
 import type { ContextConfig } from '../domain/context';
 import { ContainmentGraph } from '../domain/graph';
@@ -11,6 +20,7 @@ import { EMPTY_SIGNALS, scoreSuggestions, type ListeningSignals } from '../domai
 import type { AlbumCompletion, PlayEvent } from '../domain/listening';
 import { PlayIndex, catalogueFrom, type Catalogue } from '../domain/listening-stats';
 import type {
+  CanonicalGroup,
   Collection,
   Comparison,
   Entity,
@@ -36,7 +46,12 @@ import { readSignals } from '../spotify/library';
  *
  * Everything expensive is computed here once and shared, so no screen has to
  * decide for itself what an item's score is. The chain is deliberately plain:
- * load → graph → ratings → rankings → scores → suggestions.
+ * load → canonical → graph → ratings → rankings → scores → suggestions.
+ *
+ * Canonicalisation sits second on purpose. Combined duplicates are resolved
+ * once, here, and every layer below reads a world in which a record the user
+ * declared to be one thing *is* one thing — one row in a list, one candidate in
+ * a duel, one child in a rollup. No screen resolves an alias for itself.
  */
 
 export interface World {
@@ -50,6 +65,7 @@ export interface World {
   scales: RatingScale[];
   plays: PlayEvent[];
   completions: AlbumCompletion[];
+  canonicalGroups: CanonicalGroup[];
 }
 
 const EMPTY_WORLD: World = {
@@ -63,6 +79,7 @@ const EMPTY_WORLD: World = {
   scales: [],
   plays: [],
   completions: [],
+  canonicalGroups: [],
 };
 
 export const world = writable<World>(EMPTY_WORLD);
@@ -106,7 +123,7 @@ let queue: Promise<void> = Promise.resolve();
  */
 export const bootFailure = writable<string | null>(null);
 
-function describeBootFailure(error: unknown): string {
+export function describeBootFailure(error: unknown): string {
   if (error instanceof DOMException && error.name === 'VersionError')
     return 'Your saved ratings were written by a newer version of this app. Nothing has been lost — open the newer version, or reload once this one has caught up.';
   const detail = error instanceof Error ? error.message : String(error);
@@ -181,34 +198,81 @@ export const allScales: Readable<RatingScale[]> = derived(world, ($world) => [
   ...$world.scales,
 ]);
 
-export const graph: Readable<ContainmentGraph> = derived(
-  world,
-  ($world) => new ContainmentGraph($world.entities, $world.memberships),
+/**
+ * Which sources the user has declared to be one record.
+ *
+ * Built from the stored groups, plus any `duplicateOf` pointer still riding on
+ * an annotation — a device that has not upgraded yet can still send one, and it
+ * meant the same thing when it was written.
+ */
+export const canonical: Readable<CanonicalIndex> = derived(world, ($world) =>
+  buildCanonicalIndex(
+    $world.canonicalGroups,
+    legacyAliases($world.annotations),
+    new Set($world.entities.map((e) => e.id)),
+  ),
 );
 
-export const explicitRatings: Readable<Map<EntityId, ExplicitRating>> = derived(world, ($world) =>
-  indexCurrentRatings($world.ratings),
+/** A source id in, the canonical id out. The one function screens reach for. */
+export const canonicalId: Readable<(id: EntityId) => EntityId> = derived(
+  canonical,
+  ($canonical) =>
+    (id: EntityId): EntityId =>
+      $canonical.resolve(id),
+);
+
+export const graph: Readable<ContainmentGraph> = derived(
+  [world, canonical],
+  ([$world, $canonical]) => new ContainmentGraph($world.entities, $world.memberships, $canonical),
+);
+
+export const explicitRatings: Readable<Map<EntityId, ExplicitRating>> = derived(
+  [world, canonical],
+  ([$world, $canonical]) => indexCurrentRatings($world.ratings, $canonical.resolver),
 );
 
 export const annotationsById: Readable<Map<EntityId, EntityAnnotation>> = derived(
-  world,
-  ($world) => new Map($world.annotations.map((a) => [a.id, a])),
+  [world, canonical],
+  ([$world, $canonical]) => resolveAnnotations($world.annotations, $canonical),
+);
+
+/** Lists, with every combined source folded onto the record that stands for it. */
+export const collections: Readable<Collection[]> = derived(
+  [world, canonical],
+  ([$world, $canonical]) => resolveCollections($world.collections, $canonical.resolver),
 );
 
 export const queueStatesById: Readable<Map<EntityId, QueueState>> = derived(
-  world,
-  ($world) => new Map($world.queueStates.map((q) => [q.id, q])),
+  [world, canonical],
+  ([$world, $canonical]) => resolveQueueStates($world.queueStates, $canonical.resolver),
 );
 
-export const rankings: Readable<Map<EntityType, RankingTable>> = derived(world, ($world) => {
-  // One table per type: comparisons are never made across types, so a single
-  // pooled ladder would be meaningless.
-  const byType = new Map<EntityType, RankingTable>();
-  for (const type of ENTITY_TYPES) {
-    byType.set(type, computeRankings($world.comparisons, type));
-  }
-  return byType;
-});
+/** Spotify's evidence, read against the records the user actually keeps. */
+export const canonicalSignals: Readable<ListeningSignals> = derived(
+  [signals, canonical],
+  ([$signals, $canonical]) => {
+    if ($canonical.size === 0) return $signals;
+    const resolve = $canonical.resolver;
+    return {
+      recentlyPlayed: resolveSignalIds($signals.recentlyPlayed, resolve),
+      top: resolveSignalIds($signals.top, resolve),
+      saved: resolveSignalIds($signals.saved, resolve),
+    };
+  },
+);
+
+export const rankings: Readable<Map<EntityType, RankingTable>> = derived(
+  [world, canonical],
+  ([$world, $canonical]) => {
+    // One table per type: comparisons are never made across types, so a single
+    // pooled ladder would be meaningless.
+    const byType = new Map<EntityType, RankingTable>();
+    for (const type of ENTITY_TYPES) {
+      byType.set(type, computeRankings($world.comparisons, type, $canonical.resolver));
+    }
+    return byType;
+  },
+);
 
 export const scores: Readable<Map<EntityId, ScoreBreakdown>> = derived(
   [graph, explicitRatings, rankings, annotationsById, settings, clock],
@@ -241,10 +305,10 @@ export const contextConfig: Readable<ContextConfig> = derived(settings, ($settin
   facets: $settings.facets,
 }));
 
-export const pinnedIds: Readable<Set<EntityId>> = derived(world, ($world) => {
+export const pinnedIds: Readable<Set<EntityId>> = derived(annotationsById, ($annotations) => {
   const out = new Set<EntityId>();
-  for (const annotation of $world.annotations) {
-    if (annotation.pinned && !annotation.deleted) out.add(annotation.id);
+  for (const [id, annotation] of $annotations) {
+    if (annotation.pinned) out.add(id);
   }
   return out;
 });
@@ -261,15 +325,29 @@ export const pinnedIds: Readable<Set<EntityId>> = derived(world, ($world) => {
  * however many plays have accumulated.
  */
 export const playIndex: Readable<PlayIndex> = derived(
-  world,
-  ($world) => new PlayIndex($world.plays),
+  [world, canonical],
+  ([$world, $canonical]) =>
+    new PlayIndex(
+      $world.plays.map((play) => ({
+        ...play,
+        entityId: $canonical.resolve(play.entityId),
+        ...(play.contextId ? { contextId: $canonical.resolve(play.contextId) } : {}),
+      })),
+    ),
 );
 
 /** Catalogue lookups the statistics need, memoised alongside the graph. */
 export const catalogue: Readable<Catalogue> = derived(graph, ($graph) => catalogueFrom($graph));
 
-export const completions: Readable<AlbumCompletion[]> = derived(world, ($world) =>
-  [...$world.completions].sort((a, b) => b.endAt - a.endAt),
+export const completions: Readable<AlbumCompletion[]> = derived(
+  [world, canonical],
+  ([$world, $canonical]) =>
+    $world.completions
+      .map((completion) => ({
+        ...completion,
+        albumId: $canonical.resolve(completion.albumId),
+      }))
+      .sort((a, b) => b.endAt - a.endAt),
 );
 
 /**
@@ -295,7 +373,7 @@ export const suggestions: Readable<Suggestion[]> = derived(
     explicitRatings,
     scores,
     rankings,
-    signals,
+    canonicalSignals,
     settings,
     queueStatesById,
     pinnedIds,
@@ -328,11 +406,14 @@ export const suggestions: Readable<Suggestion[]> = derived(
       staleAfterDays: $settings.staleAfterDays,
       passStartedAt: $passStartedAt,
       pinnedIds: $pinned,
-      finishedAlbums: $openCompletions.map((c) => ({
-        albumId: c.albumId,
-        endAt: c.endAt,
-        trackCount: c.trackCount,
-      })),
+      finishedAlbums: [
+        ...new Map(
+          $openCompletions.map((c) => [
+            c.albumId,
+            { albumId: c.albumId, endAt: c.endAt, trackCount: c.trackCount },
+          ]),
+        ).values(),
+      ],
       now: $clock,
     }),
 );

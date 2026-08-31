@@ -196,7 +196,7 @@ export type RatingConfidence = 'low' | 'medium' | 'high';
  * it does let History say "you rated this while it was playing".
  */
 export type RatingContext =
-  'queue' | 'detail' | 'duel' | 'import' | 'bulk' | 'now-playing' | 'album-listening';
+  'queue' | 'detail' | 'duel' | 'import' | 'bulk' | 'now-playing' | 'album-listening' | 'combine';
 
 /* -------------------------------------------------------------------------- */
 /* Contextual ratings                                                         */
@@ -263,6 +263,23 @@ export interface ContextSnapshot {
 }
 
 /**
+ * Where an event came from when the app worked it out rather than the user
+ * entering it.
+ *
+ * Only one thing writes this today: combining duplicates, which averages the
+ * ratings you had already made. It is recorded so the timeline can say the
+ * entry was computed, and so separating the sources again can withdraw exactly
+ * the entry the combine wrote and nothing else.
+ */
+export interface RatingOrigin {
+  kind: 'combine-average';
+  /** The canonical group this event was written for. */
+  groupId: string;
+  /** The events that were averaged. They stay in history, untouched. */
+  sourceEventIds: string[];
+}
+
+/**
  * A rating is an event, not a field. The current explicit rating for an entity
  * is the newest live event; every earlier one is kept for the timeline.
  */
@@ -287,6 +304,8 @@ export interface RatingEvent {
    * saved since where the user did not open the context section.
    */
   contextual?: ContextSnapshot;
+  /** Present only on an event the app computed. Absent on everything you typed. */
+  origin?: RatingOrigin;
   /** Epoch ms this event was retracted (undo). Retracted events never count. */
   retracted?: number;
   /** Epoch ms this event was corrected in place. Shown in the timeline. */
@@ -366,10 +385,54 @@ export interface EntityAnnotation {
   id: EntityId;
   tags: string[];
   note?: string;
-  /** Marks an alternate release the user has folded into another record. */
+  /**
+   * @deprecated Superseded by `CanonicalGroup`. Kept so a record written by an
+   * older version — or synced from a device still running one — keeps meaning
+   * what it said: this item is an alternate of `duplicateOf`. It is bridged
+   * into a canonical group on read and migrated into a real one on upgrade;
+   * nothing writes it any more.
+   */
   duplicateOf?: EntityId;
   /** Standing verdict, independent of any score. */
   pinned?: 'favorite' | 'avoid';
+  updatedAt: number;
+  deleted?: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Canonical groups                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Several catalogue records the user has declared to be one thing.
+ *
+ * A remaster, a regional edition and the original pressing are three Spotify
+ * albums and one record. Combining them keeps every source entity exactly as it
+ * was — its URI, its artwork, its release date, its memberships and its
+ * provenance all survive — and adds this one small row saying which of them
+ * stands for the group.
+ *
+ * The group's *canonical id* is its primary member's entity id. That is
+ * deliberate: it means no invented identifier ever reaches a rating, a
+ * comparison, a playlist link or a URL, and changing which source is primary is
+ * a one-field edit rather than a rewrite of history. Every derived query maps a
+ * source id onto the canonical one, so a rating made against an alias before
+ * the combine still counts afterwards.
+ */
+export interface CanonicalGroup {
+  id: string;
+  /** Every member is of this type; combining across types is refused. */
+  entityType: EntityType;
+  /** The member that represents the group. Its id is the canonical id. */
+  primaryId: EntityId;
+  /** Every source folded in, the primary included. Sorted and unique. */
+  memberIds: EntityId[];
+  /**
+   * Events this group wrote itself when combining averaged two or more current
+   * ratings. Separating the group again withdraws exactly these.
+   */
+  averagedEventIds?: string[];
+  createdAt: number;
   updatedAt: number;
   deleted?: number;
 }
@@ -446,7 +509,8 @@ export type ExclusionCode =
   | 'unavailable'
   | 'below-coverage'
   | 'self'
-  | 'marked-duplicate';
+  | 'marked-duplicate'
+  | 'combined';
 
 export interface ExclusionNote {
   code: ExclusionCode;

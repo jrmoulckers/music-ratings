@@ -13,6 +13,7 @@
   import { setCompletionPrompt, ratingsFor } from '../lib/storage/repo';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
+  import InlineRating from './InlineRating.svelte';
   import RatePanel from './RatePanel.svelte';
   import TrackRail from './TrackRail.svelte';
 
@@ -173,14 +174,16 @@
 
     {#if !quiet}
       <div class="done__actions">
-        <button
-          type="button"
-          class="btn btn--primary"
-          aria-expanded={open}
-          onclick={() => (open = !open)}
-        >
-          {open ? 'Close' : rating ? 'Change album rating' : 'Rate album'}
-        </button>
+        <InlineRating
+          entity={album}
+          value={rating?.normalized ?? null}
+          variant="row"
+          where="album-listening"
+          onafter={rated_}
+          ondetails={() => (open = !open)}
+          detailsOpen={open}
+          detailsLabel="Note, confidence and context"
+        />
         <a class="btn btn--quiet" href="{entityHref(album.id)}?unrated=1">Review tracks</a>
         <button
           type="button"
@@ -202,9 +205,6 @@
 
       {#if open}
         <div class="done__panel">
-          <!-- RATING SURFACE: editor. The shared deep panel, never a local
-               reimplementation and never a low-level rail/star primitive.
-               Single switch point if the canonical editor entry changes. -->
           <RatePanel
             entity={album}
             inline

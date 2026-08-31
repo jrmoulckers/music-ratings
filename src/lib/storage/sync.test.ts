@@ -20,6 +20,7 @@ import {
   localSettings,
 } from './settings';
 import { makeEntity, rate, resetFixtureCounters, T0 } from '../../test/fixtures';
+import type { CanonicalGroup } from '../domain/types';
 
 beforeEach(resetFixtureCounters);
 
@@ -138,6 +139,39 @@ describe('mergeSnapshots', () => {
     expect(worldFingerprint(mergeSnapshots(a, b).snapshot)).toBe(
       worldFingerprint(mergeSnapshots(b, a).snapshot),
     );
+  });
+
+  it('merges combined groups like any other record, tombstones included', () => {
+    const first: CanonicalGroup = {
+      id: 'grp-a',
+      entityType: 'album',
+      primaryId: 'album:local:one',
+      memberIds: ['album:local:one', 'album:local:two'],
+      createdAt: T0,
+      updatedAt: T0,
+    };
+    const second: CanonicalGroup = { ...first, id: 'grp-b', primaryId: 'album:local:three' };
+
+    const local = snapshot({ canonicalGroups: [first] }, 'A');
+    const remote = snapshot({ canonicalGroups: [second] }, 'B');
+    const merged = mergeSnapshots(local, remote).snapshot;
+    expect(merged.canonicalGroups.map((g) => g.id)).toEqual(['grp-a', 'grp-b']);
+    expect(mergeSnapshots(local, remote).detail).toContainEqual({
+      store: 'canonicalGroups',
+      added: 1,
+      updated: 0,
+    });
+
+    // Separating a group on one device beats a stale live copy on the other:
+    // the same last-write-wins rule every other store already relies on.
+    const separated = snapshot(
+      { canonicalGroups: [{ ...first, deleted: T0 + 10, updatedAt: T0 + 10 }] },
+      'B',
+    );
+    const settled = mergeSnapshots(local, separated).snapshot;
+    expect(settled.canonicalGroups[0]!.deleted).toBe(T0 + 10);
+    // And it travels: the tombstone is in the file, not merely absent from it.
+    expect(countRecords(settled)).toBe(1);
   });
 });
 

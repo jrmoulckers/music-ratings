@@ -3,6 +3,7 @@
   import {
     entityLabelCap,
     explicitRatings,
+    graph,
     scaleForType,
     scores,
     settings,
@@ -15,6 +16,7 @@
   import { duration, releaseYear } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
+  import CombinePanel from './CombinePanel.svelte';
   import EntityTypeIcon from './EntityTypeIcon.svelte';
   import InlineRating from './InlineRating.svelte';
   import RatePanel from './RatePanel.svelte';
@@ -46,6 +48,12 @@
     expanded?: boolean;
     ontoggle?: (() => void) | undefined;
     onafter?: (() => void) | undefined;
+    /**
+     * Offer combining duplicates inside the opened editor. On by default,
+     * because the moment you notice a second copy of something is the moment
+     * you are looking at one of them in a list.
+     */
+    combine?: boolean;
     /** Recorded on every rating made from this row. */
     where?: RatingContext | undefined;
     /**
@@ -65,6 +73,7 @@
     expanded = false,
     ontoggle,
     onafter,
+    combine = false,
     where,
     omit,
   }: Props = $props();
@@ -72,6 +81,7 @@
   const scale = $derived($scaleForType(entity.type));
   const existing = $derived($explicitRatings.get(entity.id));
   const breakdown = $derived($scores.get(entity.id));
+  const sourceCount = $derived($graph.sourcesOf(entity.id).length);
   const shownView = $derived(view ?? $settings.scoreView);
   const shownScore = $derived(
     breakdown === undefined
@@ -163,6 +173,7 @@
       <p class="note slip__sub">
         <EntityTypeIcon type={entity.type} size={14} />
         <span class="slip__kind">{entityLabelCap(entity.type)}</span>
+        {#if sourceCount > 1}<span class="slip__meta">· combined from {sourceCount}</span>{/if}
         {#if sub}<span class="slip__meta">· {sub}</span>{/if}
       </p>
       {#if why}
@@ -227,6 +238,9 @@
   {#if expanded}
     <div class="slip__editor">
       <RatePanel {entity} {suggestion} {onafter} inline shortcuts={queueActions} {where} />
+      {#if combine}
+        <CombinePanel {entity} inline {onafter} />
+      {/if}
     </div>
   {/if}
 </li>
@@ -363,6 +377,9 @@
     margin-top: var(--s4);
     padding-top: var(--s4);
     border-top: var(--rule-weight) solid var(--border-faint);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s4);
   }
 
   /* Narrow: the row stacks and the actions become a full-width band with

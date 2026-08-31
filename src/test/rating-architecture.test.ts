@@ -82,6 +82,7 @@ describe('the rating boundary', () => {
   const SURFACES: ReadonlyArray<[file: string, mounts: string]> = [
     ['components/MiniPlayer.svelte', 'InlineRating'],
     ['components/AlbumMode.svelte', 'InlineRating'],
+    ['components/AlbumComplete.svelte', 'InlineRating'],
     ['components/RatableRow.svelte', 'InlineRating'],
     ['components/SearchOverlay.svelte', 'InlineRating'],
     ['components/SpotifySearch.svelte', 'InlineRating'],

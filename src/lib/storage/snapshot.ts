@@ -2,6 +2,7 @@ import { markDataChanged } from './changes';
 import { SYNCED_STORES, db, raw, readMeta, writeMeta, META_SETTINGS, type SyncedStore } from './db';
 import { hydrateSettings, portableSettings, type AppSettings } from './settings';
 import type {
+  CanonicalGroup,
   Collection,
   Comparison,
   Entity,
@@ -11,11 +12,22 @@ import type {
   RatingEvent,
   RatingScale,
 } from '../domain/types';
+import type { AlbumCompletion, PlayEvent } from '../domain/listening';
 
 export const SNAPSHOT_KIND = 'music-ratings/snapshot';
 /** What the kind field said before the app was renamed; still restorable. */
 const LEGACY_SNAPSHOT_KIND = 'music-ratings/ledger';
-export const SNAPSHOT_VERSION = 1;
+/**
+ * 2 added `canonicalGroups`; 3 unifies canonical groups with listening records.
+ *
+ * The bump is deliberate rather than incidental. The store list is read from
+ * the running app, so a device still on format 1 would merge a file it did not
+ * understand by writing back a copy with every combined group missing — a
+ * silent deletion. Refusing the file outright, which is what the version guard
+ * does, is the honest failure: that device says the backup is newer than it is
+ * and stops, instead of quietly undoing work.
+ */
+export const SNAPSHOT_VERSION = 3;
 
 /**
  * The file that travels: to OneDrive, to a download, to another browser.
@@ -39,6 +51,9 @@ export interface Snapshot {
   annotations: EntityAnnotation[];
   collections: Collection[];
   scales: RatingScale[];
+  plays: PlayEvent[];
+  completions: AlbumCompletion[];
+  canonicalGroups: CanonicalGroup[];
 }
 
 export const SNAPSHOT_COLLECTIONS = SYNCED_STORES;
@@ -76,6 +91,9 @@ export function emptySnapshot(device = 'unknown'): Snapshot {
     annotations: [],
     collections: [],
     scales: [],
+    plays: [],
+    completions: [],
+    canonicalGroups: [],
   };
 }
 
@@ -178,6 +196,17 @@ export function migrateSnapshot(snapshot: Snapshot): Snapshot {
     out.scales = out.scales ?? [];
     out.version = 1;
   }
+  if (out.version < 2) {
+    // A file written before combining existed simply has no groups in it.
+    out.canonicalGroups = out.canonicalGroups ?? [];
+    out.version = 2;
+  }
+  if (out.version < 3) {
+    out.plays = out.plays ?? [];
+    out.completions = out.completions ?? [];
+    out.canonicalGroups = out.canonicalGroups ?? [];
+    out.version = 3;
+  }
   out.version = SNAPSHOT_VERSION;
   return out;
 }
@@ -203,6 +232,7 @@ export function snapshotCounts(snapshot: Snapshot): { label: string; count: numb
     scales: 'custom scales',
     plays: 'confirmed plays',
     completions: 'albums completed',
+    canonicalGroups: 'combined items',
   };
   return SYNCED_STORES.map((store) => ({
     label: label[store],

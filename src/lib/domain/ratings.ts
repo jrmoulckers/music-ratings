@@ -57,33 +57,47 @@ export function currentRating(events: readonly RatingEvent[]): ExplicitRating | 
   return out;
 }
 
-/** Index the whole log once; every downstream computation reads this map. */
-export function indexCurrentRatings(events: readonly RatingEvent[]): Map<EntityId, ExplicitRating> {
+/**
+ * Index the whole log once; every downstream computation reads this map.
+ *
+ * `resolve` folds combined duplicates together: every event keeps its own
+ * subject, but the index is keyed by the canonical id, so a rating made on a
+ * remaster before it was combined is still the record's current rating after.
+ */
+export function indexCurrentRatings(
+  events: readonly RatingEvent[],
+  resolve: (id: EntityId) => EntityId = (id) => id,
+): Map<EntityId, ExplicitRating> {
   const byEntity = new Map<EntityId, RatingEvent[]>();
   for (const e of events) {
     if (!isLiveRating(e)) continue;
-    const list = byEntity.get(e.entityId);
+    const id = resolve(e.entityId);
+    const list = byEntity.get(id);
     if (list) list.push(e);
-    else byEntity.set(e.entityId, [e]);
+    else byEntity.set(id, [e]);
   }
   const out = new Map<EntityId, ExplicitRating>();
   for (const [id, list] of byEntity) {
     const current = currentRating(list);
-    if (current) out.set(id, current);
+    if (current) out.set(id, current.entityId === id ? current : { ...current, entityId: id });
   }
   return out;
 }
 
-/** All live events for one entity, newest first. */
+/** All live events for one entity, newest first. Combined sources read as one. */
 export function historyFor(
   events: readonly RatingEvent[],
   entityId: EntityId,
-  options: { includeRetracted?: boolean } = {},
+  options: { includeRetracted?: boolean; resolve?: (id: EntityId) => EntityId } = {},
 ): RatingEvent[] {
+  const resolve = options.resolve ?? ((id: EntityId) => id);
+  const subject = resolve(entityId);
   return events
     .filter(
       (e) =>
-        e.entityId === entityId && !e.deleted && (options.includeRetracted ? true : !e.retracted),
+        resolve(e.entityId) === subject &&
+        !e.deleted &&
+        (options.includeRetracted ? true : !e.retracted),
     )
     .sort((a, b) => (b.at !== a.at ? b.at - a.at : b.id < a.id ? -1 : 1));
 }

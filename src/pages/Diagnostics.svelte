@@ -3,6 +3,7 @@
 
   import { entityHref, href } from '../lib/app/router';
   import { graph, refreshWorld, settings, world } from '../lib/app/state';
+  import { findDuplicateClusters, VERDICT_LABEL } from '../lib/domain/duplicates';
   import { resolveConflict, syncNow } from '../lib/app/sync';
   import { UNAVAILABLE_FEATURES } from '../lib/spotify/capabilities';
   import { spotifySession } from '../lib/spotify/session';
@@ -44,6 +45,7 @@
     queueStates: 'Queue decisions',
     plays: 'Confirmed plays',
     completions: 'Finished records',
+    canonicalGroups: 'Combined items',
     lists: 'Your lists',
     listItems: 'Items in lists',
     signals: 'Spotify signals',
@@ -128,16 +130,19 @@
   });
 
   const duplicates = $derived.by(() => {
-    // Same name, same kind, different id: usually a reissue or a regional
-    // edition. Shown, not merged — merging someone's ratings is not our call.
+    // Same record, twice over: reissues, remasters, regional editions. Listed
+    // with the reasoning that found them and a way to combine them — never
+    // merged here, because combining is a judgement and it belongs to the
+    // person whose ratings it would average.
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
-    const byKey = new Map<string, string[]>();
+    const combined = new Set<string>();
     for (const entity of $graph.allEntities()) {
-      if (entity.type !== 'album' && entity.type !== 'track') continue;
-      const key = `${entity.type}|${entity.name.toLowerCase()}|${(entity.subtitle ?? '').toLowerCase()}`;
-      byKey.set(key, [...(byKey.get(key) ?? []), entity.id]);
+      if ($graph.isCombined(entity.id))
+        for (const source of $graph.sourcesOf(entity.id)) {
+          combined.add(source.id);
+        }
     }
-    return [...byKey.values()].filter((ids) => ids.length > 1).slice(0, 20);
+    return findDuplicateClusters($world.entities, { exclude: combined });
   });
 </script>
 
@@ -356,15 +361,17 @@
             <p class="label">Possible alternate releases ({duplicates.length})</p>
             <p class="note note--small">
               Same title and credit, different Spotify identifier — reissues, remasters, regional
-              editions. They are listed rather than merged, because merging would silently combine
-              ratings you made separately.
+              editions. They are listed rather than merged: combining averages ratings you made
+              separately, so it waits for you to say so. Open either one to combine them.
             </p>
             <ul class="rows">
-              {#each duplicates as group (group.join('|'))}
+              {#each duplicates as cluster (cluster.entityIds.join('|'))}
                 <li class="rows__group">
-                  {#each group as id (id)}
-                    <a class="mono" href={entityHref(id)}>{$graph.entity(id)?.name ?? id}</a>
+                  <span class="label">{VERDICT_LABEL[cluster.verdict]}</span>
+                  {#each cluster.entityIds as id (id)}
+                    <a class="mono" href={entityHref(id)}>{$graph.source(id)?.name ?? id}</a>
                   {/each}
+                  <span class="note note--small">{cluster.detail}</span>
                 </li>
               {/each}
             </ul>
