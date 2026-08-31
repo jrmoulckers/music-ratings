@@ -1,23 +1,37 @@
 <script lang="ts">
   import { href } from '../lib/app/router';
   import { openSearch } from '../lib/app/search-overlay';
-  import { graph, settings, suggestions, world } from '../lib/app/state';
+  import { graph, signalsReadAt, suggestions, world } from '../lib/app/state';
   import { TIER_JUST_PLAYED } from '../lib/domain/suggestions';
+  import type { EntityType } from '../lib/domain/types';
+  import {
+    listeningStatus,
+    noteListeningFetchedAt,
+    refreshListening,
+    refreshListeningIfStale,
+    spotifySession,
+  } from '../lib/spotify/session';
   import { clearQueueState } from '../lib/storage/repo';
-  import { relative } from '../lib/ui/format';
+  import { plural, relative } from '../lib/ui/format';
   import Empty from '../components/Empty.svelte';
   import Icon from '../lib/ui/Icon.svelte';
-  import RatePanel from '../components/RatePanel.svelte';
+  import QueueItem from '../components/QueueItem.svelte';
 
   /**
    * Rate.
    *
-   * One item at a time, with the reasons it was chosen shown before the
-   * controls. Things you actually played sit at the front of the queue and say
-   * so; everything else is an inference and is labelled as one.
+   * A queue you work down, not a turnstile that shows one thing at a time. What
+   * you actually played comes first and in the order you played it, every line
+   * says why it is there, and opening one to rate it never moves the page under
+   * you.
    */
 
-  let cursor = $state(0);
+  const PAGE = 20;
+
+  let filter = $state<'all' | 'played'>('all');
+  let typeFilter = $state<EntityType | 'any'>('any');
+  let shown = $state(PAGE);
+  let openId = $state<string | null>(null);
 
   const rows = $derived(
     $suggestions.flatMap((suggestion) => {
@@ -26,10 +40,17 @@
     }),
   );
 
-  const currentRow = $derived(rows[Math.min(cursor, Math.max(rows.length - 1, 0))]);
-  const playedCount = $derived(
-    $suggestions.filter((suggestion) => suggestion.tier === TIER_JUST_PLAYED).length,
+  const playedCount = $derived(rows.filter((r) => r.suggestion.tier === TIER_JUST_PLAYED).length);
+  const presentTypes = $derived([...new Set(rows.map((row) => row.entity.type))]);
+
+  const filtered = $derived(
+    rows.filter(
+      (row) =>
+        (filter === 'all' || row.suggestion.tier === TIER_JUST_PLAYED) &&
+        (typeFilter === 'any' || row.entity.type === typeFilter),
+    ),
   );
+  const visible = $derived(filtered.slice(0, shown));
 
   const setAside = $derived(
     $world.queueStates
@@ -39,10 +60,37 @@
       .slice(0, 24),
   );
 
-  // A rating removes the item from the suggestion list, so the cursor stays put
-  // and the next stop slides into place on its own.
-  function afterAction() {
-    cursor = 0;
+  const listening = $derived($listeningStatus);
+  const freshness = $derived(
+    listening.running
+      ? 'Reading what you have been playing…'
+      : listening.error
+        ? listening.error
+        : listening.fetchedAt
+          ? `Listening read ${relative(listening.fetchedAt)}. Spotify reports only your latest 50 plays.`
+          : 'Spotify reports only your latest 50 plays.',
+  );
+
+  // Opening the queue is the moment its answer has to be current. The stored
+  // queue renders first and re-sorts itself when the fresher one lands.
+  $effect(() => {
+    refreshListeningIfStale();
+  });
+
+  $effect(() => {
+    noteListeningFetchedAt($signalsReadAt.listening);
+  });
+
+  // Changing the filter is a different question, so it starts at the top again.
+  // Rating or dismissing is not: the row leaves and the page holds still.
+  $effect(() => {
+    void filter;
+    void typeFilter;
+    shown = PAGE;
+  });
+
+  function afterAction(id: string) {
+    if (openId === id) openId = null;
   }
 </script>
 
@@ -50,49 +98,108 @@
   <header class="head">
     <h1 class="display">Rate</h1>
     <p class="label">
-      {rows.length} waiting{playedCount > 0 ? ` · ${playedCount} you just played` : ''} · {$settings
-        .enabledTypes.length} types enabled · {setAside.length} set aside
+      {plural(filtered.length, 'item')} waiting{playedCount > 0
+        ? ` · ${playedCount} you just played`
+        : ''}{setAside.length > 0 ? ` · ${setAside.length} set aside` : ''}
     </p>
   </header>
 
-  {#if currentRow}
-    <div class="queue__body">
-      <div class="queue__panel">
-        <RatePanel
-          entity={currentRow.entity}
-          suggestion={currentRow.suggestion}
-          onafter={afterAction}
-        />
+  <div class="controls">
+    <div class="controls__filters">
+      <div class="seg" role="group" aria-label="Which suggestions to show">
+        <button
+          type="button"
+          class="btn btn--small"
+          class:is-on={filter === 'all'}
+          aria-pressed={filter === 'all'}
+          onclick={() => (filter = 'all')}
+        >
+          Everything ({rows.length})
+        </button>
+        <button
+          type="button"
+          class="btn btn--small"
+          class:is-on={filter === 'played'}
+          aria-pressed={filter === 'played'}
+          onclick={() => (filter = 'played')}
+        >
+          Recently played ({playedCount})
+        </button>
       </div>
 
-      {#if rows.length > 1}
-        <section class="line" aria-labelledby="line-head">
-          <h2 id="line-head" class="label">Up next</h2>
-          <ol class="line__stops">
-            <li class="line__seated">
-              <span class="stop stop--seated">
-                <span class="stop__cut" aria-hidden="true"></span>
-                <span class="stop__name">{currentRow.entity.name}</span>
-                <span class="label label--accent">Rating this now</span>
-              </span>
-            </li>
-            {#each rows.slice(1, 9) as row, index (row.entity.id)}
-              <li>
-                <button type="button" class="stop" onclick={() => (cursor = index + 1)}>
-                  <span class="stop__cut" aria-hidden="true"></span>
-                  <span class="stop__name">{row.entity.name}</span>
-                  <span class="note">{row.suggestion.reasons[0]?.detail ?? ''}</span>
-                </button>
-              </li>
+      {#if presentTypes.length > 1}
+        <label class="inline-field">
+          <span class="label">Kind</span>
+          <select class="select" bind:value={typeFilter}>
+            <option value="any">Any kind</option>
+            {#each presentTypes as type (type)}
+              <option value={type}>{type}</option>
             {/each}
-          </ol>
-          {#if rows.length > 9}
-            <p class="line__tail label">{rows.length - 9} more waiting</p>
-          {/if}
-          <span class="line__cap" aria-hidden="true"></span>
-        </section>
+          </select>
+        </label>
       {/if}
     </div>
+
+    {#if $spotifySession.connected}
+      <button
+        type="button"
+        class="btn btn--small"
+        disabled={listening.running}
+        onclick={() => void refreshListening()}
+      >
+        <Icon name="refresh" size={13} />
+        {listening.running ? 'Refreshing…' : 'Refresh listening'}
+      </button>
+    {/if}
+  </div>
+
+  <p class="freshness note" class:is-warn={Boolean(listening.error)} aria-live="polite">
+    {freshness}
+  </p>
+
+  {#if filtered.length > 0}
+    <ol class="queue">
+      {#each visible as row (row.entity.id)}
+        <QueueItem
+          entity={row.entity}
+          suggestion={row.suggestion}
+          expanded={openId === row.entity.id}
+          ontoggle={() => (openId = openId === row.entity.id ? null : row.entity.id)}
+          onafter={() => afterAction(row.entity.id)}
+        />
+      {/each}
+      <span class="queue__cap" aria-hidden="true"></span>
+    </ol>
+
+    {#if filtered.length > visible.length}
+      <div class="queue__more">
+        <button type="button" class="btn" onclick={() => (shown += PAGE)}>
+          Show {Math.min(PAGE, filtered.length - visible.length)} more
+        </button>
+        <span class="label">{filtered.length - visible.length} still waiting</span>
+      </div>
+    {/if}
+  {:else if rows.length > 0}
+    <Empty
+      title="Nothing matches this filter"
+      body="The queue has {plural(
+        rows.length,
+        'item',
+      )} in it, but none of them are what you are looking at right now."
+    >
+      {#snippet action()}
+        <button
+          type="button"
+          class="btn btn--primary"
+          onclick={() => {
+            filter = 'all';
+            typeFilter = 'any';
+          }}
+        >
+          Show everything
+        </button>
+      {/snippet}
+    </Empty>
   {:else}
     <Empty
       title="Nothing waiting to be rated"
@@ -121,7 +228,9 @@
           <li>
             <span class="aside__name">{row.entity?.name}</span>
             <span class="label">
-              {row.state.kind}{row.state.until ? ` until ${relative(row.state.until)}` : ''}
+              {row.state.kind === 'skipped'
+                ? `skipped ${relative(row.state.at)}, back after six hours`
+                : row.state.kind}{row.state.until ? ` until ${relative(row.state.until)}` : ''}
             </span>
             <button
               type="button"
@@ -138,42 +247,57 @@
 </div>
 
 <style>
-  /* The stops behind the current one hang off the same accent rail. */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s3) var(--s5);
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-top: var(--s5);
+  }
+  .controls__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s3) var(--s5);
+    align-items: center;
+  }
+  .seg {
+    display: flex;
+    gap: var(--s2);
+  }
+  .seg .btn.is-on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+  .inline-field {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+
+  .freshness {
+    margin-top: var(--s3);
+    color: var(--ink-faint);
+  }
+  .freshness.is-warn {
+    color: var(--ink);
+  }
 
   /*
-   * Twinned around the rail: the item being rated on one side, the queue
-   * and everything still on it on the other, so the queue's first viewport
-   * reads the same way the home screen does.
+   * The queue hangs off one rail the whole length of the page — the same
+   * detented spine the old sidebar used, promoted to the page's own structure
+   * so the list is the work rather than an index beside it.
    */
-  .queue__body {
-    display: grid;
-    gap: var(--s6);
-    align-items: start;
-  }
-  @media (min-width: 76rem) {
-    .queue__body {
-      grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
-      gap: 0;
-    }
-    .queue__panel {
-      padding-right: var(--s6);
-    }
-    .line {
-      margin-top: 0;
-      align-self: stretch;
-      height: 100%;
-    }
-  }
-
-  .line {
+  .queue {
     position: relative;
     display: flex;
     flex-direction: column;
-    margin-top: var(--s6);
-    padding-left: 1.6rem;
+    --rail-inset: 1.6rem;
+    margin-top: var(--s5);
+    padding-left: var(--rail-inset);
   }
-  /* The rail, run the height of the pair and resolved at a mark. */
-  .line::before {
+  .queue::before {
     content: '';
     position: absolute;
     top: 0;
@@ -182,80 +306,19 @@
     width: 2px;
     background: var(--accent);
   }
-  .line__cap {
-    margin-top: auto;
-    margin-left: -1.6rem;
+  .queue__cap {
+    margin-left: calc(var(--rail-inset) * -1);
     width: 0.85rem;
     height: 3px;
     background: var(--accent);
   }
-  .line__stops {
-    position: relative;
+
+  .queue__more {
     display: flex;
-    flex-direction: column;
-    margin-top: var(--s2);
-  }
-  .line__tail {
-    margin-top: var(--s2);
-    color: var(--ink-faint);
-  }
-
-  .stop {
-    position: relative;
-    display: grid;
-    grid-template-columns: 14rem minmax(0, 1fr);
-    gap: var(--s3);
-    align-items: baseline;
-    width: 100%;
-    text-align: left;
-    padding: var(--s2) 0;
-    background: transparent;
-    border: 0;
-    border-bottom: var(--rule-weight) solid var(--border-faint);
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-  .stop:hover {
-    background: var(--surface-raised);
-  }
-  .stop--seated {
-    cursor: default;
-    border-bottom-color: var(--border);
-  }
-  .stop--seated .stop__name {
-    font-weight: 600;
-  }
-
-  /* A detent cut across the rail, in line with the stop it belongs to. */
-  .stop__cut {
-    position: absolute;
-    left: -1.6rem;
-    top: 1.05rem;
-    width: 1.6rem;
-    height: var(--rule-weight);
-    background: var(--accent);
-    transform: scaleX(0.72);
-    transform-origin: left center;
-    transition: transform var(--dur-1) var(--ease);
-  }
-  .stop:hover .stop__cut,
-  .stop--seated .stop__cut {
-    transform: scaleX(1);
-  }
-  .stop--seated .stop__cut {
-    height: 3px;
-  }
-
-  .stop__name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .stop .note {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    align-items: center;
+    gap: var(--s4);
+    margin-top: var(--s4);
+    padding-left: 1.6rem;
   }
 
   .aside {
@@ -280,30 +343,15 @@
     font-size: 0.9375rem;
   }
 
-  @media (max-width: 48rem) {
-    .stop {
-      grid-template-columns: minmax(0, 1fr);
+  @media (max-width: 52rem) {
+    .controls {
+      align-items: stretch;
     }
-    .stop .note {
-      display: none;
+    .queue {
+      --rail-inset: 1rem;
     }
-    .stop--seated .label {
-      font-size: 0.5625rem;
-    }
-  }
-
-  /* In the narrow twin column the reason sits under the name, not beside it. */
-  @media (min-width: 76rem) {
-    .stop {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 1px;
-      align-items: start;
-    }
-    .stop .note {
-      font-size: 0.8125rem;
-    }
-    .stop--seated .label {
-      font-size: 0.5625rem;
+    .queue__more {
+      padding-left: 1rem;
     }
   }
 </style>

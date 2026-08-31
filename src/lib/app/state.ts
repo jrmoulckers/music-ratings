@@ -60,6 +60,14 @@ const EMPTY_WORLD: World = {
 export const world = writable<World>(EMPTY_WORLD);
 export const settings = writable<AppSettings>(hydrateSettings(undefined));
 export const signals = writable<ListeningSignals>(EMPTY_SIGNALS);
+/**
+ * When each kind of Spotify signal was last read. Listening goes stale in
+ * minutes and the library does not, so the two are dated separately.
+ */
+export const signalsReadAt = writable<{ library: number | null; listening: number | null }>({
+  library: null,
+  listening: null,
+});
 export const ready = writable(false);
 /** Bumped on every reload so relative times do not go stale mid-session. */
 export const clock = writable(Date.now());
@@ -93,6 +101,10 @@ function applySignals(stored: Awaited<ReturnType<typeof readSignals>>): void {
     recentlyPlayed: stored.recentlyPlayed,
     top: stored.top,
     saved: stored.saved,
+  });
+  signalsReadAt.set({
+    library: stored.fetchedAt ?? null,
+    listening: stored.listeningFetchedAt ?? stored.fetchedAt ?? null,
   });
 }
 

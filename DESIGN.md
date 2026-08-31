@@ -264,6 +264,7 @@ Spacing is a fixed set (`--s1` 0.25rem … `--s8` 4.5rem), not a generator. `[da
 - `--measure: 68ch` caps any column of running prose.
 - `--rail-w: 15rem` is the desktop navigation rail; below `60rem` it becomes a fixed bottom tab bar of seven tabs (Search, Home, Rate, Compare, Library, Rankings, More), with the remaining sections in a sheet behind **More**. Nothing becomes unreachable on a phone.
 - Home is two plain columns at `≥64rem` and one column below: _what to do next_ on the left, _what has happened_ on the right.
+- Rate is a single scrollable queue on one accent rail, not a hero panel with a sidebar of leftovers. Twenty slips are shown before **Show more**, so the queue is something you scan and work down rather than a card that hands you one item at a time. Rating or dismissing a slip changes it in place; the page never jumps back to the top.
 
 ## Motion
 
@@ -273,7 +274,8 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 
 - **Rail** (`RatingRail`) — the rating control. Vertical above `48rem`, horizontal on a phone. One tab stop; arrows walk detents, digits pick a known value, Home/End reach the ends. Detents are cut by whichever scale is active, so a 1–10 rail and an S–F tier rail are the same object with different cuts.
 - **Precision rail** (`PrecisionRail`) — the rail's second state, entered automatically past 16 detents. A hundred detents is not a hundred choices, so the cut slides instead of being one of a hundred, only round graduations are printed (`1 · 10 · 20 … 100`, thinned to `1 · 20 … 100` on a phone), and the reading becomes a number field you can type into, held in a fixed place above the track where it cannot run off either end. The choice is made from the scale's detent count, never its name, so a custom 0–50 scale gets it too. Same spine, same ink, same accent cut.
-- **Panel** (`RatePanel`, `ComparePanel`) — a raised bounded field holding exactly one decision, with its evidence above and its escapes (skip, snooze, don't know it) below.
+- **Panel** (`RatePanel`, `ComparePanel`) — a raised bounded field holding exactly one decision, with its evidence above and its escapes (skip, snooze, don't know it) below. `RatePanel` also has an `inline` state that drops its own frame and heading so a queue row can host it without two frames around one item.
+- **Queue slip** (`QueueItem`) — the Rate page's row. Artwork, name, kind, why it is here and when it was last played, then Rate / Skip / Snooze / Don't know it. It hangs off the queue's accent rail by a cut that lengthens on hover and thickens when open; opening it expands the shared `RatePanel` in place rather than navigating away. Rate is the only framed button in the row, so twenty rows do not read as a wall of buttons.
 - **Entry row** — the list primitive everywhere: artwork, name and subtitle, kind label, score mark. Never a card.
 - **Score mark** (`ScoreMark`) — explicit ratings in `--ink`, computed rollups in `--ink-quiet`. The two are never rendered identically, because the app never overwrites one with the other.
 - **Search overlay** — `/` or Ctrl/Cmd+K from anywhere. Answers instantly and offline from your own library; searching the Spotify catalogue is a deliberate second step.

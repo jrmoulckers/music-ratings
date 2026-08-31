@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SpotifyApiError, SpotifyClient } from './client';
-import { searchCatalogue, searchTypesFor } from './library';
+import {
+  clearSignals,
+  importListening,
+  readSignals,
+  searchCatalogue,
+  searchTypesFor,
+  writeSignals,
+} from './library';
 import { mapPlaylistItems } from './mappers';
+import { listEntities } from '../storage/repo';
+import { LISTENING_STALE_MS, listeningIsStale } from './session';
 import type { SpotifyConfig } from './auth';
 
 /**
@@ -256,5 +265,120 @@ describe('searchCatalogue', () => {
   it('does not reach the network for a blank query', async () => {
     await searchCatalogue(new SpotifyClient({ config }), '   ', ['artist']);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('importListening', () => {
+  /**
+   * The queue's ordering is only as fresh as this call. A full import is far
+   * too expensive to run every time the queue opens, so this reads one endpoint
+   * and must leave everything the import knows and it does not exactly alone.
+   */
+
+  const play = (id: string, playedAt: string) => ({
+    played_at: playedAt,
+    track: {
+      id,
+      name: `Track ${id}`,
+      artists: [{ id: 'ar1', name: 'Kestrel Harbour' }],
+      album: { id: 'al1', name: 'Low Tide', images: [], artists: [] },
+      duration_ms: 200_000,
+    },
+  });
+
+  beforeEach(async () => {
+    await clearSignals();
+  });
+
+  it('reads only the recently-played window', async () => {
+    respondWith({ items: [play('t1', '2026-02-01T10:00:00Z')] });
+    await importListening({ client: new SpotifyClient({ config }) });
+
+    expect(requestedUrls()).toEqual(['/v1/me/player/recently-played']);
+  });
+
+  it('keeps the top and saved signals a library import gathered', async () => {
+    await writeSignals({
+      recentlyPlayed: [{ entityId: 'track:spotify:old', at: 1, index: 0 }],
+      top: [{ entityId: 'artist:spotify:ar1', term: 'short', rank: 0, of: 50 }],
+      saved: [{ entityId: 'track:spotify:saved', savedAt: 2 }],
+      fetchedAt: 1000,
+    });
+
+    respondWith({ items: [play('t1', '2026-02-01T10:00:00Z')] });
+    await importListening({ client: new SpotifyClient({ config }) });
+
+    const stored = await readSignals();
+    expect(stored?.top).toHaveLength(1);
+    expect(stored?.saved).toHaveLength(1);
+    // The old window is replaced, not merged: Spotify's fifty plays are the
+    // whole truth it will tell us, and stale entries would outlive the source.
+    expect(stored?.recentlyPlayed.map((p) => p.entityId)).toEqual(['track:spotify:t1']);
+    expect(stored?.fetchedAt).toBe(1000);
+  });
+
+  it('records when listening was read without claiming a library import ran', async () => {
+    respondWith({ items: [play('t1', '2026-02-01T10:00:00Z')] });
+    const before = Date.now();
+    const report = await importListening({ client: new SpotifyClient({ config }) });
+
+    const stored = await readSignals();
+    expect(stored?.listeningFetchedAt).toBeGreaterThanOrEqual(before);
+    expect(stored?.listeningFetchedAt).toBe(report.fetchedAt);
+  });
+
+  it('keeps the play log intact so repeats can be collapsed downstream', async () => {
+    respondWith({
+      items: [
+        play('t1', '2026-02-01T10:00:00Z'),
+        play('t1', '2026-02-01T09:00:00Z'),
+        play('t2', '2026-02-01T08:00:00Z'),
+      ],
+    });
+    const report = await importListening({ client: new SpotifyClient({ config }) });
+
+    expect(report.plays).toBe(2);
+    const stored = await readSignals();
+    expect(stored?.recentlyPlayed).toHaveLength(3);
+    expect(stored?.recentlyPlayed.map((p) => p.index)).toEqual([0, 1, 2]);
+  });
+
+  it('stores the tracks it returns, so they can be rated straight away', async () => {
+    respondWith({ items: [play('t1', '2026-02-01T10:00:00Z')] });
+    await importListening({ client: new SpotifyClient({ config }) });
+
+    const stored = await listEntities();
+    expect(stored.map((e) => e.id)).toContain('track:spotify:t1');
+    expect(stored.map((e) => e.id)).toContain('artist:spotify:ar1');
+  });
+
+  it('ignores an item whose track Spotify withheld', async () => {
+    respondWith({
+      items: [
+        { played_at: '2026-02-01T10:00:00Z', track: null },
+        play('t1', '2026-02-01T09:00:00Z'),
+      ],
+    });
+    const report = await importListening({ client: new SpotifyClient({ config }) });
+
+    expect(report.plays).toBe(1);
+  });
+});
+
+describe('listeningIsStale', () => {
+  const now = 1_800_000_000_000;
+
+  it('treats a window that was never read as stale', () => {
+    expect(listeningIsStale(null, now)).toBe(true);
+    expect(listeningIsStale(undefined, now)).toBe(true);
+  });
+
+  it('holds a window read within the last few minutes', () => {
+    expect(listeningIsStale(now - LISTENING_STALE_MS + 1000, now)).toBe(false);
+  });
+
+  it('re-reads once the window is older than the threshold', () => {
+    expect(listeningIsStale(now - LISTENING_STALE_MS, now)).toBe(true);
+    expect(listeningIsStale(now - 3600_000, now)).toBe(true);
   });
 });

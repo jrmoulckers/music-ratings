@@ -65,7 +65,7 @@ export async function rate(
 export async function skip(entity: Entity): Promise<void> {
   await setQueueState(entity.id, entity.type, 'skipped');
   announce(`${entity.name} skipped.`);
-  notify(`Skipped ${entity.name}. It will come back later, further down.`, {
+  notify(`Skipped ${entity.name}. It is out of the queue for six hours, or until you play it.`, {
     action: { label: 'Undo', run: () => clearQueueState(entity.id) },
   });
 }

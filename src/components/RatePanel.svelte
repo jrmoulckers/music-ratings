@@ -24,9 +24,17 @@
     entity: Entity;
     suggestion?: Suggestion | undefined;
     onafter?: () => void;
+    /**
+     * Set when the panel sits inside a queue row that already prints the name,
+     * the artwork and the reasons. It drops its own frame and heading so the
+     * row reads as one record rather than a card inside a card.
+     */
+    inline?: boolean;
+    /** Only the open editor listens for the queue's single-key shortcuts. */
+    shortcuts?: boolean;
   }
 
-  let { entity, suggestion, onafter }: Props = $props();
+  let { entity, suggestion, onafter, inline = false, shortcuts = true }: Props = $props();
 
   const scale = $derived($scaleForType(entity.type));
   const existing = $derived($explicitRatings.get(entity.id));
@@ -78,6 +86,8 @@
   }
 
   function onKey(event: KeyboardEvent) {
+    // Window-level, so only the open editor may claim these keys.
+    if (!shortcuts) return;
     const target = event.target as HTMLElement | null;
     if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
     if (event.key === 's' || event.key === 'S') {
@@ -97,6 +107,7 @@
 
 <article
   class="panel"
+  class:panel--inline={inline}
   class:is-dragging={dragOffset !== 0}
   style:--drag="{dragOffset}px"
   use:swipe={{
@@ -106,22 +117,24 @@
     onEnd: () => (dragOffset = 0),
   }}
 >
-  <header class="panel__head">
-    <Artwork
-      src={entity.artworkUrl}
-      thumb={entity.artworkThumbUrl}
-      name={entity.name}
-      size="md"
-      priority
-    />
-    <div class="panel__id">
-      <h2 class="panel__name title">{entity.name}</h2>
-      {#if entity.subtitle}<p class="note">{entity.subtitle}</p>{/if}
-      <p class="label">{entity.type}</p>
-    </div>
-  </header>
+  {#if !inline}
+    <header class="panel__head">
+      <Artwork
+        src={entity.artworkUrl}
+        thumb={entity.artworkThumbUrl}
+        name={entity.name}
+        size="md"
+        priority
+      />
+      <div class="panel__id">
+        <h2 class="panel__name title">{entity.name}</h2>
+        {#if entity.subtitle}<p class="note">{entity.subtitle}</p>{/if}
+        <p class="label">{entity.type}</p>
+      </div>
+    </header>
+  {/if}
 
-  {#if suggestion}
+  {#if suggestion && !inline}
     <ul class="panel__reasons">
       {#each suggestion.reasons.slice(0, 3) as reason (reason.source)}
         <li>
@@ -188,19 +201,27 @@
   </div>
 
   <footer class="panel__actions">
-    <button type="button" class="btn btn--small" onclick={() => void run(() => skip(entity))}>
-      <Icon name="arrow-right" size={13} /> Skip <kbd>S</kbd>
-    </button>
-    <button type="button" class="btn btn--small" onclick={() => void run(() => snooze(entity))}>
-      <Icon name="clock" size={13} /> Snooze <kbd>Z</kbd>
-    </button>
-    <button
-      type="button"
-      class="btn btn--small"
-      onclick={() => void run(() => markUnfamiliar(entity))}
-    >
-      Don't know it <kbd>?</kbd>
-    </button>
+    {#if inline}
+      <!-- The row above already carries skip, snooze and not-familiar. -->
+      <p class="note">
+        Pick a value above to rate this. <kbd>S</kbd> skips, <kbd>Z</kbd> snoozes,
+        <kbd>?</kbd> marks it one you do not know.
+      </p>
+    {:else}
+      <button type="button" class="btn btn--small" onclick={() => void run(() => skip(entity))}>
+        <Icon name="arrow-right" size={13} /> Skip <kbd>S</kbd>
+      </button>
+      <button type="button" class="btn btn--small" onclick={() => void run(() => snooze(entity))}>
+        <Icon name="clock" size={13} /> Snooze <kbd>Z</kbd>
+      </button>
+      <button
+        type="button"
+        class="btn btn--small"
+        onclick={() => void run(() => markUnfamiliar(entity))}
+      >
+        Don't know it <kbd>?</kbd>
+      </button>
+    {/if}
   </footer>
 </article>
 
@@ -227,6 +248,21 @@
   }
   .panel.is-dragging {
     transition: none;
+  }
+
+  /*
+   * Inside a queue row the frame is the row's, not the panel's: a bordered
+   * panel within a bordered row reads as two objects for one item. Flow, not
+   * grid, so the parts the row already printed leave no empty band behind.
+   */
+  .panel--inline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s4);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .panel__head {

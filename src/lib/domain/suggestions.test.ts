@@ -7,8 +7,10 @@ import { defaultRollupConfigByType } from './rollup';
 import {
   DEFAULT_SUGGESTION_WEIGHTS,
   EMPTY_SIGNALS,
+  SKIP_COOLDOWN_MS,
   TIER_INFERRED,
   TIER_JUST_PLAYED,
+  collapsePlays,
   emptySuggestionWeights,
   scoreSuggestions,
   suggestionSourceLabel,
@@ -316,19 +318,211 @@ describe('queue states', () => {
     expect(returned).toHaveLength(1);
   });
 
-  it('demotes a skipped item without banishing it', () => {
+  it('takes a skipped item out of the queue rather than demoting it', () => {
     const plain = scoreSuggestions(input({ entities: [track], signals: played }));
+    expect(plain).toHaveLength(1);
+
     const skipped = scoreSuggestions(
       input({
         entities: [track],
         signals: played,
         queueStates: [
-          { id: track.id, entityType: 'track', kind: 'skipped', at: T0 - DAY, updatedAt: T0 },
+          { id: track.id, entityType: 'track', kind: 'skipped', at: T0 - 1000, updatedAt: T0 },
         ],
       }),
     );
-    expect(skipped).toHaveLength(1);
-    expect(skipped[0]!.score).toBeLessThan(plain[0]!.score);
+    expect(skipped).toEqual([]);
+  });
+
+  it('lets a skip lapse once the cooldown has run out', () => {
+    // The play sits behind both skips, so only the cooldown is under test here.
+    const longAgo: Partial<ListeningSignals> = {
+      recentlyPlayed: [{ entityId: track.id, at: T0 - 2 * DAY, index: 0 }],
+    };
+
+    const stillHeld = scoreSuggestions(
+      input({
+        entities: [track],
+        signals: longAgo,
+        queueStates: [
+          {
+            id: track.id,
+            entityType: 'track',
+            kind: 'skipped',
+            at: T0 - SKIP_COOLDOWN_MS + 1000,
+            updatedAt: T0,
+          },
+        ],
+      }),
+    );
+    expect(stillHeld).toEqual([]);
+
+    const lapsed = scoreSuggestions(
+      input({
+        entities: [track],
+        signals: longAgo,
+        queueStates: [
+          {
+            id: track.id,
+            entityType: 'track',
+            kind: 'skipped',
+            at: T0 - SKIP_COOLDOWN_MS - 1000,
+            updatedAt: T0,
+          },
+        ],
+      }),
+    );
+    expect(lapsed).toHaveLength(1);
+  });
+
+  it('brings a skipped item back the moment you play it again', () => {
+    const skippedAt = T0 - 3600_000;
+    const state: QueueState = {
+      id: track.id,
+      entityType: 'track',
+      kind: 'skipped',
+      at: skippedAt,
+      updatedAt: skippedAt,
+    };
+
+    // The stored play is older than the skip, so the skip still stands.
+    expect(
+      scoreSuggestions(
+        input({
+          entities: [track],
+          signals: { recentlyPlayed: [{ entityId: track.id, at: skippedAt - 1000, index: 0 }] },
+          queueStates: [state],
+        }),
+      ),
+    ).toEqual([]);
+
+    // A fresh play arrives after the skip. Pressing play outranks the dismissal.
+    const revived = scoreSuggestions(
+      input({
+        entities: [track],
+        signals: { recentlyPlayed: [{ entityId: track.id, at: skippedAt + 60_000, index: 0 }] },
+        queueStates: [state],
+      }),
+    );
+    expect(revived).toHaveLength(1);
+    expect(revived[0]!.tier).toBe(TIER_JUST_PLAYED);
+  });
+
+  it('keeps skip, snooze and not-familiar as three different things', () => {
+    const day = (kind: QueueState['kind'], until?: number): QueueState => ({
+      id: track.id,
+      entityType: 'track',
+      kind,
+      at: T0 - DAY,
+      updatedAt: T0 - DAY,
+      ...(until !== undefined ? { until } : {}),
+    });
+    const seen = (state: QueueState) =>
+      scoreSuggestions(input({ entities: [track], signals: played, queueStates: [state] })).length;
+
+    // A day later: the skip has lapsed, the month-long snooze and the
+    // ninety-day not-familiar have not.
+    expect(seen(day('skipped'))).toBe(1);
+    expect(seen(day('snoozed', T0 + 29 * DAY))).toBe(0);
+    expect(seen(day('unfamiliar'))).toBe(0);
+  });
+});
+
+describe('what you just played', () => {
+  it('orders by the newest play, whatever else an older item has going for it', () => {
+    const older = makeEntity('track', 'older');
+    const newer = makeEntity('track', 'newer');
+
+    const out = scoreSuggestions(
+      input({
+        entities: [older, newer],
+        signals: {
+          // The older play is stacked with every other reason the engine has,
+          // and sits higher in Spotify's own window. The clock still wins.
+          recentlyPlayed: [
+            { entityId: older.id, at: T0 - 2 * 3600_000, index: 0 },
+            { entityId: newer.id, at: T0 - 60_000, index: 40 },
+          ],
+          top: [
+            { entityId: older.id, term: 'short', rank: 0, of: 50 },
+            { entityId: older.id, term: 'medium', rank: 0, of: 50 },
+            { entityId: older.id, term: 'long', rank: 0, of: 50 },
+          ],
+          saved: [{ entityId: older.id, savedAt: T0 - DAY }],
+        },
+        overrides: { pinnedIds: new Set([older.id]) },
+      }),
+    );
+
+    expect(out.map((s) => s.entityId)).toEqual([newer.id, older.id]);
+    expect(out[0]!.score).toBeLessThan(out[1]!.score);
+    expect(out[0]!.lastPlayedAt).toBe(T0 - 60_000);
+  });
+
+  it('collapses repeated plays of one track onto its most recent', () => {
+    const track = makeEntity('track', 'repeat');
+    const out = scoreSuggestions(
+      input({
+        entities: [track],
+        signals: {
+          recentlyPlayed: [
+            { entityId: track.id, at: T0 - 90_000, index: 0 },
+            { entityId: track.id, at: T0 - 40 * 60_000, index: 1 },
+            { entityId: track.id, at: T0 - 3 * DAY, index: 2 },
+          ],
+        },
+      }),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]!.lastPlayedAt).toBe(T0 - 90_000);
+    expect(out[0]!.reasons[0]!.detail).toBe('You played this 2 minutes ago.');
+  });
+
+  it('collapses even when the newest play is not the first in the window', () => {
+    const track = makeEntity('track', 'out-of-order');
+    const collapsed = collapsePlays([
+      { entityId: track.id, at: T0 - 5 * DAY, index: 0 },
+      { entityId: track.id, at: T0 - 1000, index: 7 },
+      { entityId: track.id, at: T0 - 2 * DAY, index: 3 },
+    ]);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]!.at).toBe(T0 - 1000);
+    expect(collapsed[0]!.index).toBe(7);
+  });
+
+  it('keeps inferred suggestions behind every play, however recent', () => {
+    const played = makeEntity('track', 'played');
+    const saved = makeEntity('track', 'saved-only');
+    const out = scoreSuggestions(
+      input({
+        entities: [played, saved],
+        signals: {
+          recentlyPlayed: [{ entityId: played.id, at: T0 - 20 * DAY, index: 49 }],
+          saved: [{ entityId: saved.id, savedAt: T0 - 1000 }],
+        },
+      }),
+    );
+    expect(out.map((s) => s.entityId)).toEqual([played.id, saved.id]);
+    expect(out[0]!.tier).toBe(TIER_JUST_PLAYED);
+    expect(out[1]!.tier).toBe(TIER_INFERRED);
+    expect(out[1]!.lastPlayedAt).toBeUndefined();
+  });
+
+  it('says how long ago in units you can act on', () => {
+    const track = makeEntity('track', 'clock');
+    const said = (ago: number) =>
+      scoreSuggestions(
+        input({
+          entities: [track],
+          signals: { recentlyPlayed: [{ entityId: track.id, at: T0 - ago, index: 0 }] },
+        }),
+      )[0]!.reasons[0]!.detail;
+
+    expect(said(20_000)).toBe('You played this just now.');
+    expect(said(60_000)).toBe('You played this 1 minute ago.');
+    expect(said(25 * 60_000)).toBe('You played this 25 minutes ago.');
+    expect(said(3 * 3600_000)).toBe('You played this 3 hours ago.');
+    expect(said(2 * DAY)).toBe('You played this 2 days ago.');
   });
 });
 

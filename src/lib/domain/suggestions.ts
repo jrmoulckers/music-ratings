@@ -95,6 +95,16 @@ const DAY = 86_400_000;
 export const TIER_JUST_PLAYED = 0;
 export const TIER_INFERRED = 1;
 
+/**
+ * How long a skip holds.
+ *
+ * Skip means "not this, not now". It has to actually remove the item from the
+ * queue, or the queue looks like it is insisting. It is not a permanent verdict
+ * either, so it lapses — and playing the thing again clears it immediately,
+ * because pressing play is a louder signal than a dismissal from this morning.
+ */
+export const SKIP_COOLDOWN_MS = 6 * 3_600_000;
+
 /** Half-life for how quickly a play stops being a reason to rate something. */
 const PLAY_HALF_LIFE_DAYS = 10;
 
@@ -114,6 +124,38 @@ function relativeDays(ms: number): string {
   return `${Math.round(days / 365)} years ago`;
 }
 
+/**
+ * A play within the hour is the whole reason this queue exists, so it is worth
+ * saying in minutes rather than rounding it away to "today".
+ */
+function relativePlay(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return relativeDays(ms);
+}
+
+/**
+ * One entry per track, carrying its most recent play.
+ *
+ * The window Spotify returns is a play log, not a list of tracks: put an album
+ * on twice and it comes back twice. The queue is a list of things to judge, so
+ * repeats collapse — and they collapse onto the newest occurrence, because that
+ * is the one that decides where the item sits.
+ */
+export function collapsePlays(plays: readonly PlaySignal[]): PlaySignal[] {
+  const best = new Map<EntityId, PlaySignal>();
+  for (const play of plays) {
+    const held = best.get(play.entityId);
+    if (!held || play.at > held.at || (play.at === held.at && play.index < held.index)) {
+      best.set(play.entityId, play);
+    }
+  }
+  return [...best.values()];
+}
+
 const TERM_LABEL: Record<TopSignal['term'], string> = {
   short: 'the last four weeks',
   medium: 'the last six months',
@@ -130,6 +172,8 @@ interface Accumulator {
   entityId: EntityId;
   entityType: EntityType;
   reasons: Map<SuggestionSource, SuggestionReason>;
+  /** When Spotify last saw this played. Undefined for inferred suggestions. */
+  lastPlayedAt?: number;
 }
 
 function add(
@@ -169,7 +213,7 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
 
   /* --- what you have been playing --------------------------------------- */
 
-  for (const play of input.signals.recentlyPlayed) {
+  for (const play of collapsePlays(input.signals.recentlyPlayed)) {
     const positional = 1 - Math.min(0.75, play.index / 60);
     const signal = positional * decay(now - play.at, PLAY_HALF_LIFE_DAYS);
     add(
@@ -180,8 +224,10 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
       'recentlyPlayed',
       signal,
       w.recentlyPlayed,
-      `You played this ${relativeDays(now - play.at)}.`,
+      `You played this ${relativePlay(now - play.at)}.`,
     );
+    const item = acc.get(play.entityId);
+    if (item) item.lastPlayedAt = Math.max(item.lastPlayedAt ?? 0, play.at);
   }
 
   for (const top of input.signals.top) {
@@ -306,10 +352,17 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     if (state && !state.deleted) {
       if (state.kind === 'snoozed' && (state.until ?? 0) > now) continue;
       if (state.kind === 'unfamiliar' && now - state.at < 90 * DAY) continue;
+      if (state.kind === 'skipped') {
+        // A skip removes the item outright — a queue that keeps re-offering
+        // what you just pushed away is not listening. It lapses after the
+        // cooldown, and playing the thing again overrides it at once.
+        const playedSince = (item.lastPlayedAt ?? 0) > state.at;
+        const lapsed = now - state.at >= SKIP_COOLDOWN_MS;
+        if (!playedSince && !lapsed) continue;
+      }
     }
     const reasons = [...item.reasons.values()].sort((a, b) => b.weight - a.weight);
     let score = reasons.reduce((acc2, r) => acc2 + r.weight, 0);
-    if (state?.kind === 'skipped' && !state.deleted) score *= 0.35;
     if (input.explicit.has(item.entityId)) {
       // Already judged: only stale or uncertain reasons justify a re-visit.
       const revisit = reasons.filter(
@@ -322,11 +375,25 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     // Something you actually pressed play on beats anything the rules merely
     // inferred, however many weak reasons that inference managed to stack up.
     const tier = item.reasons.has('recentlyPlayed') ? TIER_JUST_PLAYED : TIER_INFERRED;
-    out.push({ entityId: item.entityId, entityType: item.entityType, score, reasons, tier });
+    out.push({
+      entityId: item.entityId,
+      entityType: item.entityType,
+      score,
+      reasons,
+      tier,
+      ...(item.lastPlayedAt !== undefined ? { lastPlayedAt: item.lastPlayedAt } : {}),
+    });
   }
 
   out.sort((a, b) => {
     if (a.tier !== b.tier) return a.tier - b.tier;
+    // Among things you just played, the clock decides and nothing else does.
+    // Being saved, or top, or pinned is not a reason to hear about an older
+    // play before the one that just finished.
+    if (a.tier === TIER_JUST_PLAYED) {
+      const played = (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0);
+      if (played !== 0) return played;
+    }
     if (b.score !== a.score) return b.score - a.score;
     return hashString(a.entityId) - hashString(b.entityId);
   });

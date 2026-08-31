@@ -1,7 +1,7 @@
 import type { ListeningSignals, PlaySignal, SavedSignal, TopSignal } from '../domain/suggestions';
 import type { Entity, EntityType, Membership } from '../domain/types';
 import { entityId } from '../domain/ids';
-import { META_CURSORS, readMeta, writeMeta } from '../storage/db';
+import { META_CURSORS, deleteMeta, readMeta, writeMeta } from '../storage/db';
 import { replaceChildren, saveMemberships, upsertEntities } from '../storage/repo';
 import { SEARCH_LIMIT_MAX } from './capabilities';
 import { SpotifyApiError, type SpotifyClient } from './client';
@@ -45,6 +45,12 @@ export interface ImportReport {
 
 export interface StoredSignals extends ListeningSignals {
   fetchedAt: number;
+  /**
+   * When the recently-played window was last read. Separate from `fetchedAt`
+   * because listening goes stale in minutes while a library import is an
+   * expensive, occasional thing.
+   */
+  listeningFetchedAt?: number;
 }
 
 const SIGNALS_KEY = 'spotify-signals';
@@ -58,7 +64,7 @@ export async function writeSignals(signals: StoredSignals): Promise<void> {
 }
 
 export async function clearSignals(): Promise<void> {
-  await writeMeta(SIGNALS_KEY, undefined);
+  await deleteMeta(SIGNALS_KEY);
 }
 
 export interface ImportOptions {
@@ -287,6 +293,7 @@ export async function importLibrary(options: ImportOptions): Promise<ImportRepor
     top,
     saved,
     fetchedAt: startedAt,
+    listeningFetchedAt: startedAt,
   });
   await writeMeta(META_CURSORS, { lastImportAt: Date.now() });
 
@@ -296,6 +303,71 @@ export async function importLibrary(options: ImportOptions): Promise<ImportRepor
     steps,
     entities: merged.entities.length,
     memberships: merged.memberships.length,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+
+export interface ListeningReport {
+  fetchedAt: number;
+  /** Distinct tracks in the returned window. */
+  plays: number;
+  entities: number;
+}
+
+/**
+ * Read just the recently-played window.
+ *
+ * The queue's whole claim is that what you were listening to a moment ago comes
+ * first, and a full library import is far too expensive to run often enough to
+ * keep that true. This is one request against one endpoint: it maps the tracks
+ * it returns so they can be rated, and leaves the top and saved signals exactly
+ * as the last import left them.
+ *
+ * Spotify only ever returns the latest 50 plays, so this is a window and not a
+ * history — anything played earlier is gone from the source, not from us.
+ */
+export async function importListening(options: {
+  client: SpotifyClient;
+  signal?: AbortSignal;
+}): Promise<ListeningReport> {
+  const { client } = options;
+  const req = options.signal ? { signal: options.signal } : {};
+  const fetchedAt = Date.now();
+
+  const { items } = await client.recentlyPlayed(req);
+  const results: MapResult[] = [];
+  const plays: PlaySignal[] = [];
+  items.forEach((item, index) => {
+    if (!item.track?.id) return;
+    results.push(mapTrack(item.track, 'recently played'));
+    plays.push({
+      entityId: entityId('track', 'spotify', item.track.id),
+      at: Date.parse(item.played_at),
+      index,
+    });
+  });
+
+  const merged = mergeResults(...results);
+  await upsertEntities(merged.entities);
+  await saveMemberships(merged.memberships);
+
+  // Everything the library import knows and this endpoint does not is carried
+  // through untouched, so a listening refresh never costs the user their top
+  // items or their saved library.
+  const prior = await readSignals();
+  await writeSignals({
+    recentlyPlayed: plays,
+    top: prior?.top ?? [],
+    saved: prior?.saved ?? [],
+    fetchedAt: prior?.fetchedAt ?? fetchedAt,
+    listeningFetchedAt: fetchedAt,
+  });
+
+  return {
+    fetchedAt,
+    plays: new Set(plays.map((p) => p.entityId)).size,
+    entities: merged.entities.length,
   };
 }
 

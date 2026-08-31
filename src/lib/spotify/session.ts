@@ -13,7 +13,7 @@ import {
   type SpotifyConfig,
 } from './auth';
 import { SpotifyApiError, SpotifyClient } from './client';
-import { importLibrary, type ImportStep } from './library';
+import { importLibrary, importListening, readSignals, type ImportStep } from './library';
 
 /**
  * The connection to Spotify, as the screens see it.
@@ -170,4 +170,95 @@ export function cancelImport(): void {
   running?.abort();
   running = null;
   importProgress.update((p) => ({ ...p, running: false }));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Listening                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How long the recently-played window stays believable.
+ *
+ * Short, because the queue's promise is that the thing you just finished is at
+ * the top — and a five-minute-old answer to "what did you just play" is already
+ * a different answer.
+ */
+export const LISTENING_STALE_MS = 5 * 60_000;
+
+export interface ListeningStatus {
+  running: boolean;
+  fetchedAt: number | null;
+  error: string | null;
+}
+
+export const listeningStatus = writable<ListeningStatus>({
+  running: false,
+  fetchedAt: null,
+  error: null,
+});
+
+let listeningRun: Promise<void> | null = null;
+
+export function noteListeningFetchedAt(at: number | null | undefined): void {
+  listeningStatus.update((s) =>
+    s.fetchedAt === (at ?? null) ? s : { ...s, fetchedAt: at ?? null },
+  );
+}
+
+/**
+ * Re-read the recently-played window.
+ *
+ * Overlapping calls share one request: entering the page, the auto-refresh and
+ * the button can all fire at once and only one of them should reach Spotify.
+ */
+export async function refreshListening(): Promise<void> {
+  if (listeningRun) return listeningRun;
+  if (!get(spotifySession).connected) return;
+
+  const task = (async () => {
+    listeningStatus.update((s) => ({ ...s, running: true, error: null }));
+    try {
+      const client = new SpotifyClient({ config: spotifyConfig() });
+      const report = await importListening({ client });
+      await refreshWorld();
+      listeningStatus.set({ running: false, fetchedAt: report.fetchedAt, error: null });
+    } catch (error) {
+      const message =
+        error instanceof SpotifyApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Spotify would not say what you have been playing.';
+      listeningStatus.update((s) => ({ ...s, running: false, error: message }));
+    } finally {
+      listeningRun = null;
+      refreshSpotifySession();
+    }
+  })();
+
+  listeningRun = task;
+  return task;
+}
+
+/** True when the stored window is old enough to be worth re-reading. */
+export function listeningIsStale(fetchedAt: number | null | undefined, now = Date.now()): boolean {
+  if (!fetchedAt) return true;
+  return now - fetchedAt >= LISTENING_STALE_MS;
+}
+
+/**
+ * Called when the queue opens. Never awaited by the page: the queue renders
+ * from what is already stored and re-sorts itself if a fresher answer arrives.
+ */
+export function refreshListeningIfStale(): void {
+  if (listeningRun || !get(spotifySession).connected) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  void (async () => {
+    const stored = await readSignals();
+    if (!listeningIsStale(stored?.listeningFetchedAt)) {
+      noteListeningFetchedAt(stored?.listeningFetchedAt ?? null);
+      return;
+    }
+    await refreshListening();
+  })();
 }

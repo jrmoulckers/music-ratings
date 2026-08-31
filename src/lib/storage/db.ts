@@ -283,6 +283,11 @@ export async function writeMeta<T>(key: string, value: T): Promise<void> {
   await database.put('meta', raw(value) as unknown, key);
 }
 
+export async function deleteMeta(key: string): Promise<void> {
+  const database = await db();
+  await database.delete('meta', key);
+}
+
 export async function readSettings(): Promise<Partial<AppSettings> | undefined> {
   return readMeta<Partial<AppSettings>>(META_SETTINGS);
 }

@@ -447,6 +447,11 @@ export interface Suggestion {
    * to, which always outrank anything merely inferred.
    */
   tier: number;
+  /**
+   * Epoch ms of the most recent play Spotify reported. Present only for things
+   * in the recently-played window, where it is the primary sort key.
+   */
+  lastPlayedAt?: number;
 }
 
 /* -------------------------------------------------------------------------- */
