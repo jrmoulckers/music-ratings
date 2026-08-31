@@ -8,7 +8,7 @@
     scores,
   } from '../lib/app/state';
   import { CONFIDENCE_LABEL } from '../lib/domain/ratings';
-  import { formatComputedOn } from '../lib/domain/scales';
+  import { formatComputedOn, isDenseScale, isStarScale } from '../lib/domain/scales';
   import type { Entity, RatingConfidence, Suggestion } from '../lib/domain/types';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
   import { swipe } from '../lib/ui/actions';
@@ -43,30 +43,57 @@
      * rating editor and nothing else.
      */
     shortcuts?: boolean;
+    /**
+     * Where the editor starts, when that is not simply the current rating.
+     *
+     * History opens an editor on the entry you clicked, so the value, note and
+     * confidence in front of you are the ones that entry records — even when a
+     * newer rating has since replaced it. Saving still writes a new entry at
+     * the top; nothing in the record is edited in place.
+     */
+    seed?: { normalized: number; note?: string; confidence?: RatingConfidence } | undefined;
+    /** Replaces the standing line about what saving will do. */
+    aboutSaving?: string | undefined;
   }
 
-  let { entity, suggestion, onafter, inline = false, shortcuts = true }: Props = $props();
+  let {
+    entity,
+    suggestion,
+    onafter,
+    inline = false,
+    shortcuts = true,
+    seed,
+    aboutSaving,
+  }: Props = $props();
 
   const scale = $derived($scaleForType(entity.type));
+  const composed = $derived(isDenseScale(scale) && !isStarScale(scale));
   const existing = $derived($explicitRatings.get(entity.id));
   const breakdown = $derived($scores.get(entity.id));
   const annotation = $derived($annotationsById.get(entity.id));
 
   let note = $state('');
   let confidence = $state<RatingConfidence>('medium');
-  let preview = $state<number | null>(null);
   let dragOffset = $state(0);
   let busy = $state(false);
 
   // A new item arrives with a clean slip; nothing carries over from the last.
+  // Where a seed is given, the slip is filled in from it instead of from blank.
   $effect(() => {
     void entity.id;
-    note = '';
-    confidence = 'medium';
-    preview = null;
+    void seed;
+    note = seed?.note ?? '';
+    confidence = seed?.confidence ?? 'medium';
   });
 
-  const shown = $derived(preview ?? existing?.normalized ?? null);
+  /**
+   * The rating of record: the entry this editor was opened on, or the entity's
+   * current one. Deliberately not a preview — feeding a control's own preview
+   * back to it as its value makes it believe the reader has already committed,
+   * and a dense control would then have nothing left to save. Every control
+   * here draws its own hover, scrub and draft internally.
+   */
+  const seated = $derived(seed?.normalized ?? existing?.normalized ?? null);
 
   async function commit(normalized: number) {
     if (busy) return;
@@ -81,7 +108,6 @@
       onafter?.();
     } finally {
       busy = false;
-      preview = null;
     }
   }
 
@@ -156,7 +182,9 @@
     </ul>
   {/if}
 
-  {#if existing}
+  {#if aboutSaving}
+    <p class="panel__prior note">{aboutSaving}</p>
+  {:else if existing}
     <p class="panel__prior note">
       You last rated this {relative(existing.at)}. A new rating is saved alongside the old one, not
       over it.
@@ -173,10 +201,9 @@
   <div class="panel__rail">
     <RatingRail
       {scale}
-      value={shown}
+      value={seated}
       label="Rating for {entity.name}"
       orientation={$wideEnoughForRail ? 'horizontal' : 'vertical'}
-      onpreview={(value) => (preview = value)}
       oncommit={(value) => void commit(value)}
       disabled={busy}
     />
@@ -216,7 +243,9 @@
       {#if inline}
         <!-- The row above already carries skip and snooze. -->
         <p class="note">
-          {#if existing}
+          {#if composed}
+            Set a value above, then save it. The note and confidence are saved with it.
+          {:else if existing}
             Choose a new value above to rate this again.
           {:else}
             Choose a value above to rate this.

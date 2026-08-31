@@ -22,6 +22,7 @@ import {
   formatNormalizedOn,
   formatRaw,
   isDenseScale,
+  isStarScale,
   markIcon,
   migrateRating,
   nextGraduation,
@@ -32,6 +33,10 @@ import {
   resolveScale,
   scaleResolution,
   snapRaw,
+  starCount,
+  starFills,
+  starRawFromRatio,
+  starValueText,
   validateCustomScale,
 } from './scales';
 import type { RatingScale } from './types';
@@ -601,5 +606,90 @@ describe('resolution and validation', () => {
     expect(
       validateCustomScale({ label: 'x', kind: 'ordinal', min: 0, max: 2, step: 1, labels: ['a'] }),
     ).toMatch(/exactly 3 labels/i);
+  });
+});
+
+describe('stars', () => {
+  const stars = scale('stars-5');
+  const half = scale('half-stars-5');
+
+  it('treats stars as stars and nothing else as stars', () => {
+    expect(isStarScale(stars)).toBe(true);
+    expect(isStarScale(half)).toBe(true);
+    expect(isStarScale(scale('int-5'))).toBe(false);
+    expect(isStarScale(scale('tiers'))).toBe(false);
+    expect(isStarScale(scale('int-100'))).toBe(false);
+  });
+
+  it('draws five stars on both star scales, never ten small ones', () => {
+    expect(starCount(stars)).toBe(5);
+    expect(starCount(half)).toBe(5);
+  });
+
+  it('fills whole stars on the whole-star scale', () => {
+    expect(starFills(stars, 3)).toEqual([1, 1, 1, 0, 0]);
+    expect(starFills(stars, 5)).toEqual([1, 1, 1, 1, 1]);
+    expect(starFills(stars, 1)).toEqual([1, 0, 0, 0, 0]);
+  });
+
+  it('cuts the fourth star in half at three and a half', () => {
+    expect(starFills(half, 3.5)).toEqual([1, 1, 1, 0.5, 0]);
+    expect(starFills(half, 0.5)).toEqual([0.5, 0, 0, 0, 0]);
+    expect(starFills(half, 4.5)).toEqual([1, 1, 1, 1, 0.5]);
+  });
+
+  it('leaves every star empty when nothing has been rated', () => {
+    expect(starFills(stars, null)).toEqual([0, 0, 0, 0, 0]);
+    expect(starFills(half, null)).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it('reads the pointer across the row one cell per star', () => {
+    expect(starRawFromRatio(stars, 0)).toBe(1);
+    expect(starRawFromRatio(stars, 0.1)).toBe(1);
+    expect(starRawFromRatio(stars, 0.5)).toBe(3);
+    expect(starRawFromRatio(stars, 0.99)).toBe(5);
+    expect(starRawFromRatio(stars, 1)).toBe(5);
+  });
+
+  it('splits each cell in two when the scale counts in halves', () => {
+    // First star, near half then far half.
+    expect(starRawFromRatio(half, 0.02)).toBe(0.5);
+    expect(starRawFromRatio(half, 0.15)).toBe(1);
+    // Fourth star, near half: three and a half.
+    expect(starRawFromRatio(half, 0.62)).toBe(3.5);
+    expect(starRawFromRatio(half, 0.75)).toBe(4);
+    expect(starRawFromRatio(half, 1)).toBe(5);
+  });
+
+  it('never reads a value the scale cannot hold, however far the pointer runs', () => {
+    for (const s of [stars, half]) {
+      for (const ratio of [-2, -0.1, 0, 0.33, 0.5, 0.999, 1, 1.4, 12]) {
+        const raw = starRawFromRatio(s, ratio);
+        expect(raw).toBeGreaterThanOrEqual(s.min);
+        expect(raw).toBeLessThanOrEqual(s.max);
+        expect(snapRaw(s, raw)).toBe(raw);
+      }
+    }
+  });
+
+  it('says the value out loud the way a person would', () => {
+    expect(starValueText(half, 3.5)).toBe('3.5 out of 5 stars');
+    expect(starValueText(stars, 4)).toBe('4 out of 5 stars');
+    expect(starValueText(stars, null)).toBe('Not yet rated');
+  });
+});
+
+describe('canonical values', () => {
+  it('keeps float dust out of the record', () => {
+    // 8.4 / 10 * 100 is 84.00000000000001 in binary floating point. Every tenth
+    // of the decimal scale must land on a value that can be stored, synced and
+    // printed back without growing a tail.
+    const decimal = scale('decimal-10');
+    for (let step = 0; step <= 100; step += 1) {
+      const raw = snapRaw(decimal, step / 10);
+      const canonical = normalize(decimal, raw);
+      expect(canonical).toBe(Number(canonical.toFixed(6)));
+      expect(denormalize(decimal, canonical)).toBe(raw);
+    }
   });
 });

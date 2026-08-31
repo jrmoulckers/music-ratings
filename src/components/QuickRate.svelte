@@ -6,21 +6,27 @@
     detentValues,
     formatMark,
     isDenseScale,
+    isStarScale,
     markIcon,
     normalize,
     snapRaw,
   } from '../lib/domain/scales';
   import type { Entity } from '../lib/domain/types';
+  import { canSaveDraft, settleTyped, steppedFrom } from '../lib/ui/draft';
   import Icon from '../lib/ui/Icon.svelte';
   import type { IconName } from '../lib/ui/icons';
+  import { TIER_EDGE, TIER_INK, tierPalette } from '../lib/ui/tiers';
+  import StarRating from './StarRating.svelte';
 
   /**
    * Rating, in one line.
    *
    * Every list in the app can be rated from where you are standing, which means
    * this has to fit in a row without becoming the row. Coarse scales get their
-   * detents as marks you press. Dense ones cannot — a hundred marks is not a
-   * control — so they get the number itself, typed or stepped.
+   * detents as marks you press; star scales get stars, because a star row is
+   * already the most compact rating control there is. Dense ones can have
+   * neither — a hundred marks is not a control — so they get the number itself,
+   * typed or stepped, and then saved.
    *
    * Whatever it does, it commits the same rating through the same action as the
    * full editor, so the two can never disagree about what you meant.
@@ -37,60 +43,100 @@
   let { entity, value, onafter, disabled = false }: Props = $props();
 
   const scale = $derived($scaleForType(entity.type));
-  const dense = $derived(isDenseScale(scale));
-  const detents = $derived(dense ? [] : detentValues(scale));
+  const stars = $derived(isStarScale(scale));
+  const dense = $derived(isDenseScale(scale) && !stars);
+  const detents = $derived(dense || stars ? [] : detentValues(scale));
+  const tiers = $derived(tierPalette(scale));
   const current = $derived(value === null ? null : denormalize(scale, value));
 
   const decimals = $derived(scale.step < 1 ? (String(scale.step).split('.')[1]?.length ?? 1) : 0);
   // Kept as text so a half-typed "7." is not rewritten under the caret.
-  let typed = $state('');
-  let editing = $state(false);
+  let typed = $state<string | null>(null);
+  /**
+   * A dense value in a list row is composed the same way as in the full rail:
+   * stepped or typed into a draft, then saved. The steppers stay shut until
+   * there is something to step from, because half of a scale nobody chose is
+   * not a rating.
+   */
+  let draftRaw = $state<number | null>(null);
   let busy = $state(false);
 
-  const shown = $derived(editing ? typed : current === null ? '' : current.toFixed(decimals));
+  const heldRaw = $derived(draftRaw ?? current);
+  const dirty = $derived(canSaveDraft(draftRaw, current));
+  const shown = $derived(typed ?? (heldRaw === null ? '' : heldRaw.toFixed(decimals)));
 
-  async function commit(raw: number) {
+  // A rating arriving from anywhere ends the draft: it has become the record.
+  $effect(() => {
+    void value;
+    draftRaw = null;
+    typed = null;
+  });
+
+  async function commitNormalized(normalized: number) {
     if (busy || disabled) return;
     busy = true;
     try {
-      await rate(entity, normalize(scale, snapRaw(scale, raw)), { context: 'bulk' });
+      await rate(entity, normalized, { context: 'bulk' });
       onafter?.();
     } finally {
       busy = false;
-      editing = false;
+      // Whatever was being composed has become the record.
+      draftRaw = null;
+      typed = null;
     }
   }
 
-  function step(by: number) {
-    const from = current ?? (scale.min + scale.max) / 2;
-    void commit(from + by * scale.step);
+  function commit(raw: number) {
+    void commitNormalized(normalize(scale, snapRaw(scale, raw)));
   }
 
-  function commitTyped() {
-    editing = false;
-    const parsed = Number(typed);
-    if (typed.trim() === '' || !Number.isFinite(parsed)) return;
-    if (current !== null && snapRaw(scale, parsed) === current) return;
-    void commit(parsed);
+  function step(by: 1 | -1) {
+    const next = steppedFrom(scale, heldRaw, by);
+    if (next !== null) draftRaw = next;
+  }
+
+  /** Settles typed text into the draft. Never saves on its own. */
+  function settle() {
+    const settled = settleTyped(scale, typed);
+    typed = null;
+    if (settled.kind === 'value' || settled.kind === 'clamped') draftRaw = settled.value;
+  }
+
+  function save() {
+    if (draftRaw === null || !dirty) return;
+    commit(draftRaw);
   }
 
   function onKey(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       event.preventDefault();
-      (event.currentTarget as HTMLInputElement).blur();
+      settle();
+      save();
     } else if (event.key === 'Escape') {
-      editing = false;
-      typed = current === null ? '' : current.toFixed(decimals);
+      if (typed === null && draftRaw === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      typed = null;
+      draftRaw = null;
     }
   }
 </script>
 
-<div class="quick" class:quick--dense={dense}>
-  {#if dense}
+<div class="quick" class:quick--dense={dense} class:quick--stars={stars}>
+  {#if stars}
+    <StarRating
+      {scale}
+      {value}
+      compact
+      label="Rating for {entity.name}"
+      disabled={disabled || busy}
+      oncommit={(normalized) => void commitNormalized(normalized)}
+    />
+  {:else if dense}
     <button
       type="button"
       class="quick__step"
-      disabled={disabled || busy || (current !== null && current <= scale.min)}
+      disabled={disabled || busy || heldRaw === null || heldRaw <= scale.min}
       onclick={() => step(-1)}
       aria-label="Lower the rating for {entity.name}"
     >
@@ -101,6 +147,7 @@
       <span class="sr-only">Rating for {entity.name} on the {scale.label} scale</span>
       <input
         class="quick__field figure"
+        class:is-draft={dirty}
         type="number"
         inputmode="decimal"
         min={scale.min}
@@ -109,11 +156,8 @@
         value={shown}
         placeholder="—"
         disabled={disabled || busy}
-        oninput={(event) => {
-          editing = true;
-          typed = event.currentTarget.value;
-        }}
-        onblur={commitTyped}
+        oninput={(event) => (typed = event.currentTarget.value)}
+        onblur={settle}
         onkeydown={onKey}
       />
     </label>
@@ -121,23 +165,43 @@
     <button
       type="button"
       class="quick__step"
-      disabled={disabled || busy || (current !== null && current >= scale.max)}
+      disabled={disabled || busy || heldRaw === null || heldRaw >= scale.max}
       onclick={() => step(1)}
       aria-label="Raise the rating for {entity.name}"
     >
       <Icon name="plus" size={13} />
     </button>
+
+    {#if dirty}
+      <button
+        type="button"
+        class="quick__save"
+        disabled={busy}
+        onclick={save}
+        aria-label="Save {shown} as the rating for {entity.name}"
+      >
+        <Icon name="check" size={13} />
+      </button>
+    {/if}
   {:else}
-    <div class="quick__marks" role="group" aria-label="Rating for {entity.name}">
-      {#each detents as raw (raw)}
+    <div
+      class="quick__marks"
+      class:quick__marks--tiers={tiers !== null}
+      style:--tier-ink={TIER_INK}
+      style:--tier-edge={TIER_EDGE}
+      role="group"
+      aria-label="Rating for {entity.name}"
+    >
+      {#each detents as raw, index (raw)}
         {@const icon = markIcon(scale, raw)}
         <button
           type="button"
           class="quick__mark"
           class:is-set={current !== null && raw === current}
+          style:--tier={tiers?.[index]}
           disabled={disabled || busy}
           aria-pressed={current !== null && raw === current}
-          onclick={() => void commit(raw)}
+          onclick={() => commit(raw)}
         >
           {#if icon}
             <Icon name={icon as IconName} size={15} label={formatMark(scale, raw)} />
@@ -203,6 +267,36 @@
     cursor: default;
   }
 
+  /* Tiers carry their own colours. The letter still does the work — the swatch
+     confirms it — so the set tier is also boxed, and the ink on the swatch is
+     dark in both themes because every tier colour is a pale one. */
+  .quick__marks--tiers .quick__mark {
+    background: var(--tier);
+    color: var(--tier-ink);
+    border-left-color: var(--tier-edge);
+    font-weight: 700;
+  }
+  .quick__marks--tiers .quick__mark:hover:not(:disabled) {
+    background: var(--tier);
+    color: var(--tier-ink);
+    filter: brightness(1.06);
+  }
+  .quick__marks--tiers .quick__mark.is-set {
+    background: var(--tier);
+    color: var(--tier-ink);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  @media (forced-colors: active) {
+    .quick__marks--tiers .quick__mark {
+      forced-color-adjust: none;
+      border-left-color: CanvasText;
+    }
+    .quick__marks--tiers .quick__mark.is-set {
+      box-shadow: inset 0 0 0 2px Highlight;
+    }
+  }
+
   /* Dense scales: the number, because there is no honest way to draw a hundred
      positions in a table row. */
   .quick__step {
@@ -251,6 +345,30 @@
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
+  /* An unsaved number is plainly unsaved: it borrows the accent edge, and the
+     tick beside it is the only thing that writes it down. */
+  .quick__field.is-draft {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .quick__save {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex: none;
+    border: var(--rule-weight) solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--on-accent);
+    cursor: pointer;
+  }
+  .quick__save:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
 
   /* Touch: the marks have to survive a thumb, so they grow rather than wrap. */
   @media (max-width: 52rem) {
@@ -259,10 +377,12 @@
       min-height: 2.25rem;
     }
     .quick__step,
-    .quick__field {
+    .quick__field,
+    .quick__save {
       height: 2.25rem;
     }
-    .quick__step {
+    .quick__step,
+    .quick__save {
       width: 2.25rem;
     }
   }

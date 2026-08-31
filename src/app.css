@@ -34,6 +34,11 @@
   /* What can be set on a solid accent fill and still clear 4.5:1. */
   --on-accent: #ffffff;
 
+  /* Stars are warm, and only stars are. Not a second brand hue — the one
+     colour a star has always been, kept out of everything that is not one. */
+  --star: #e0a01a;
+  --star-edge: #9a6d08;
+
   /* One device pixel, whatever the display. */
   --hairline: 1px;
   --rule-weight: 1px;
@@ -96,6 +101,8 @@
   --accent-ink: #ff8b74;
   --accent-wash: #2c1a16;
   --on-accent: #16100e;
+  --star: #f2b53e;
+  --star-edge: #c0871d;
 }
 
 [data-density='compact'] {
@@ -534,6 +541,22 @@ table {
 .btn--quiet:hover:not(:disabled) {
   border-color: var(--border);
   background: transparent;
+}
+
+/* The accent here is already red, so a destructive button cannot be redder.
+   It is heavier instead: solid ink where everything around it is a hairline.
+   Nothing else on a page is filled like this, and it is only ever reached
+   through a confirmation that says in words what it will do. */
+.btn--danger {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+.btn--danger:hover:not(:disabled),
+.btn--danger:active:not(:disabled) {
+  background: var(--ink-quiet);
+  border-color: var(--ink-quiet);
+  color: var(--surface);
 }
 
 .btn--small {

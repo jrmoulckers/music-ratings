@@ -6,31 +6,35 @@
     formatMark,
     formatRaw,
     isDenseScale,
+    isStarScale,
     markIcon,
     normalizedForDetent,
   } from '../lib/domain/scales';
   import type { RatingScale } from '../lib/domain/types';
   import Icon from '../lib/ui/Icon.svelte';
   import { ICON_PATHS, type IconName } from '../lib/ui/icons';
+  import { TIER_EDGE, TIER_INK, tierPalette } from '../lib/ui/tiers';
   import PrecisionRail from './PrecisionRail.svelte';
+  import StarRating from './StarRating.svelte';
 
   /**
    * The rail.
    *
    * One physical object with detents cut by the current scale. A rating is
    * seated into a detent and stays lit where it was left. This is the app's
-   * signature gesture and every rating control in the product is this one.
+   * signature gesture, and it is the right one wherever the scale has no
+   * stronger convention of its own.
    *
-   * There is exactly one representation: the detents are real buttons, and the
-   * spine, cuts and ink run through them. Nothing here is decorative twin of
-   * something else.
+   * Two scales do. Stars are the shape everyone already reads, so star scales
+   * get `StarRating` rather than five detents with numbers printed in them.
+   * And past a certain density the detents stop being things you can hit or
+   * read, so the rail changes state rather than shrinking: `PrecisionRail`
+   * keeps the spine, the ink and the accent cut, trades a hundred seats for a
+   * sliding one, and — because a hundred positions cannot be hit once and be
+   * right — composes the value into a draft you save.
    *
-   * Past a certain density the detents stop being things you can hit or read,
-   * so the rail changes state rather than shrinking: `PrecisionRail` keeps the
-   * spine, the ink and the accent cut, and trades a hundred seats for a sliding
-   * one, round graduations and a value you can type. Which one you get is
-   * decided by the scale's own density, never by its name — every caller passes
-   * a scale and gets the control that scale deserves.
+   * Which one you get is decided by the scale itself, never by its name: every
+   * caller passes a scale and gets the control that scale deserves.
    */
 
   interface Props {
@@ -61,8 +65,10 @@
 
   let hovered = $state<number | null>(null);
 
+  const stars = $derived(isStarScale(scale));
   const dense = $derived(isDenseScale(scale));
   const detents = $derived(detentValues(scale));
+  const tiers = $derived(tierPalette(scale));
   const seated = $derived(value == null ? null : detentIndex(scale, value));
   const active = $derived(hovered ?? seated);
   const currentRaw = $derived(value == null ? null : denormalize(scale, value));
@@ -150,12 +156,17 @@
   });
 </script>
 
-{#if dense}
+{#if stars}
+  <StarRating {scale} {value} {onpreview} {oncommit} {label} {disabled} />
+{:else if dense}
   <PrecisionRail {scale} {value} {onpreview} {oncommit} {label} {disabled} />
 {:else}
   <div
     class="rail rail--{orientation}"
     class:rail--marks={showMarks}
+    class:rail--tiers={tiers !== null}
+    style:--tier-ink={TIER_INK}
+    style:--tier-edge={TIER_EDGE}
     role="slider"
     tabindex={disabled ? -1 : 0}
     aria-label={label}
@@ -201,6 +212,7 @@
           class:is-seated={seated === index}
           class:is-active={active === index}
           class:is-below={active !== null && index < active}
+          style:--tier={tiers?.[index]}
           tabindex="-1"
           aria-pressed={seated === index}
           aria-label={labelFor(index)}
@@ -445,6 +457,49 @@
   }
   .rail__detent.is-seated .rail__mark {
     font-weight: 700;
+  }
+
+  /* A tier list is drawn in the colours a tier list has. The letter is the
+     answer and the colour confirms it, so the swatch carries its own dark ink
+     in both themes rather than inheriting the page's. */
+  .rail--tiers .rail__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    min-height: 1.5rem;
+    padding: 0 var(--s1);
+    background: var(--tier);
+    color: var(--tier-ink);
+    border: var(--rule-weight) solid var(--tier-edge);
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+  }
+  .rail--tiers.rail--vertical .rail__mark {
+    margin-right: 1.5rem;
+  }
+  .rail--tiers.rail--horizontal .rail__mark {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: 1.75rem;
+  }
+  /* Colour is never the only signal: the seated tier is boxed as well as
+     coloured, so it survives greyscale, colour blindness and forced colours. */
+  .rail--tiers .rail__detent.is-seated .rail__mark {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @media (forced-colors: active) {
+    .rail--tiers .rail__mark {
+      forced-color-adjust: none;
+      color: var(--tier-ink);
+      border-color: CanvasText;
+    }
+    .rail--tiers .rail__detent.is-seated .rail__mark {
+      outline-color: Highlight;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

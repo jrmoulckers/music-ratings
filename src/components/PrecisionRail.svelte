@@ -10,6 +10,7 @@
     RAIL_DEFAULT_LABELS,
   } from '../lib/domain/scales';
   import type { RatingScale } from '../lib/domain/types';
+  import { canSaveDraft, restingValue, settleTyped, steppedFrom } from '../lib/ui/draft';
   import Icon from '../lib/ui/Icon.svelte';
 
   /**
@@ -41,14 +42,46 @@
 
   let { scale, value, onpreview, oncommit, label = 'Rating', disabled = false }: Props = $props();
 
+  const uid = $props.id();
+  const complaintId = `${uid}-said`;
+  const stepHintId = `${uid}-hint`;
+
   let trackWidth = $state(0);
   /** What is in the number field while it is being typed, before it is legal. */
   let typing = $state<string | null>(null);
+  /**
+   * The value being worked out, before it is given.
+   *
+   * A hundred positions cannot be hit once and be right, so a precision rating
+   * is composed — dragged, typed, nudged — and then saved. Nothing here writes
+   * a rating until Save is pressed, which is the whole difference between this
+   * and the coarse rail, where one press *is* the decision.
+   */
+  let draftRaw = $state<number | null>(null);
+  let complaint = $state<string | null>(null);
+  let saving = $state(false);
 
   const seatedRaw = $derived(value == null ? null : denormalize(scale, value));
-  /** An unseated rail still needs somewhere to stand, so it stands in the middle. */
-  const restingRaw = $derived(snapRaw(scale, (scale.min + scale.max) / 2));
-  const shownRaw = $derived(seatedRaw ?? restingRaw);
+  /**
+   * An unseated rail still needs somewhere to stand, so it stands in the
+   * middle. This is furniture, not an answer: it is never read back as a value,
+   * never filled in, and the keys that would step off it are held shut until
+   * you have said where you are starting from.
+   */
+  const restingRaw = $derived(restingValue(scale));
+  const shownRaw = $derived(draftRaw ?? seatedRaw ?? restingRaw);
+  /** The value the reader has actually put somewhere, draft or saved. */
+  const heldRaw = $derived(draftRaw ?? seatedRaw);
+  const dirty = $derived(canSaveDraft(draftRaw, seatedRaw));
+
+  // A rating landing from anywhere — this control's own Save included — ends
+  // the draft, because the draft has become the record.
+  $effect(() => {
+    void value;
+    draftRaw = null;
+    typing = null;
+    complaint = null;
+  });
 
   const ticks = $derived(
     railTicks(scale, trackWidth > 0 ? railLabelBudget(trackWidth, scale) : RAIL_DEFAULT_LABELS),
@@ -59,26 +92,26 @@
 
   /** Decimals the scale actually carries, so the number field steps in kind. */
   const decimals = $derived(scale.step < 1 ? (String(scale.step).split('.')[1]?.length ?? 1) : 0);
-  const fieldText = $derived(typing ?? (seatedRaw == null ? '' : seatedRaw.toFixed(decimals)));
+  const fieldText = $derived(typing ?? (heldRaw === null ? '' : heldRaw.toFixed(decimals)));
 
   function readingFor(raw: number): string {
     return `${formatRaw(scale, raw)} on ${scale.label}`;
   }
 
-  function put(raw: number, commit: boolean): void {
+  /** Puts a value into the draft and previews it. Never writes a rating. */
+  function draft(raw: number): void {
     const snapped = snapRaw(scale, raw);
-    const normalized = normalize(scale, snapped);
-    if (commit) {
-      typing = null;
-      oncommit?.(normalized);
-    } else {
-      onpreview?.(normalized);
-    }
+    complaint = null;
+    draftRaw = snapped;
+    onpreview?.(normalize(scale, snapped));
   }
 
   function nudge(direction: 1 | -1): void {
+    // Nothing to step from: the resting position is furniture, and stepping off
+    // it would invent a rating of five out of ten that nobody chose.
     if (disabled) return;
-    put(shownRaw + direction * scale.step, true);
+    const next = steppedFrom(scale, heldRaw, direction);
+    if (next !== null) draft(next);
   }
 
   /**
@@ -95,25 +128,56 @@
     typing = (event.currentTarget as HTMLInputElement).value;
   }
 
+  /** Settles typed text into the draft. Clamps, snaps, and says so. Never saves. */
   function settleField(): void {
-    const text = typing;
+    const settled = settleTyped(scale, typing);
     typing = null;
-    if (text == null) return;
-    if (text.trim() === '') return;
-    const parsed = Number(text);
-    if (!Number.isFinite(parsed)) return;
-    put(parsed, true);
+    if (settled.kind === 'unchanged') return;
+    if (settled.kind === 'rejected') {
+      complaint = settled.complaint;
+      return;
+    }
+    draft(settled.value);
+    if (settled.kind === 'clamped') complaint = settled.complaint;
+  }
+
+  function save(): void {
+    if (disabled || saving || !dirty || draftRaw === null) return;
+    saving = true;
+    const giving = draftRaw;
+    try {
+      // The draft has become the record, so it stops being a draft here rather
+      // than waiting for a new value to arrive — which, on a history entry,
+      // never does.
+      draftRaw = null;
+      typing = null;
+      complaint = null;
+      oncommit?.(normalize(scale, giving));
+    } finally {
+      saving = false;
+    }
+  }
+
+  function cancel(): void {
+    draftRaw = null;
+    typing = null;
+    complaint = null;
   }
 
   function onFieldKey(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
       event.preventDefault();
       settleField();
+      save();
       return;
     }
     if (event.key === 'Escape') {
+      // Only claimed while there is something to take back, so Escape still
+      // reaches whatever opened this control when there is not.
+      if (typing === null && draftRaw === null) return;
       event.preventDefault();
-      typing = null;
+      event.stopPropagation();
+      cancel();
     }
   }
 
@@ -124,21 +188,34 @@
    */
   function onTrackKey(event: KeyboardEvent): void {
     if (disabled) return;
+    if (event.key === 'Escape' && draftRaw !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancel();
+      return;
+    }
     if (event.key !== 'PageUp' && event.key !== 'PageDown') return;
     event.preventDefault();
     const target = nextGraduation(ticks, shownRaw, event.key === 'PageUp' ? 1 : -1);
-    if (target != null) put(target, true);
+    if (target != null) draft(target);
   }
 </script>
 
-<div class="prec" class:is-disabled={disabled} role="group" aria-label={label}>
+<div
+  class="prec"
+  class:is-disabled={disabled}
+  class:is-draft={dirty}
+  role="group"
+  aria-label={label}
+>
   <div class="prec__head">
     <div class="prec__setter">
       <button
         type="button"
         class="prec__step"
-        {disabled}
+        disabled={disabled || heldRaw === null}
         aria-label="Lower the rating"
+        aria-describedby={heldRaw === null ? stepHintId : undefined}
         onclick={() => nudge(-1)}
       >
         <Icon name="minus" size={16} />
@@ -155,16 +232,19 @@
         placeholder="—"
         {disabled}
         aria-label="Exact value"
+        aria-describedby={complaint ? complaintId : undefined}
+        aria-invalid={complaint ? 'true' : undefined}
         oninput={onFieldInput}
-        onblur={settleField}
+        onblur={() => settleField()}
         onkeydown={onFieldKey}
       />
 
       <button
         type="button"
         class="prec__step"
-        {disabled}
+        disabled={disabled || heldRaw === null}
         aria-label="Raise the rating"
+        aria-describedby={heldRaw === null ? stepHintId : undefined}
         onclick={() => nudge(1)}
       >
         <Icon name="plus" size={16} />
@@ -172,14 +252,20 @@
     </div>
 
     <span class="prec__of note note--small">
-      {seatedRaw == null ? 'Not yet rated' : `on ${scale.label}`}
+      {#if dirty}
+        Not saved yet
+      {:else if seatedRaw === null}
+        Not yet rated
+      {:else}
+        on {scale.label}
+      {/if}
     </span>
   </div>
 
   <div class="prec__track" bind:clientWidth={trackWidth}>
     <div class="prec__graduations" aria-hidden="true">
       <div class="prec__spine"></div>
-      {#if seatedRaw !== null}
+      {#if heldRaw !== null}
         <div class="prec__ink" style:--fill="{fill}%"></div>
       {/if}
       {#each ticks as tick (tick.value)}
@@ -190,7 +276,7 @@
 
     <input
       class="prec__range"
-      class:is-unseated={seatedRaw === null}
+      class:is-unseated={heldRaw === null}
       type="range"
       min={scale.min}
       max={scale.max}
@@ -198,9 +284,8 @@
       value={shownRaw}
       {disabled}
       aria-label={label}
-      aria-valuetext={seatedRaw == null ? 'Not yet rated' : readingFor(shownRaw)}
-      oninput={(e) => put(Number(e.currentTarget.value), false)}
-      onchange={(e) => put(Number(e.currentTarget.value), true)}
+      aria-valuetext={heldRaw === null ? 'Not yet rated' : readingFor(shownRaw)}
+      oninput={(e) => draft(Number(e.currentTarget.value))}
       onkeydown={onTrackKey}
     />
   </div>
@@ -212,6 +297,35 @@
           <span class="prec__label" style:--at="{tick.at * 100}%">{tick.label}</span>
         {/if}
       {/each}
+    </div>
+  </div>
+
+  <div class="prec__settle">
+    <p class="prec__said note note--small" id={complaintId} aria-live="polite">
+      {#if complaint}
+        {complaint}
+      {:else if dirty}
+        {readingFor(shownRaw)}, not saved yet.
+      {:else}
+        <span id={stepHintId}>
+          {heldRaw === null
+            ? 'Drag or type a value to start, then save it.'
+            : 'Adjust as much as you like — nothing is recorded until you save.'}
+        </span>
+      {/if}
+    </p>
+    <div class="prec__buttons">
+      {#if dirty}
+        <button type="button" class="btn btn--small" onclick={cancel}> Cancel </button>
+      {/if}
+      <button
+        type="button"
+        class="btn btn--small btn--primary"
+        disabled={disabled || saving || !dirty}
+        onclick={save}
+      >
+        {seatedRaw === null ? 'Save rating' : 'Save new rating'}
+      </button>
     </div>
   </div>
 </div>
@@ -228,6 +342,34 @@
     padding: var(--s2) var(--s2) 0;
     background: var(--surface-sunk);
     border: var(--rule-weight) solid var(--border-faint);
+  }
+  /* A draft is a held value, not a recorded one, so the whole instrument says
+     so at its edge rather than only in the small print under it. */
+  .prec.is-draft {
+    border-color: var(--accent);
+  }
+
+  /* The settle bar. Everything above it is provisional; this is where a value
+     becomes a rating, which is why it is the only primary button in the rail. */
+  .prec__settle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s2) var(--s3);
+    margin-top: var(--s2);
+    padding: var(--s2) calc(var(--thumb) / 2);
+    border-top: var(--rule-weight) solid var(--border-faint);
+  }
+  .prec__said {
+    flex: 1 1 12rem;
+    min-width: 0;
+    margin: 0;
+  }
+  .prec__buttons {
+    display: flex;
+    flex: none;
+    gap: var(--s2);
   }
 
   .prec__head {

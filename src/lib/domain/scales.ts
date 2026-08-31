@@ -175,7 +175,12 @@ function assertUsable(scale: RatingScale): void {
 
 export function clampNormalized(value: number): number {
   if (!Number.isFinite(value)) return NORMALIZED_MIN;
-  return Math.min(NORMALIZED_MAX, Math.max(NORMALIZED_MIN, value));
+  // Rounded to six places on the way in. A tenth of a ten-point scale is 8.4,
+  // and 8.4 / 10 * 100 is 84.00000000000001 in binary floating point — dust
+  // that would otherwise be written into the record, synced, and printed back
+  // as a value nobody chose.
+  const tidy = Math.round(value * 1e6) / 1e6;
+  return Math.min(NORMALIZED_MAX, Math.max(NORMALIZED_MIN, tidy));
 }
 
 function roundToStep(scale: RatingScale, value: number): number {
@@ -222,6 +227,58 @@ export function snapRaw(scale: RatingScale, value: number): number {
  */
 export function isDenseScale(scale: RatingScale): boolean {
   return detentCount(scale) > RAIL_MAX_DETENTS;
+}
+
+/**
+ * Whether this scale is counted in stars.
+ *
+ * Stars are not a rail with five detents cut into it — they are the one rating
+ * shape everybody already knows how to read, and pretending otherwise for the
+ * sake of one house gesture would be vanity. Asked of the scale's kind, so a
+ * custom ten-star scale is stars too.
+ */
+export function isStarScale(scale: RatingScale): boolean {
+  return scale.kind === 'stars' || scale.kind === 'half-stars';
+}
+
+/** How many star glyphs this scale draws. */
+export function starCount(scale: RatingScale): number {
+  return Math.max(1, Math.round(scale.max));
+}
+
+/**
+ * How full each star stands, lowest first, as a fraction from 0 to 1.
+ *
+ * 3.5 on a half-star scale is three full stars, one half-filled star and one
+ * empty — never seven small ones.
+ */
+export function starFills(scale: RatingScale, raw: number | null): number[] {
+  const n = starCount(scale);
+  const value = raw == null ? 0 : Math.max(0, Math.min(scale.max, raw));
+  return Array.from({ length: n }, (_, i) => Math.max(0, Math.min(1, value - i)));
+}
+
+/**
+ * The value under a pointer at `ratio` across the row of stars.
+ *
+ * Each star owns one cell. On a half-star scale the near half of a cell reads
+ * as the half value and the far half as the whole one, which is how every star
+ * control anyone has used before this one behaves.
+ */
+export function starRawFromRatio(scale: RatingScale, ratio: number): number {
+  const n = starCount(scale);
+  const cell = Math.min(n - 1e-9, Math.max(0, ratio * n));
+  const index = Math.floor(cell);
+  const half = scale.kind === 'half-stars';
+  const raw = index + (half && cell - index < 0.5 ? 0.5 : 1);
+  return clampRaw(scale, roundToStep(scale, raw));
+}
+
+/** What a screen reader is told the stars currently say. */
+export function starValueText(scale: RatingScale, raw: number | null): string {
+  if (raw == null) return 'Not yet rated';
+  const n = starCount(scale);
+  return `${formatRaw(scale, raw)} out of ${n} star${n === 1 ? '' : 's'}`;
 }
 
 /** Intervals a graduated scale is allowed to count in, before scaling by ten. */
