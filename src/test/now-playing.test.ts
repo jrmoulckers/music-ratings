@@ -26,6 +26,8 @@ const playback = writable<PlaybackState>({
   watching: true,
 });
 const playbackNow = writable(Date.now());
+/** The frame clock, driven by hand so a test can hold the needle still. */
+const playbackProgress = writable(30_000);
 
 const commands: string[] = [];
 const stopWatching = vi.fn();
@@ -37,6 +39,9 @@ vi.mock('../lib/playback/store', () => ({
   get playbackNow() {
     return playbackNow;
   },
+  get playbackProgress() {
+    return playbackProgress;
+  },
   watchPlayback: () => stopWatching,
   refreshPlayback: async () => undefined,
   refreshDevices: async () => undefined,
@@ -47,7 +52,13 @@ vi.mock('../lib/playback/store', () => ({
   playbackToggle: async () => void commands.push('toggle'),
   playbackNext: async () => void commands.push('next'),
   playbackPrevious: async () => void commands.push('previous'),
-  playbackSeek: (ms: number) => void commands.push(`seek:${ms}`),
+  playbackSeek: (ms: number) => {
+    commands.push(`seek:${ms}`);
+    // The real transport updates its own snapshot optimistically, so the
+    // display follows a seek before the API has answered. Mirror that here or
+    // the second of two keypresses would count from a stale position.
+    playbackProgress.set(ms);
+  },
   playbackVolume: (v: number) => void commands.push(`volume:${v}`),
   playbackShuffle: async (on: boolean) => void commands.push(`shuffle:${on}`),
   playbackRepeat: async (mode: string) => void commands.push(`repeat:${mode}`),
@@ -147,8 +158,18 @@ function control(name: RegExp): HTMLButtonElement {
   return found;
 }
 
+/** The rail, found by its accessible name rather than a hook put there for us. */
+function scrubber(): HTMLInputElement {
+  const rail = host?.querySelector<HTMLInputElement>(
+    'input[type="range"][aria-label^="Position in track"]',
+  );
+  if (!rail) throw new Error('no scrubber');
+  return rail;
+}
+
 beforeEach(() => {
   commands.length = 0;
+  playbackProgress.set(30_000);
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -248,8 +269,7 @@ describe('the Now Playing screen', () => {
   it('scrubs to where the listener let go, not to every value on the way', () => {
     playback.set(playingState());
     render(NowPlaying);
-    const rail = host?.querySelector<HTMLInputElement>('input[aria-label="Position in track"]');
-    if (!rail) throw new Error('no scrubber');
+    const rail = scrubber();
     rail.value = '90000';
     rail.dispatchEvent(new Event('input', { bubbles: true }));
     flushSync();
@@ -257,6 +277,124 @@ describe('the Now Playing screen', () => {
     rail.dispatchEvent(new Event('change', { bubbles: true }));
     flushSync();
     expect(commands).toContain('seek:90000');
+  });
+
+  it('moves in steps far finer than a second, so a drag is not a staircase', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    expect(Number(scrubber().step)).toBeLessThanOrEqual(100);
+  });
+
+  it('follows every input event while the finger is down', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    const seen: string[] = [];
+    for (const value of ['31000', '31200', '31400', '31600']) {
+      rail.value = value;
+      rail.dispatchEvent(new Event('input', { bubbles: true }));
+      flushSync();
+      seen.push(rail.getAttribute('style') ?? '');
+    }
+    // The fill moved on every one of them, even though the clock display —
+    // which is deliberately whole seconds — did not.
+    expect(new Set(seen).size).toBe(4);
+    expect(rail.getAttribute('aria-valuetext')).toMatch(/^0:31/);
+    expect(commands.filter((c) => c.startsWith('seek'))).toEqual([]);
+  });
+
+  it('sends exactly one seek for one drag', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    for (const value of ['40000', '50000', '60000', '70000']) {
+      rail.value = value;
+      rail.dispatchEvent(new Event('input', { bubbles: true }));
+      flushSync();
+    }
+    rail.dispatchEvent(new Event('change', { bubbles: true }));
+    flushSync();
+    expect(commands.filter((c) => c.startsWith('seek'))).toEqual(['seek:70000']);
+  });
+
+  it('does not let a poll pull the thumb out from under a finger', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    rail.value = '90000';
+    rail.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+
+    // The frame clock keeps running underneath, as it would during a drag.
+    playbackProgress.set(35_000);
+    flushSync();
+    expect(rail.getAttribute('aria-valuetext')).toMatch(/^1:30/);
+  });
+
+  it('puts the thumb back where the music is when the drag is abandoned', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    rail.value = '90000';
+    rail.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    flushSync();
+    expect(commands.filter((c) => c.startsWith('seek'))).toEqual([]);
+    expect(rail.getAttribute('aria-valuetext')).toMatch(/^0:30/);
+  });
+
+  it('moves five seconds per arrow key, not one detent', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    flushSync();
+    expect(commands).toContain('seek:35000');
+
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    flushSync();
+    expect(commands).toContain('seek:30000');
+  });
+
+  it('leaps by the page keys and lands on the ends with Home and End', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+    flushSync();
+    expect(commands).toContain('seek:60000');
+
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    flushSync();
+    expect(commands).toContain('seek:0');
+
+    rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    flushSync();
+    expect(commands).toContain('seek:180000');
+  });
+
+  it('never offers a position past the end of the track', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    const rail = scrubber();
+    for (let i = 0; i < 60; i += 1) {
+      rail.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+    }
+    flushSync();
+    expect(commands.every((c) => !c.startsWith('seek:') || Number(c.slice(5)) <= 180_000)).toBe(
+      true,
+    );
+  });
+
+  it('shows the moving position from the frame clock, not from the poll', () => {
+    playback.set(playingState());
+    render(NowPlaying);
+    expect(text()).toContain('0:30');
+    playbackProgress.set(64_500);
+    flushSync();
+    expect(text()).toContain('1:04');
   });
 
   it('offers a way out to Spotify itself', () => {

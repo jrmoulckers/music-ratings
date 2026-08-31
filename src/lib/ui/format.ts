@@ -18,7 +18,10 @@ export function duration(ms: number | undefined): string {
  * transport that shows nothing at zero looks broken.
  */
 export function clockTime(ms: number | undefined): string {
-  const safe = Math.max(0, Math.round((ms ?? 0) / 1000));
+  // Floored, not rounded, the way every transport counts: a track shows 3:29
+  // until the moment it is over, and elapsed plus remaining never adds up to
+  // more than the record is long.
+  const safe = Math.max(0, Math.floor((ms ?? 0) / 1000));
   const hours = Math.floor(safe / 3600);
   const minutes = Math.floor((safe % 3600) / 60);
   const seconds = safe % 60;

@@ -6,6 +6,7 @@ import type { Entity, Membership } from '../domain/types';
 import { SpotifyApiError, SpotifyClient } from '../spotify/client';
 import { spotifyConfig, spotifySession } from '../spotify/session';
 import { saveMemberships, upsertEntities } from '../storage/repo';
+import { createProgressClock } from './clock';
 import { entitiesForPlaying, playingItemFromEntity } from './entities';
 import { isFresher, pollEvery, sameItem } from './model';
 import { SimulatedPlayback } from './simulated';
@@ -47,17 +48,24 @@ function blank(): PlaybackState {
 export const playback = writable<PlaybackState>(blank());
 
 /**
- * A clock that only runs while something is watching it.
+ * A coarse clock for "read 4s ago" and nothing else.
  *
- * The scrubber needs to move between authoritative reads; nothing else does. A
- * store that stops the interval on the last unsubscribe means a background tab
- * costs nothing at all.
+ * Freshness is measured in seconds, so it is told the time once a second. The
+ * scrubber does not use this — it has its own clock, running on frames.
  */
 export const playbackNow = readable(Date.now(), (set) => {
   set(Date.now());
-  const timer = setInterval(() => set(Date.now()), 500);
+  const timer = setInterval(() => set(Date.now()), 1000);
   return () => clearInterval(timer);
 });
+
+/**
+ * Where the needle is, in milliseconds, updated per frame while it is moving.
+ *
+ * Kept apart from `playback` on purpose: a value that changes sixty times a
+ * second should wake the scrubber and nothing else.
+ */
+export const playbackProgress = createProgressClock(playback);
 
 /* -------------------------------------------------------------------------- */
 /* Choosing a transport                                                       */

@@ -270,6 +270,8 @@ Spacing is a fixed set (`--s1` 0.25rem … `--s8` 4.5rem), not a generator. `[da
 
 Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.61, 0.36, 1)`). Motion is confirmation, never decoration: the rail's ink fills to the detent you set, the comparison pair tips toward the side you chose, a queue tick scales out under the pointer. Transitions run on `transform` and `opacity` only. Everything collapses under `prefers-reduced-motion: reduce`.
 
+Playback progress is the one exception, because it is a reading rather than a transition. It advances on animation frames from the last authoritative position — the app does not ask Spotify more often to look smoother — and it runs only while something is actually playing, visible and online. A poll that disagrees by less than 1.2s is eased into over a few frames so the line never twitches backwards; a track change, a seek or a larger disagreement snaps at once, because pretending otherwise would be a lie about where you are. Under `prefers-reduced-motion` the easing is dropped and corrections snap, but the line keeps moving: a progress bar that stutters is less usable, not calmer.
+
 ## Components
 
 - **Rail** (`RatingRail`) — the rating control, and a dispatcher: it draws the shape the active scale actually is. Five-star scales get `StarRating`, tier lists get coloured detents, dense scales get the precision rail, everything else gets cut detents. It lays the scale out horizontally where there is room for it and stands it up on a narrow screen. One tab stop; arrows walk detents, digits pick a known value, Home/End reach the ends.
@@ -308,6 +310,7 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Do write a suggestion reason as a sentence a person would say: "Played 2 hours ago.", "#3 in your all-time listening.", "No tracks from Rain Ledger rated yet."
 - Do disable a playback control Spotify has refused and put the reason on it, rather than letting the press fail.
 - Do keep an unsaved rating draft pinned to the thing it was opened on when playback moves on.
+- Do let a scrubber follow the finger at whatever resolution the pointer has, and send exactly one seek when it is released. Arrow keys are a different instrument: they move in 5s, Page keys in 30s, and Escape puts the handle back where playback actually is without seeking at all.
 
 ### Don't
 
@@ -316,7 +319,7 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Don't offer two record actions on one entry. Withdraw is reachable while a rating counts; delete is reachable only after it has stopped.
 - Don't repeat a surface inside itself: the mini player is hidden on Now Playing, where the same track, the same transport and the same rating are already full size.
 - Don't build a now-playing display that only displays. Every visible piece of state is a control, and the rating beside it is the real one.
-
+- Don't treat connecting an account as finishing setup. Setup is done when the person has been through all three pages and pressed the last button; coming back from Spotify's redirect returns them to the page they were on, not past it.
 - Don't reach for marketing hero type, pill spam, or an icon that is only decorative.
 - Don't set small text in `--accent` rather than `--accent-ink`.
 - Don't derive a scrim from `--ink` — it goes pale in dark mode and washes the page out.

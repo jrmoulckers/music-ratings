@@ -5,7 +5,7 @@
   import { explicitRatings, graph, settings } from '../lib/app/state';
   import { albumSession, startAlbumSession } from '../lib/playback/album';
   import { playingEntityIds } from '../lib/playback/entities';
-  import { allows, freshness, progressAt, refusalReason } from '../lib/playback/model';
+  import { allows, freshness, refusalReason } from '../lib/playback/model';
   import { browserPlayer } from '../lib/playback/sdk';
   import {
     playback,
@@ -13,6 +13,7 @@
     playbackNow,
     playbackPlay,
     playbackPrevious,
+    playbackProgress,
     playbackRepeat,
     playbackSeek,
     playbackShuffle,
@@ -54,7 +55,7 @@
   const item = $derived(snapshot?.item ?? null);
   const playing = $derived(snapshot?.playing === true);
   const duration = $derived(snapshot?.durationMs ?? 0);
-  const elapsed = $derived(progressAt(snapshot, $playbackNow));
+  const elapsed = $derived($playbackProgress);
 
   const ids = $derived(playingEntityIds(item));
   const track = $derived(ids.track ? $graph.entity(ids.track) : undefined);
@@ -88,21 +89,60 @@
   /* Scrubbing                                                              */
   /* ---------------------------------------------------------------------- */
 
-  // While a finger is on the rail the display follows the finger, not the poll.
+  /**
+   * The rail moves with the finger; the seek is sent when the finger lets go.
+   *
+   * A drag is a hundred input events, and each one is not a request to jump the
+   * music. So the display follows every event and the transport hears exactly
+   * one — on release, on keypress, or not at all if the drag is abandoned. The
+   * poll cannot overwrite the value under a finger that is still holding it.
+   */
   let dragging = $state(false);
   let dragged = $state(0);
   const position = $derived(dragging ? dragged : elapsed);
   const fraction = $derived(duration > 0 ? position / duration : 0);
 
+  /** A keyboard nudge is a distance a person can reason about, not a detent. */
+  const NUDGE_MS = 5_000;
+  const LEAP_MS = 30_000;
+
   function scrub(event: Event) {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
-    dragged = value;
+    dragged = Number((event.currentTarget as HTMLInputElement).value);
     dragging = true;
   }
 
   function commitScrub() {
+    if (!dragging) return;
     dragging = false;
     playbackSeek(dragged);
+  }
+
+  /** Abandoning a drag puts the thumb back where the music actually is. */
+  function cancelScrub() {
+    dragging = false;
+  }
+
+  function scrubKey(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      cancelScrub();
+      return;
+    }
+    const from = dragging ? dragged : elapsed;
+    let to: number | null = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') to = from + NUDGE_MS;
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') to = from - NUDGE_MS;
+    else if (event.key === 'PageUp') to = from + LEAP_MS;
+    else if (event.key === 'PageDown') to = from - LEAP_MS;
+    else if (event.key === 'Home') to = 0;
+    else if (event.key === 'End') to = duration;
+    if (to === null) return;
+    // The browser's own arrow handling would move by the drag step, which is
+    // deliberately far too small to be a useful keystroke.
+    event.preventDefault();
+    dragged = Math.max(0, Math.min(duration, Math.round(to)));
+    dragging = true;
+    // Held keys repeat; the transport coalesces them into one seek.
+    commitScrub();
   }
 
   /* ---------------------------------------------------------------------- */
@@ -315,14 +355,17 @@
           type="range"
           min="0"
           max={Math.max(1, duration)}
-          step="1000"
+          step="100"
           value={position}
           style="--played: {fraction}"
           disabled={!allows(snapshot, 'seek')}
-          aria-label="Position in track"
+          aria-label="Position in track. Arrow keys move five seconds, Page keys thirty."
           aria-valuetext="{clockTime(position)} of {clockTime(duration)}"
           oninput={scrub}
           onchange={commitScrub}
+          onkeydown={scrubKey}
+          onpointercancel={cancelScrub}
+          onblur={commitScrub}
         />
         <div class="transport__times mono">
           <span>{clockTime(position)}</span>

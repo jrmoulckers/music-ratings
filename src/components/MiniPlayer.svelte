@@ -3,14 +3,14 @@
 
   import { href, navigate } from '../lib/app/router';
   import { explicitRatings, graph } from '../lib/app/state';
-  import { allows, progressFraction } from '../lib/playback/model';
+  import { allows } from '../lib/playback/model';
   import { playingEntityIds } from '../lib/playback/entities';
   import { watchMediaSession } from '../lib/playback/media-session';
   import {
     playback,
     playbackNext,
-    playbackNow,
     playbackPrevious,
+    playbackProgress,
     playbackToggle,
     watchPlayback,
   } from '../lib/playback/store';
@@ -45,8 +45,10 @@
   const snapshot = $derived($playback.snapshot);
   const item = $derived(snapshot?.item ?? null);
   const playing = $derived(snapshot?.playing === true);
-  const fraction = $derived(progressFraction(snapshot, $playbackNow));
-  const elapsed = $derived(Math.round(fraction * (snapshot?.durationMs ?? 0)));
+  const elapsed = $derived($playbackProgress);
+  const fraction = $derived(
+    snapshot && snapshot.durationMs > 0 ? elapsed / snapshot.durationMs : 0,
+  );
 
   const ids = $derived(playingEntityIds(item));
   const entity = $derived(ids.track ? $graph.entity(ids.track) : undefined);
@@ -86,7 +88,7 @@
     <!-- The travelled rail. The scrubber proper lives on the Now Playing page,
          where a drag cannot be a mis-tap on the way to something else. -->
     <div class="mini__rail" aria-hidden="true">
-      <span class="mini__travelled" style="width: {(fraction * 100).toFixed(2)}%"></span>
+      <span class="mini__travelled" style="transform: scaleX({fraction.toFixed(5)})"></span>
     </div>
 
     {#if item}
@@ -182,8 +184,13 @@
   }
   .mini__travelled {
     display: block;
+    width: 100%;
     height: 100%;
     background: var(--accent);
+    /* Scaled rather than resized: the rail is repainted every frame while the
+       music plays, and a transform costs the compositor nothing. */
+    transform-origin: left center;
+    will-change: transform;
   }
 
   .mini__body {
