@@ -13,6 +13,8 @@
     settings,
   } from '../lib/app/state';
   import { buildRankedList, TIME_RANGES } from '../lib/domain/lists';
+  import { SCORE_VIEW_LABEL } from '../lib/domain/ratings';
+  import { SCORE_VIEWS } from '../lib/domain/types';
   import type { EntityType, ScoreView } from '../lib/domain/types';
   import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
@@ -186,9 +188,9 @@
       <label class="field">
         <span class="label">Score shown</span>
         <select class="select" bind:value={view} onchange={syncUrl}>
-          <option value="blended">Blended</option>
-          <option value="explicit">Your rating</option>
-          <option value="rollup">Computed</option>
+          {#each SCORE_VIEWS as option (option)}
+            <option value={option}>{SCORE_VIEW_LABEL[option]}</option>
+          {/each}
         </select>
       </label>
 

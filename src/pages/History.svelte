@@ -2,6 +2,7 @@
   import { announce } from '../lib/app/notices';
   import { entityHref } from '../lib/app/router';
   import {
+    contextConfig,
     entityLabelCap,
     explicitRatings,
     graph,
@@ -9,6 +10,7 @@
     settings,
     world,
   } from '../lib/app/state';
+  import { explainContext } from '../lib/domain/context';
   import { formatScore } from '../lib/domain/ratings';
   import type { EntityType, RatingEvent } from '../lib/domain/types';
   import { deleteRating, retractRating } from '../lib/storage/repo';
@@ -89,6 +91,22 @@
     return { text, swatch: isTierScale(scale) ? tierColor(text) : null };
   }
 
+  const scaleFor = $derived((type: EntityType) => $scaleForType(type));
+
+  /**
+   * What the entry says about context, calculated the same way the entity page
+   * calculates it — from the answers saved on this entry and the weights set
+   * today. Null when this entry recorded no context at all.
+   */
+  const explainFor = $derived((event: RatingEvent) =>
+    explainContext({
+      snapshot: event.contextual ?? null,
+      direct: event.normalized,
+      config: $contextConfig,
+      type: event.entityType,
+    }),
+  );
+
   function toggle(event: RatingEvent): void {
     openId = openId === event.id ? null : event.id;
     confirmId = null;
@@ -156,8 +174,10 @@
                 {@const entity = $graph.entity(event.entityId)}
                 {@const stands = standing(event)}
                 {@const mark = markFor(event)}
+                {@const ctx = explainFor(event)}
                 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
                 <li
+                  class="entry"
                   class:is-retracted={event.retracted}
                   class:is-open={openId === event.id}
                   onkeydown={(e) => onEntryKey(e, event.id)}
@@ -199,6 +219,15 @@
                         </span>
                       </span>
                       {#if event.note}<span class="note">“{event.note}”</span>{/if}
+                      {#if ctx}
+                        <span class="note note--small entry__context">
+                          Context {formatScore(ctx.score ?? 0, scaleFor(event.entityType))}
+                          {#if ctx.adjusted !== null}
+                            · adjusted to {formatScore(ctx.adjusted, scaleFor(event.entityType))}
+                          {/if}
+                          · {ctx.coverage.rated} of {ctx.coverage.total} answered
+                        </span>
+                      {/if}
                       {#if event.tags?.length}
                         <span class="label">{event.tags.join(' · ')}</span>
                       {/if}
@@ -425,6 +454,10 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+  }
+  /* The context figures are a footnote to the entry, not a second headline. */
+  .entry__context {
+    font-variant-numeric: tabular-nums;
   }
   .entry__name {
     color: var(--ink);

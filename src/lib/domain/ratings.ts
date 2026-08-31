@@ -1,4 +1,11 @@
-import type { EntityId, RatingConfidence, RatingEvent, RatingScale, ScoreView } from './types';
+import type {
+  ContextSnapshot,
+  EntityId,
+  RatingConfidence,
+  RatingEvent,
+  RatingScale,
+  ScoreView,
+} from './types';
 import { clampNormalized, formatNormalizedOn } from './scales';
 
 /**
@@ -19,6 +26,8 @@ export interface ExplicitRating {
   note?: string;
   tags?: string[];
   eventId: string;
+  /** The contextual facets recorded with this rating, when there were any. */
+  contextual?: ContextSnapshot;
 }
 
 export function isLiveRating(event: RatingEvent): boolean {
@@ -44,6 +53,7 @@ export function currentRating(events: readonly RatingEvent[]): ExplicitRating | 
   };
   if (best.note) out.note = best.note;
   if (best.tags?.length) out.tags = [...best.tags];
+  if (best.contextual?.facets?.length) out.contextual = best.contextual;
   return out;
 }
 
@@ -109,9 +119,28 @@ export function formatScore(normalized: number | null, scale?: RatingScale): str
 
 export function pickView(
   view: ScoreView,
-  score: { explicit: number | null; rollup: number | null; blended: number | null },
+  score: {
+    explicit: number | null;
+    rollup: number | null;
+    blended: number | null;
+    contextScore?: number | null;
+    contextAdjusted?: number | null;
+  },
 ): number | null {
   if (view === 'explicit') return score.explicit;
+  if (view === 'context') return score.contextScore ?? null;
+  // An item with no context falls back to the direct rating rather than
+  // vanishing: the view asks how context changed things, and "not at all" is a
+  // truthful answer.
+  if (view === 'contextAdjusted') return score.contextAdjusted ?? score.explicit;
   if (view === 'rollup') return score.rollup;
   return score.blended;
 }
+
+export const SCORE_VIEW_LABEL: Readonly<Record<ScoreView, string>> = {
+  explicit: 'Your rating',
+  context: 'Context score',
+  contextAdjusted: 'Context-adjusted',
+  rollup: 'Computed',
+  blended: 'Blended',
+};

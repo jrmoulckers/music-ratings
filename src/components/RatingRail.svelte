@@ -50,6 +50,15 @@
     disabled?: boolean;
     /** Prints the scale's own marks in the index column beside the detents. */
     showMarks?: boolean;
+    /**
+     * Who owns the save.
+     *
+     * `commit` is the ordinary case: the control writes the rating down itself.
+     * `compose` says an outer form is holding a draft with a save of its own —
+     * so a dense control reports every change and hides its own save, rather
+     * than asking the reader to press save twice for one rating.
+     */
+    mode?: 'commit' | 'compose';
   }
 
   let {
@@ -61,6 +70,7 @@
     orientation = 'vertical',
     disabled = false,
     showMarks = true,
+    mode = 'commit',
   }: Props = $props();
 
   let hovered = $state<number | null>(null);
@@ -159,7 +169,7 @@
 {#if stars}
   <StarRating {scale} {value} {onpreview} {oncommit} {label} {disabled} />
 {:else if dense}
-  <PrecisionRail {scale} {value} {onpreview} {oncommit} {label} {disabled} />
+  <PrecisionRail {scale} {value} {onpreview} {oncommit} {label} {disabled} {mode} />
 {:else}
   <div
     class="rail rail--{orientation}"

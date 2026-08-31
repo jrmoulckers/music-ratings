@@ -1,10 +1,18 @@
 import { rankingConfidence, rankingToNormalized, type RankingTable } from './elo';
+import {
+  adjustedRating,
+  effectiveExplicit as pickEffectiveExplicit,
+  explainContext,
+  NO_CONTEXT,
+  type ContextConfig,
+} from './context';
 import { walkDescendants, type ContainmentGraph, type DescendantHit } from './graph';
 import { CONFIDENCE_WEIGHT, recencyWeight, type ExplicitRating } from './ratings';
 import { clampNormalized } from './scales';
 import type {
   AggregationMethod,
   ChannelExplanation,
+  ContextExplanation,
   Coverage,
   EntityAnnotation,
   EntityId,
@@ -23,7 +31,7 @@ import { ROLLUP_CHANNELS } from './types';
 /**
  * The rollup engine.
  *
- * Two rules govern everything here:
+ * Three rules govern everything here:
  *
  *   1. An explicit rating is never overwritten by a computed one. They live in
  *      separate fields and are blended only for display.
@@ -31,6 +39,9 @@ import { ROLLUP_CHANNELS } from './types';
  *      asked for, the weights it actually applied after renormalising over the
  *      evidence that existed, each channel's sample, and a note for everything
  *      it deliberately left out.
+ *   3. Contextual facets reach a score through the explicit channel and nowhere
+ *      else. They are never a channel of their own, so no judgement can be
+ *      counted twice.
  */
 
 export interface RollupInput {
@@ -42,6 +53,8 @@ export interface RollupInput {
   annotations?: ReadonlyMap<EntityId, EntityAnnotation>;
   /** Weight given to the explicit rating when blending for display, 0..1. */
   blendExplicitWeight?: number;
+  /** Contextual facet configuration. Omitted means context is switched off. */
+  context?: ContextConfig;
   now?: number;
 }
 
@@ -196,6 +209,14 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
   const explicitRating = input.explicit.get(entityId) ?? null;
   const exclusions: ExclusionNote[] = [];
 
+  /* --- context ----------------------------------------------------------- */
+
+  const context = contextFor(input, explicitRating, entityType);
+  const directValue_ = explicitRating?.normalized ?? null;
+  const contextScore = context?.score ?? null;
+  const contextAdjusted = context?.adjusted ?? null;
+  const effective = pickEffectiveExplicit(directValue_, contextAdjusted);
+
   /* --- descendants ------------------------------------------------------- */
 
   const walk = entity ? walkDescendants(input.graph, entityId) : { hits: [], duplicatePaths: 0 };
@@ -237,7 +258,7 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
 
   if (explicitRating) {
     available.add('explicit');
-    values.explicit = explicitRating.normalized;
+    values.explicit = effective ?? explicitRating.normalized;
   }
 
   // Grouping is a descendant-channel idea: at depth 1 every child is already its
@@ -267,7 +288,9 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
     channel('explicit', values.explicit ?? null, config.weights, appliedWeights, {
       sampleSize: explicitRating ? 1 : 0,
       detail: explicitRating
-        ? `Your own rating, recorded ${describeAge(now - explicitRating.at)}.`
+        ? contextAdjusted != null
+          ? `Your own rating, recorded ${describeAge(now - explicitRating.at)}, adjusted by your context score.`
+          : `Your own rating, recorded ${describeAge(now - explicitRating.at)}.`
         : 'You have not rated this directly.',
       ...(explicitRating && entity
         ? {
@@ -275,9 +298,9 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
               {
                 entityId,
                 name: entity.name,
-                normalized: explicitRating.normalized,
+                normalized: effective ?? explicitRating.normalized,
                 weight: 1,
-                via: 'direct',
+                via: contextAdjusted != null ? 'context-adjusted' : 'direct',
               },
             ],
           }
@@ -338,7 +361,9 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
   if (!coverage.meetsMinimum && coverage.total > 0) exclusions.push(note('below-coverage', 0));
 
   const blendWeight = clamp01(input.blendExplicitWeight ?? 0.6);
-  const explicitValue = explicitRating?.normalized ?? null;
+  // The blend reads the same value the explicit channel did, so one item never
+  // means two different numbers on two different screens.
+  const explicitValue = effective;
   let blended: number | null;
   if (explicitValue != null && rollup != null) {
     blended = clampNormalized(explicitValue * blendWeight + rollup * (1 - blendWeight));
@@ -349,7 +374,10 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
   const breakdown: ScoreBreakdown = {
     entityId,
     entityType,
-    explicit: explicitValue,
+    explicit: directValue_,
+    contextScore,
+    contextAdjusted,
+    effectiveExplicit: effective,
     rollup,
     blended,
     channels,
@@ -366,7 +394,47 @@ export function computeScore(input: RollupInput, entityId: EntityId): ScoreBreak
     computedAt: now,
   };
   if (ranking) breakdown.ranking = ranking;
+  if (context) breakdown.context = context;
   return breakdown;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Context                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function contextFor(
+  input: RollupInput,
+  rating: ExplicitRating | null,
+  type: EntityType,
+): ContextExplanation | null {
+  if (!rating?.contextual?.facets?.length) return null;
+  return explainContext({
+    snapshot: rating.contextual,
+    direct: rating.normalized,
+    config: input.context ?? NO_CONTEXT,
+    type,
+  });
+}
+
+/**
+ * What one rated item is worth to whatever is counting it.
+ *
+ * A track means the same number to its album as it does on its own page, so
+ * children contribute their context-adjusted value wherever context is on.
+ */
+function effectiveOf(input: RollupInput, rating: ExplicitRating, type: EntityType): number {
+  const config = input.context;
+  if (!config?.enabled || !rating.contextual?.facets?.length) return rating.normalized;
+  const explained = explainContext({
+    snapshot: rating.contextual,
+    direct: rating.normalized,
+    config,
+    type,
+  });
+  return (
+    adjustedRating(rating.normalized, explained?.score ?? null, explained?.contribution ?? 0) ??
+    rating.normalized
+  );
 }
 
 function channel(
@@ -406,7 +474,7 @@ function toSamples(
     out.push({
       entityId: hit.entityId,
       name: entity?.name ?? hit.entityId,
-      value: rating.normalized,
+      value: effectiveOf(input, rating, (entity?.type ?? 'track') as EntityType),
       weight,
       via: hit.via,
       groupId: hit.groupId,

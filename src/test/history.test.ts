@@ -67,6 +67,41 @@ describe('an entry in the record', () => {
   it('leaves out a note that was never written rather than seeding an empty one', () => {
     expect(seedFrom(event())).toEqual({ normalized: 60, confidence: 'medium' });
   });
+
+  it('hands back the context answers that entry was saved with', () => {
+    const seed = seedFrom(
+      event({
+        contextual: {
+          v: 1,
+          facets: [{ facetId: 'innovation', value: 10, scaleId: 'int-10', normalized: 100 }],
+          weights: { innovation: 1 },
+          contribution: 0.2,
+          applicable: 4,
+        },
+      }),
+    );
+    expect(seed.contextual?.facets[0]?.facetId).toBe('innovation');
+    expect(seed.contextual?.contribution).toBe(0.2);
+  });
+
+  it('copies those answers, so editing a draft cannot reach into the record', () => {
+    const source = event({
+      contextual: {
+        v: 1,
+        facets: [{ facetId: 'innovation', value: 10, scaleId: 'int-10', normalized: 100 }],
+        weights: { innovation: 1 },
+        contribution: 0.2,
+        applicable: 4,
+      },
+    });
+    const seed = seedFrom(source);
+    seed.contextual!.facets[0]!.normalized = 10;
+    expect(source.contextual?.facets[0]?.normalized).toBe(100);
+  });
+
+  it('carries no context at all from an entry that recorded none', () => {
+    expect(seedFrom(event()).contextual).toBeUndefined();
+  });
 });
 
 describe('withdrawing', () => {

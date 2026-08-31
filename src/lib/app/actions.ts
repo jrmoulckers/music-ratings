@@ -1,7 +1,13 @@
 import { get } from 'svelte/store';
 
 import { denormalize } from '../domain/scales';
-import type { Comparison, Entity, EntityId, RatingConfidence } from '../domain/types';
+import type {
+  Comparison,
+  ContextSnapshot,
+  Entity,
+  EntityId,
+  RatingConfidence,
+} from '../domain/types';
 import {
   clearQueueState,
   patchAnnotation,
@@ -28,6 +34,12 @@ export interface RateOptions {
   tags?: string[];
   confidence?: RatingConfidence;
   context?: 'queue' | 'detail' | 'duel' | 'import' | 'bulk';
+  /**
+   * Contextual facets judged in the same sitting. They ride on the event, so
+   * one save writes one rating: adjusting a facet never records anything on
+   * its own.
+   */
+  contextual?: ContextSnapshot | null;
 }
 
 export async function rate(
@@ -46,10 +58,15 @@ export async function rate(
     ...(options.note ? { note: options.note } : {}),
     ...(options.tags?.length ? { tags: options.tags } : {}),
     ...(options.context ? { context: options.context } : {}),
+    ...(options.contextual?.facets.length ? { contextual: options.contextual } : {}),
   });
   // A rating replaces the previous one by being newer, so undo means retracting
   // this event rather than restoring anything.
-  const spoken = `${entity.name} rated ${denormalize(scale, normalized)} on ${scale.label}.`;
+  const facets = options.contextual?.facets.length ?? 0;
+  const spoken =
+    facets > 0
+      ? `${entity.name} rated ${denormalize(scale, normalized)} on ${scale.label}, with ${facets} context ${facets === 1 ? 'facet' : 'facets'}.`
+      : `${entity.name} rated ${denormalize(scale, normalized)} on ${scale.label}.`;
   announce(spoken);
   notify(spoken, {
     action: {

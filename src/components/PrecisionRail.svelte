@@ -38,9 +38,30 @@
     oncommit?: (normalized: number) => void;
     label?: string;
     disabled?: boolean;
+    /**
+     * Who owns the save.
+     *
+     * `commit` keeps the whole transaction here: compose a value, press Save,
+     * and the rating is written. `compose` says an outer form is holding a
+     * larger draft — a note, a confidence, a set of context answers — with one
+     * save for all of it. Then this rail reports every change as it is made and
+     * drops its own footer, because two save buttons for one rating is one save
+     * button too many.
+     */
+    mode?: 'commit' | 'compose';
   }
 
-  let { scale, value, onpreview, oncommit, label = 'Rating', disabled = false }: Props = $props();
+  let {
+    scale,
+    value,
+    onpreview,
+    oncommit,
+    label = 'Rating',
+    disabled = false,
+    mode = 'commit',
+  }: Props = $props();
+
+  const held = $derived(mode === 'compose');
 
   const uid = $props.id();
   const complaintId = `${uid}-said`;
@@ -103,7 +124,11 @@
     const snapped = snapRaw(scale, raw);
     complaint = null;
     draftRaw = snapped;
-    onpreview?.(normalize(scale, snapped));
+    const normalized = normalize(scale, snapped);
+    onpreview?.(normalized);
+    // Composing: the outer form is the one holding this, so it hears every
+    // change. It still does not write anything down — its own save does that.
+    if (held) oncommit?.(normalized);
   }
 
   function nudge(direction: 1 | -1): void {
@@ -142,7 +167,7 @@
   }
 
   function save(): void {
-    if (disabled || saving || !dirty || draftRaw === null) return;
+    if (disabled || saving || !dirty || draftRaw === null || held) return;
     saving = true;
     const giving = draftRaw;
     try {
@@ -168,13 +193,16 @@
     if (event.key === 'Enter') {
       event.preventDefault();
       settleField();
-      save();
+      // Composing: Enter makes the number legal and stops there. The outer
+      // form's save is the only thing that records a rating.
+      if (!held) save();
       return;
     }
     if (event.key === 'Escape') {
       // Only claimed while there is something to take back, so Escape still
-      // reaches whatever opened this control when there is not.
-      if (typing === null && draftRaw === null) return;
+      // reaches whatever opened this control when there is not. Composing, the
+      // outer form owns the whole draft, so Escape is always its to answer.
+      if (held || (typing === null && draftRaw === null)) return;
       event.preventDefault();
       event.stopPropagation();
       cancel();
@@ -188,7 +216,7 @@
    */
   function onTrackKey(event: KeyboardEvent): void {
     if (disabled) return;
-    if (event.key === 'Escape' && draftRaw !== null) {
+    if (event.key === 'Escape' && draftRaw !== null && !held) {
       event.preventDefault();
       event.stopPropagation();
       cancel();
@@ -305,28 +333,34 @@
       {#if complaint}
         {complaint}
       {:else if dirty}
-        {readingFor(shownRaw)}, not saved yet.
+        {readingFor(shownRaw)}{held ? '.' : ', not saved yet.'}
       {:else}
         <span id={stepHintId}>
-          {heldRaw === null
-            ? 'Drag or type a value to start, then save it.'
-            : 'Adjust as much as you like — nothing is recorded until you save.'}
+          {#if heldRaw === null}
+            Drag or type a value to start{held ? '.' : ', then save it.'}
+          {:else if held}
+            Adjust as much as you like — this is written down when you save the rating below.
+          {:else}
+            Adjust as much as you like — nothing is recorded until you save.
+          {/if}
         </span>
       {/if}
     </p>
-    <div class="prec__buttons">
-      {#if dirty}
-        <button type="button" class="btn btn--small" onclick={cancel}> Cancel </button>
-      {/if}
-      <button
-        type="button"
-        class="btn btn--small btn--primary"
-        disabled={disabled || saving || !dirty}
-        onclick={save}
-      >
-        {seatedRaw === null ? 'Save rating' : 'Save new rating'}
-      </button>
-    </div>
+    {#if !held}
+      <div class="prec__buttons">
+        {#if dirty}
+          <button type="button" class="btn btn--small" onclick={cancel}> Cancel </button>
+        {/if}
+        <button
+          type="button"
+          class="btn btn--small btn--primary"
+          disabled={disabled || saving || !dirty}
+          onclick={save}
+        >
+          {seatedRaw === null ? 'Save rating' : 'Save new rating'}
+        </button>
+      </div>
+    {/if}
   </div>
 </div>
 

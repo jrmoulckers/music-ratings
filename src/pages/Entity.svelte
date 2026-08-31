@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  import { pin, rate, setStandingNote, setTags } from '../lib/app/actions';
+  import { pin, setStandingNote, setTags } from '../lib/app/actions';
   import { notify } from '../lib/app/notices';
   import { entityHref, href } from '../lib/app/router';
   import {
@@ -18,8 +18,8 @@
   } from '../lib/app/state';
   import { rankingConfidence } from '../lib/domain/elo';
   import { entityId } from '../lib/domain/ids';
-  import { formatScore, historyFor } from '../lib/domain/ratings';
-  import type { EntityType, Provider } from '../lib/domain/types';
+  import { formatScore, historyFor, pickView } from '../lib/domain/ratings';
+  import type { EntityType, Provider, ScoreView } from '../lib/domain/types';
   import { SpotifyClient } from '../lib/spotify/client';
   import { expandEntity } from '../lib/spotify/library';
   import { spotifyConfig, spotifySession } from '../lib/spotify/session';
@@ -31,7 +31,7 @@
   import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
   import Artwork from '../components/Artwork.svelte';
   import RatableRow from '../components/RatableRow.svelte';
-  import RatingRail from '../components/RatingRail.svelte';
+  import RatePanel from '../components/RatePanel.svelte';
   import ScoreMark from '../components/ScoreMark.svelte';
   import WhyThisScore from '../components/WhyThisScore.svelte';
 
@@ -98,9 +98,7 @@
   function pickScore(entity_: string, view: string): number | null {
     const b = $scores.get(entity_);
     if (!b) return null;
-    if (view === 'explicit') return b.explicit;
-    if (view === 'rollup') return b.rollup;
-    return b.blended;
+    return pickView(view as ScoreView, b);
   }
 
   async function expand() {
@@ -205,13 +203,7 @@
       <section class="rating" aria-labelledby="rating-head">
         <h2 id="rating-head" class="sr-only">Your rating</h2>
         <div class="rating__rail">
-          <RatingRail
-            {scale}
-            value={explicit?.normalized ?? null}
-            label="Your rating for {entity.name}"
-            orientation="horizontal"
-            oncommit={(value) => void rate(entity, value, { context: 'detail' })}
-          />
+          <RatePanel {entity} inline shortcuts={false} where="detail" />
         </div>
         <div class="rating__marks">
           <div>

@@ -1,6 +1,7 @@
 import { derived, get, writable, type Readable } from 'svelte/store';
 
 import { computeRankings, type RankingTable } from '../domain/elo';
+import type { ContextConfig } from '../domain/context';
 import { ContainmentGraph } from '../domain/graph';
 import { indexCurrentRatings, type ExplicitRating } from '../domain/ratings';
 import { computeScores } from '../domain/rollup';
@@ -191,11 +192,25 @@ export const scores: Readable<Map<EntityId, ScoreBreakdown>> = derived(
         config: $settings.rollup,
         annotations: $annotations,
         blendExplicitWeight: $settings.blendExplicitWeight,
+        context: {
+          enabled: $settings.contextEnabled,
+          contribution: $settings.contextContribution,
+          byType: $settings.contextByType,
+          facets: $settings.facets,
+        },
         now: $clock,
       },
       $graph.allEntities().map((e) => e.id),
     ),
 );
+
+/** The facet configuration, as the rating editor and the score engine see it. */
+export const contextConfig: Readable<ContextConfig> = derived(settings, ($settings) => ({
+  enabled: $settings.contextEnabled,
+  contribution: $settings.contextContribution,
+  byType: $settings.contextByType,
+  facets: $settings.facets,
+}));
 
 export const pinnedIds: Readable<Set<EntityId>> = derived(world, ($world) => {
   const out = new Set<EntityId>();

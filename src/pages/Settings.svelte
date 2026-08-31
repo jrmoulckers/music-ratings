@@ -4,6 +4,7 @@
   import { href } from '../lib/app/router';
   import {
     allScales,
+    entityLabel,
     entityLabelCap,
     ENTITY_MEANING,
     loadAll,
@@ -12,8 +13,11 @@
     world,
   } from '../lib/app/state';
   import { connectOneDrive, disconnectOneDrive, syncNow } from '../lib/app/sync';
-  import { ROLLUP_CHANNELS, ENTITY_TYPES, PARENT_TYPES } from '../lib/domain/types';
-  import type { EntityType, RollupChannel } from '../lib/domain/types';
+  import { defaultFacets, MAX_CONTEXT_CONTRIBUTION } from '../lib/domain/context';
+  import { uid } from '../lib/domain/ids';
+  import { SCORE_VIEW_LABEL } from '../lib/domain/ratings';
+  import { ROLLUP_CHANNELS, ENTITY_TYPES, PARENT_TYPES, SCORE_VIEWS } from '../lib/domain/types';
+  import type { EntityType, FacetConfig, RollupChannel, ScoreView } from '../lib/domain/types';
   import { SUGGESTION_SOURCES } from '../lib/domain/types';
   import { equivalenceRows } from '../lib/domain/scales';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
@@ -92,6 +96,90 @@
       ? $settings.enabledTypes.filter((t) => t !== type)
       : [...$settings.enabledTypes, type];
     await updateSettings({ enabledTypes: next.length > 0 ? next : [type] });
+  }
+
+  /* --- contextual ratings ------------------------------------------------- */
+
+  let facetType = $state<EntityType>('album');
+  let newLabel = $state('');
+  let newDescription = $state('');
+  let newTypes = $state<EntityType[]>(['album']);
+
+  /** Every question that could apply here, switched off ones included. */
+  const facetsHere = $derived(
+    $settings.facets
+      .filter((facet) => facet.types.includes(facetType))
+      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.id < b.id ? -1 : 1)),
+  );
+  const typeOverride = $derived($settings.contextByType?.[facetType]);
+  const contextHere = $derived(typeOverride ?? $settings.contextContribution);
+
+  async function saveFacets(facets: FacetConfig[]) {
+    await updateSettings({ facets });
+  }
+
+  async function patchFacet(id: string, patch: Partial<FacetConfig>) {
+    await saveFacets($settings.facets.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  }
+
+  /** Moves a question past its neighbour here, renumbering the whole list so
+      the order is stable whatever else shares these ids. */
+  async function moveFacet(id: string, by: 1 | -1) {
+    const here = [...facetsHere];
+    const at = here.findIndex((f) => f.id === id);
+    const to = at + by;
+    if (at < 0 || to < 0 || to >= here.length) return;
+    const moved = here[at]!;
+    here[at] = here[to]!;
+    here[to] = moved;
+    const orders = new Map(here.map((f, index) => [f.id, index]));
+    await saveFacets(
+      $settings.facets.map((f) => (orders.has(f.id) ? { ...f, order: orders.get(f.id)! } : f)),
+    );
+  }
+
+  async function addFacet() {
+    const label = newLabel.trim();
+    if (!label || newTypes.length === 0) return;
+    const id = `custom-${
+      label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'question'
+    }-${uid()}`;
+    await saveFacets([
+      ...$settings.facets,
+      {
+        id,
+        label,
+        description: newDescription.trim() || 'Your own judgement.',
+        types: [...newTypes],
+        weight: 1,
+        enabled: true,
+        builtin: false,
+        order: $settings.facets.length,
+      },
+    ]);
+    newLabel = '';
+    newDescription = '';
+    notify(`Added “${label}”. Existing ratings keep the answers they were saved with.`);
+  }
+
+  async function removeFacet(facet: FacetConfig) {
+    await saveFacets($settings.facets.filter((f) => f.id !== facet.id));
+    notify(`Removed “${facet.label}”. Ratings that answered it keep the answer, uncounted.`);
+  }
+
+  async function restoreFacets() {
+    await saveFacets(defaultFacets());
+    notify('The built-in questions are back as they started.');
+  }
+
+  async function setTypeContribution(value: number | null) {
+    const next = { ...($settings.contextByType ?? {}) };
+    if (value === null) delete next[facetType];
+    else next[facetType] = value;
+    await updateSettings({ contextByType: next });
   }
 
   async function exportBackup() {
@@ -358,11 +446,11 @@
           class="select"
           value={$settings.scoreView}
           onchange={(event) =>
-            void updateSettings({ scoreView: event.currentTarget.value as 'blended' })}
+            void updateSettings({ scoreView: event.currentTarget.value as ScoreView })}
         >
-          <option value="blended">Blended</option>
-          <option value="explicit">Only what you said</option>
-          <option value="rollup">Only what was computed</option>
+          {#each SCORE_VIEWS as view (view)}
+            <option value={view}>{SCORE_VIEW_LABEL[view]}</option>
+          {/each}
         </select>
       </label>
 
@@ -381,6 +469,228 @@
             void updateSettings({ blendExplicitWeight: Number(event.currentTarget.value) })}
         />
       </label>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="group" aria-labelledby="s-context">
+      <h2 id="s-context" class="group__head title">Rating in context</h2>
+
+      <p class="note">
+        Beside your own rating you can answer a few optional questions — how original it was for its
+        time, how well it holds up, how well made it is. Those answers make a context score. Context
+        scores are your judgements, not Spotify data. They only affect rankings and computed scores
+        when context contribution is switched on below.
+      </p>
+
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={$settings.contextEnabled}
+          onchange={(event) => void updateSettings({ contextEnabled: event.currentTarget.checked })}
+        />
+        <span>Let context change your ratings</span>
+      </label>
+
+      <label class="field">
+        <span class="label">
+          {$settings.contextEnabled
+            ? `Context carries ${Math.round($settings.contextContribution * 100)}% of a rating`
+            : 'Recorded but not counted — answers are saved either way'}
+        </span>
+        <input
+          class="slider"
+          type="range"
+          min="0"
+          max={MAX_CONTEXT_CONTRIBUTION}
+          step="0.05"
+          value={$settings.contextContribution}
+          disabled={!$settings.contextEnabled}
+          oninput={(event) =>
+            void updateSettings({ contextContribution: Number(event.currentTarget.value) })}
+        />
+      </label>
+      <p class="note note--small">
+        Capped at {Math.round(MAX_CONTEXT_CONTRIBUTION * 100)}%. Context is there to inform your
+        judgement, never to outvote it.
+      </p>
+
+      <label class="field">
+        <span class="label">Questions for</span>
+        <select class="select" bind:value={facetType}>
+          {#each ENTITY_TYPES as type (type)}
+            <option value={type}>{entityLabelCap(type, true)}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">
+          {typeOverride === undefined
+            ? `${entityLabelCap(facetType, true)} follow the setting above (${Math.round($settings.contextContribution * 100)}%)`
+            : `${entityLabelCap(facetType, true)} use ${Math.round(typeOverride * 100)}% instead`}
+        </span>
+        <input
+          class="slider"
+          type="range"
+          min="0"
+          max={MAX_CONTEXT_CONTRIBUTION}
+          step="0.05"
+          value={contextHere}
+          disabled={!$settings.contextEnabled}
+          oninput={(event) => void setTypeContribution(Number(event.currentTarget.value))}
+        />
+      </label>
+      {#if typeOverride !== undefined}
+        <p>
+          <button
+            type="button"
+            class="btn btn--small"
+            onclick={() => void setTypeContribution(null)}
+          >
+            Follow the setting above again
+          </button>
+        </p>
+      {/if}
+
+      <ul class="facets">
+        {#each facetsHere as facet, index (facet.id)}
+          <li class="facet" class:is-off={!facet.enabled}>
+            <div class="facet__top">
+              <label class="check facet__on">
+                <input
+                  type="checkbox"
+                  checked={facet.enabled}
+                  onchange={(event) =>
+                    void patchFacet(facet.id, { enabled: event.currentTarget.checked })}
+                />
+                <span class="sr-only">Ask “{facet.label}” about {entityLabel(facetType, true)}</span
+                >
+              </label>
+              <input
+                class="input facet__label"
+                value={facet.label}
+                aria-label="Name of this question"
+                onchange={(event) =>
+                  void patchFacet(facet.id, {
+                    label: event.currentTarget.value.trim() || facet.label,
+                  })}
+              />
+              <span class="facet__move">
+                <button
+                  type="button"
+                  class="btn btn--small btn--quiet"
+                  disabled={index === 0}
+                  onclick={() => void moveFacet(facet.id, -1)}
+                >
+                  <Icon name="arrow-up" size={13} />
+                  <span class="sr-only">Move {facet.label} up</span>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--small btn--quiet"
+                  disabled={index === facetsHere.length - 1}
+                  onclick={() => void moveFacet(facet.id, 1)}
+                >
+                  <Icon name="arrow-down" size={13} />
+                  <span class="sr-only">Move {facet.label} down</span>
+                </button>
+                {#if !facet.builtin}
+                  <button
+                    type="button"
+                    class="btn btn--small btn--quiet"
+                    onclick={() => void removeFacet(facet)}
+                  >
+                    Remove
+                    <span class="sr-only">{facet.label}</span>
+                  </button>
+                {/if}
+              </span>
+            </div>
+
+            <input
+              class="input facet__desc"
+              value={facet.description}
+              aria-label="What “{facet.label}” asks"
+              onchange={(event) =>
+                void patchFacet(facet.id, {
+                  description: event.currentTarget.value.trim() || facet.description,
+                })}
+            />
+
+            <div class="facet__weight">
+              <input
+                class="slider"
+                type="range"
+                min="0"
+                max="3"
+                step="0.25"
+                value={facet.weight}
+                disabled={!facet.enabled}
+                aria-label="Weight of {facet.label}"
+                oninput={(event) =>
+                  void patchFacet(facet.id, { weight: Number(event.currentTarget.value) })}
+              />
+              <span class="figure">×{facet.weight}</span>
+            </div>
+          </li>
+        {/each}
+      </ul>
+      {#if facetsHere.length === 0}
+        <p class="note">
+          No questions apply to {entityLabel(facetType, true)} yet. Add one below.
+        </p>
+      {/if}
+      <p class="note note--small">
+        Weights are relative and renormalised over whatever you actually answer, so leaving a
+        question blank raises the others rather than dragging the score down. Changing weights
+        changes what today's scores read; the answers on each entry stay exactly as you gave them.
+      </p>
+
+      <details class="facets__add">
+        <summary class="label">Add a question</summary>
+        <label class="field">
+          <span class="label">Name</span>
+          <input class="input" bind:value={newLabel} placeholder="Lyrics" />
+        </label>
+        <label class="field">
+          <span class="label">What it asks</span>
+          <input class="input" bind:value={newDescription} placeholder="How good the writing is." />
+        </label>
+        <fieldset class="types">
+          <legend class="label">Ask it about</legend>
+          <div class="types__grid">
+            {#each ENTITY_TYPES as type (type)}
+              <label class="check">
+                <input
+                  type="checkbox"
+                  checked={newTypes.includes(type)}
+                  onchange={() =>
+                    (newTypes = newTypes.includes(type)
+                      ? newTypes.filter((t) => t !== type)
+                      : [...newTypes, type])}
+                />
+                <span>{entityLabelCap(type, true)}</span>
+              </label>
+            {/each}
+          </div>
+        </fieldset>
+        <p>
+          <button
+            type="button"
+            class="btn btn--primary"
+            disabled={!newLabel.trim() || newTypes.length === 0}
+            onclick={() => void addFacet()}
+          >
+            Add question
+          </button>
+        </p>
+      </details>
+
+      <p>
+        <button type="button" class="btn btn--small" onclick={() => void restoreFacets()}>
+          Restore the built-in questions
+        </button>
+      </p>
     </section>
 
     <!-- ---------------------------------------------------------------- -->
@@ -819,6 +1129,75 @@
     display: flex;
     flex-direction: column;
     gap: var(--s2);
+  }
+
+  /* Each question is one editable object: what it is called, what it asks, and
+     how much it counts, on three lines that stay in that order at any width. */
+  .facets {
+    display: flex;
+    flex-direction: column;
+  }
+  .facet {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s3) 0;
+    border-top: var(--rule-weight) solid var(--border-faint);
+  }
+  .facet:last-child {
+    border-bottom: var(--rule-weight) solid var(--border-faint);
+  }
+  .facet.is-off {
+    opacity: 0.55;
+  }
+  .facet__top {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    flex-wrap: wrap;
+  }
+  .facet__on {
+    flex: none;
+  }
+  .facet__label {
+    flex: 1 1 12rem;
+    min-width: 0;
+    font-weight: 600;
+  }
+  .facet__move {
+    display: flex;
+    gap: var(--s1);
+    flex: none;
+  }
+  .facet__desc {
+    width: 100%;
+    font-size: 0.875rem;
+  }
+  .facet__weight {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3rem;
+    gap: var(--s3);
+    align-items: center;
+  }
+  .facet__weight .figure {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.875rem;
+  }
+
+  .facets__add summary {
+    cursor: pointer;
+    padding: var(--s2) 0;
+  }
+  .types {
+    border: 0;
+    padding: 0;
+    margin: 0 0 var(--s3);
+  }
+  .types__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--s2);
+    margin-top: var(--s2);
   }
   .weights li {
     display: grid;

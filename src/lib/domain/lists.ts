@@ -1,4 +1,5 @@
 import { hashString } from './ids';
+import { pickView } from './ratings';
 import type { ExplicitRating } from './ratings';
 import type { ContainmentGraph } from './graph';
 import type { EntityAnnotation, EntityId, EntityType, ScoreBreakdown, ScoreView } from './types';
@@ -62,9 +63,15 @@ export interface ListInput {
 }
 
 function scoreFor(breakdown: ScoreBreakdown, view: ScoreView): number | null {
-  if (view === 'explicit') return breakdown.explicit;
-  if (view === 'rollup') return breakdown.rollup;
-  return breakdown.blended;
+  return pickView(view, breakdown);
+}
+
+/** Why an item has no number in this view, in the view's own terms. */
+function dropReasonFor(view: ScoreView): string {
+  if (view === 'explicit') return DROP_REASONS.notRated;
+  if (view === 'context') return DROP_REASONS.noContext;
+  if (view === 'contextAdjusted') return DROP_REASONS.notRated;
+  return DROP_REASONS.nothingToCompute;
 }
 
 /**
@@ -75,6 +82,7 @@ function scoreFor(breakdown: ScoreBreakdown, view: ScoreView): number | null {
 export const DROP_REASONS = {
   noScore: 'No score yet',
   notRated: 'You have not rated it',
+  noContext: 'You have not answered any context questions for it',
   outsideRange: 'Rated outside the time range',
   lowConfidence: 'Not confident enough yet',
   lowCoverage: 'Too little of it rated',
@@ -144,7 +152,7 @@ export function buildRankedList(input: ListInput, filters: ListFilters): RankedL
     }
     const value = scoreFor(breakdown, filters.view);
     if (value == null) {
-      drop(filters.view === 'explicit' ? DROP_REASONS.notRated : DROP_REASONS.nothingToCompute);
+      drop(dropReasonFor(filters.view));
       continue;
     }
     scored.push({ entityId: entity.id, score: value, breakdown });

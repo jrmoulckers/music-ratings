@@ -346,3 +346,85 @@ describe('settings classification', () => {
     expect(hydrateSettings({ enabledTypes: [] }).enabledTypes.length).toBeGreaterThan(0);
   });
 });
+
+describe('contextual settings travel with the judgement', () => {
+  it('starts switched off, so installing this changes nobody\u2019s scores', () => {
+    const settings = defaultSettings();
+    expect(settings.contextEnabled).toBe(false);
+    expect(settings.contextByType).toEqual({});
+    expect(settings.facets.length).toBeGreaterThan(0);
+  });
+
+  it('syncs facets and the contribution, because they are judgements not devices', () => {
+    const portable = portableSettings(defaultSettings());
+    expect(portable).toHaveProperty('facets');
+    expect(portable).toHaveProperty('contextEnabled');
+    expect(portable).toHaveProperty('contextContribution');
+    expect(portable).toHaveProperty('contextByType');
+  });
+
+  it('carries a newer facet configuration across from another device', () => {
+    const local = { ...defaultSettings(), updatedAt: 1 };
+    const merged = mergeSettings(local, {
+      updatedAt: 2,
+      contextEnabled: true,
+      contextContribution: 0.35,
+      facets: [
+        {
+          id: 'sleeve',
+          label: 'Sleeve',
+          description: 'How good the cover is.',
+          types: ['album' as const],
+          weight: 2,
+          enabled: true,
+          builtin: false,
+          order: 0,
+        },
+      ],
+    });
+    expect(merged.contextEnabled).toBe(true);
+    expect(merged.contextContribution).toBe(0.35);
+    expect(merged.facets.find((f) => f.id === 'sleeve')?.weight).toBe(2);
+    // Built-ins the other device still had are adopted rather than lost.
+    expect(merged.facets.find((f) => f.id === 'enjoyment')).toBeDefined();
+  });
+
+  it('keeps a facet the user switched off or reweighted exactly as they left it', () => {
+    const stored = defaultSettings().facets.map((f) =>
+      f.id === 'craft' ? { ...f, enabled: false, label: 'Musicianship', weight: 3 } : f,
+    );
+    const hydrated = hydrateSettings({ facets: stored });
+    const craft = hydrated.facets.find((f) => f.id === 'craft');
+    expect(craft).toMatchObject({ enabled: false, label: 'Musicianship', weight: 3 });
+  });
+
+  it('adopts a built-in the stored copy never saw', () => {
+    const hydrated = hydrateSettings({
+      facets: defaultSettings().facets.filter((f) => f.id === 'enjoyment'),
+    });
+    expect(hydrated.facets.find((f) => f.id === 'curation')).toBeDefined();
+  });
+
+  it('clamps a contribution that arrived out of range', () => {
+    expect(hydrateSettings({ contextContribution: 9 }).contextContribution).toBe(0.5);
+    expect(hydrateSettings({ contextByType: { album: 9 } }).contextByType.album).toBe(0.5);
+    expect(hydrateSettings({ contextByType: { album: -1 } }).contextByType.album).toBe(0);
+  });
+
+  it('falls back to the built-ins when the stored list is unusable', () => {
+    expect(hydrateSettings({ facets: [] }).facets.length).toBeGreaterThan(0);
+    expect(
+      hydrateSettings({ facets: [{ id: '', label: '' } as never] }).facets.length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('survives a round trip through JSON, as an export and import must', () => {
+    const settings = { ...defaultSettings(), contextEnabled: true, contextContribution: 0.25 };
+    const restored = hydrateSettings(
+      JSON.parse(JSON.stringify(portableSettings(settings))) as Partial<typeof settings>,
+    );
+    expect(restored.contextEnabled).toBe(true);
+    expect(restored.contextContribution).toBe(0.25);
+    expect(restored.facets).toEqual(settings.facets);
+  });
+});

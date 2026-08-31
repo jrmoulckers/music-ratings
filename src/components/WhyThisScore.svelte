@@ -20,6 +20,8 @@
 
   let { breakdown, scale }: Props = $props();
 
+  const context = $derived(breakdown.context ?? null);
+
   const CHANNEL_NAME: Record<string, string> = {
     explicit: 'Your own rating',
     directChildren: 'Direct contents',
@@ -75,6 +77,58 @@
     that actually exists, so a missing channel raises the others rather than dragging the score
     down.
   </p>
+
+  {#if context}
+    <div class="why__context">
+      <h4 class="label">Your rating, in context</h4>
+      <p class="why__blend">
+        <span class="why__part">
+          <span class="note note--small">Your rating</span>
+          <span class="figure">{grade(breakdown.explicit, 'explicit')}</span>
+        </span>
+        <span class="why__part">
+          <span class="note note--small">Context</span>
+          <span class="figure">{grade(context.score, 'explicit')}</span>
+        </span>
+        {#if context.adjusted !== null}
+          <span class="why__part why__part--out">
+            <span class="note note--small">Adjusted</span>
+            <span class="figure">{grade(context.adjusted, 'explicit')}</span>
+          </span>
+        {/if}
+      </p>
+
+      <ul class="why__list">
+        {#each context.rows as row (row.facetId)}
+          <li class:is-out={row.orphaned}>
+            <span>{row.label}</span>
+            <span class="figure">{grade(row.normalized, 'explicit')}</span>
+            <span class="note">
+              {row.orphaned ? 'not counted' : `${percent(row.appliedWeight)} of context`}
+            </span>
+          </li>
+        {/each}
+      </ul>
+
+      <p class="note note--small">
+        {context.coverage.rated} of {context.coverage.total} context questions answered.
+        {#if context.enabled && context.contribution > 0}
+          Context carries {percent(context.contribution)} of your rating, so the adjusted figure is what
+          the channel above uses.
+        {:else}
+          Context contribution is switched off, so these answers are recorded but change nothing.
+        {/if}
+        These are your judgements, not Spotify data.
+      </p>
+
+      {#if context.savedWith}
+        <p class="note note--small">
+          Rated with different weights than the ones set today, so the figure above is calculated
+          from your current settings.
+        </p>
+      {/if}
+    </div>
+  {/if}
 
   {#if breakdown.coverage.total > 0}
     <p class="note">
@@ -220,5 +274,36 @@
   .why__excluded {
     border-top: var(--rule-weight) solid var(--border-faint);
     padding-top: var(--s3);
+  }
+
+  /* Context is set apart from the channels: it does not add a fifth source, it
+     moves the first one. Printing it inside the channel list would suggest
+     otherwise, and double counting is exactly what this model rules out. */
+  .why__context {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s3);
+    background: var(--surface-sunk);
+    border: var(--rule-weight) solid var(--border-faint);
+  }
+  .why__blend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s2) var(--s5);
+    align-items: baseline;
+  }
+  .why__part {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s2);
+    font-variant-numeric: tabular-nums;
+  }
+  .why__part--out .figure {
+    color: var(--accent-ink);
+    font-size: 1.125rem;
+  }
+  .why__list li.is-out {
+    color: var(--ink-faint);
   }
 </style>

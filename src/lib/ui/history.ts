@@ -1,4 +1,5 @@
-import type { RatingConfidence, RatingEvent } from '../domain/types';
+import { copySnapshot } from '../domain/context';
+import type { ContextSnapshot, RatingConfidence, RatingEvent } from '../domain/types';
 
 /**
  * What a history entry is, and what can be done to it.
@@ -38,20 +39,26 @@ export function entryAction(event: RatingEvent): EntryAction {
 /**
  * How the editor opens on an entry.
  *
- * From the entry you clicked — its value, its note, its confidence — and not
- * from whatever the newest rating happens to be. Someone reopening a six they
- * gave in March wants to start from the six.
+ * From the entry you clicked — its value, its note, its confidence, the context
+ * answers it was saved with — and not from whatever the newest rating happens
+ * to be. Someone reopening a six they gave in March wants to start from the
+ * six, with the reasons they gave for it.
  */
 export interface EntrySeed {
   normalized: number;
   note?: string;
   confidence?: RatingConfidence;
+  contextual?: ContextSnapshot;
 }
 
 export function seedFrom(event: RatingEvent): EntrySeed {
+  // Copied, not shared: the draft the editor hands back must not be able to
+  // reach into the entry it was seeded from.
+  const contextual = copySnapshot(event.contextual);
   return {
     normalized: event.normalized,
     ...(event.note ? { note: event.note } : {}),
     ...(event.confidence ? { confidence: event.confidence } : {}),
+    ...(contextual ? { contextual } : {}),
   };
 }

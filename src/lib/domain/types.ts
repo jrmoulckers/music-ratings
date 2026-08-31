@@ -193,6 +193,70 @@ export type RatingConfidence = 'low' | 'medium' | 'high';
 
 export type RatingContext = 'queue' | 'detail' | 'duel' | 'import' | 'bulk';
 
+/* -------------------------------------------------------------------------- */
+/* Contextual ratings                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A facet is one named angle you can judge something from — how much you enjoy
+ * it, how well made it is, how original it was when it came out.
+ *
+ * Facets are the user's own judgements. Nothing here is ever inferred from
+ * Spotify: a release year is a fact and may be shown, but whether that release
+ * was innovative is an opinion only its listener can hold.
+ */
+export interface FacetConfig {
+  /** Stable across renames, so history keeps pointing at the right facet. */
+  id: string;
+  label: string;
+  description: string;
+  /** Entity types this facet is offered for. */
+  types: EntityType[];
+  /** Relative weight within the context score. Renormalised over rated facets. */
+  weight: number;
+  enabled: boolean;
+  builtin: boolean;
+  /**
+   * Marks a facet that asks about the item's own moment rather than yours, so
+   * the editor can print the release year beside it as factual context.
+   */
+  temporal?: boolean;
+  /** Display order, lowest first. */
+  order: number;
+}
+
+/** One facet judgement, recorded exactly like a direct rating. */
+export interface FacetJudgement {
+  facetId: string;
+  /** The value as entered, in the units of `scaleId`. */
+  value: number;
+  scaleId: string;
+  /** Canonical 0..100 projection. */
+  normalized: number;
+  /** A short line of evidence, in the user's words. */
+  note?: string;
+}
+
+export const CONTEXT_SCHEMA_VERSION = 1;
+
+/**
+ * The contextual payload carried by one rating event.
+ *
+ * The judgements are the record and never change. The weights and contribution
+ * are kept alongside them so the app can always say what the settings were at
+ * the time, even though today's score is computed with today's settings.
+ */
+export interface ContextSnapshot {
+  v: number;
+  facets: FacetJudgement[];
+  /** Weight per rated facet id as configured when this event was saved. */
+  weights: Record<string, number>;
+  /** Context contribution in force when this event was saved, 0..1. */
+  contribution: number;
+  /** How many facets applied to this type when saved, for honest coverage. */
+  applicable: number;
+}
+
 /**
  * A rating is an event, not a field. The current explicit rating for an entity
  * is the newest live event; every earlier one is kept for the timeline.
@@ -212,6 +276,12 @@ export interface RatingEvent {
   note?: string;
   tags?: string[];
   context?: RatingContext;
+  /**
+   * Optional multi-facet judgement made at the same moment. Absent on every
+   * rating saved before contextual ratings existed, and absent on every rating
+   * saved since where the user did not open the context section.
+   */
+  contextual?: ContextSnapshot;
   /** Epoch ms this event was retracted (undo). Retracted events never count. */
   retracted?: number;
   /** Epoch ms this event was corrected in place. Shown in the timeline. */
@@ -386,11 +456,60 @@ export interface Coverage {
   meetsMinimum: boolean;
 }
 
+/** One facet's share of a context score, with the arithmetic laid open. */
+export interface FacetContribution {
+  facetId: string;
+  label: string;
+  /** 0..100. */
+  normalized: number;
+  /** The value as entered. */
+  value: number;
+  scaleId: string;
+  /** Weight as configured today. */
+  requestedWeight: number;
+  /** Weight after renormalising over the facets actually rated. */
+  appliedWeight: number;
+  note?: string;
+  /**
+   * The facet no longer exists, is switched off, or no longer applies to this
+   * type. Its judgement is kept and shown but takes no part in the score.
+   */
+  orphaned?: boolean;
+}
+
+export interface ContextExplanation {
+  /** Weighted mean over rated facets, 0..100, or null when none count. */
+  score: number | null;
+  /** Blend of the direct rating and the context score, or null. */
+  adjusted: number | null;
+  /** Contribution actually applied, 0..1. Zero when switched off. */
+  contribution: number;
+  /** Whether context is allowed to move the result at all. */
+  enabled: boolean;
+  coverage: Coverage;
+  rows: FacetContribution[];
+  /**
+   * Weights this event was saved with, present only when they differ from the
+   * ones used above, so a settings change is visible rather than silent.
+   */
+  savedWith?: Record<string, number>;
+}
+
 export interface ScoreBreakdown {
   entityId: EntityId;
   entityType: EntityType;
-  /** Explicit rating, 0..100, or null if never rated. */
+  /** The direct rating, 0..100, or null if never rated. Context never moves it. */
   explicit: number | null;
+  /** Weighted mean of the contextual facets, 0..100, or null. */
+  contextScore: number | null;
+  /** Direct rating blended with the context score, 0..100, or null. */
+  contextAdjusted: number | null;
+  /**
+   * The value the explicit channel actually consumed: the context-adjusted
+   * rating where context is switched on and available, the direct rating
+   * otherwise. Counted exactly once, and never as a channel of its own.
+   */
+  effectiveExplicit: number | null;
   /** Computed rollup, 0..100, or null when there was no evidence at all. */
   rollup: number | null;
   /** Blend of explicit and rollup per the display preference. */
@@ -402,10 +521,14 @@ export interface ScoreBreakdown {
   method: AggregationMethod;
   exclusions: ExclusionNote[];
   ranking?: RankingState;
+  /** Present only when the current rating carried contextual facets. */
+  context?: ContextExplanation;
   computedAt: number;
 }
 
-export type ScoreView = 'explicit' | 'rollup' | 'blended';
+export const SCORE_VIEWS = ['explicit', 'context', 'contextAdjusted', 'rollup', 'blended'] as const;
+
+export type ScoreView = (typeof SCORE_VIEWS)[number];
 
 /* -------------------------------------------------------------------------- */
 /* Suggestions                                                                */

@@ -2,6 +2,7 @@ import { uid } from '../domain/ids';
 import type {
   Collection,
   Comparison,
+  ContextSnapshot,
   Entity,
   EntityAnnotation,
   EntityId,
@@ -130,6 +131,7 @@ export interface RatingDraft {
   note?: string;
   tags?: string[];
   context?: RatingEvent['context'];
+  contextual?: ContextSnapshot | null;
   at?: number;
 }
 
@@ -149,6 +151,7 @@ export async function recordRating(draft: RatingDraft): Promise<RatingEvent> {
   if (draft.note) event.note = draft.note;
   if (draft.tags?.length) event.tags = draft.tags;
   if (draft.context) event.context = draft.context;
+  if (draft.contextual?.facets.length) event.contextual = draft.contextual;
   await putRecord('ratings', event);
   markDataChanged();
   return event;

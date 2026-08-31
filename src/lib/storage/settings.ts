@@ -1,7 +1,14 @@
 import { DEFAULT_SCALE_ID } from '../domain/scales';
 import { DEFAULT_SUGGESTION_WEIGHTS } from '../domain/suggestions';
 import { defaultRollupConfigByType } from '../domain/rollup';
-import type { EntityType, RollupConfigByType, ScoreView, SuggestionWeights } from '../domain/types';
+import { DEFAULT_CONTEXT_CONTRIBUTION, clampContribution, defaultFacets } from '../domain/context';
+import type {
+  EntityType,
+  FacetConfig,
+  RollupConfigByType,
+  ScoreView,
+  SuggestionWeights,
+} from '../domain/types';
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
 export type MotionChoice = 'system' | 'reduce' | 'full';
@@ -22,6 +29,18 @@ export interface AppSettings {
   scoreView: ScoreView;
   /** Weight of the explicit rating in the blended view, 0..1. */
   blendExplicitWeight: number;
+  /**
+   * Whether contextual facets are allowed to move a score. Off by default:
+   * turning this feature on must never change a number nobody asked it to.
+   * Facets can be recorded either way.
+   */
+  contextEnabled: boolean;
+  /** Share of the result the context score carries, 0..0.5. */
+  contextContribution: number;
+  /** Per-type override of the contribution. */
+  contextByType: Partial<Record<EntityType, number>>;
+  /** The facet questions, built-in and user-made. */
+  facets: FacetConfig[];
   showExplicitContent: boolean;
   goalsEnabled: boolean;
   dailyGoal: number;
@@ -57,6 +76,10 @@ export const PORTABLE_SETTINGS = [
   'staleAfterDays',
   'scoreView',
   'blendExplicitWeight',
+  'contextEnabled',
+  'contextContribution',
+  'contextByType',
+  'facets',
   'showExplicitContent',
   'goalsEnabled',
   'dailyGoal',
@@ -100,6 +123,10 @@ export function defaultSettings(): AppSettings {
     staleAfterDays: 365,
     scoreView: 'blended',
     blendExplicitWeight: 0.6,
+    contextEnabled: false,
+    contextContribution: DEFAULT_CONTEXT_CONTRIBUTION,
+    contextByType: {},
+    facets: defaultFacets(),
     showExplicitContent: true,
     goalsEnabled: false,
     dailyGoal: 10,
@@ -135,8 +162,59 @@ export function hydrateSettings(stored: Partial<AppSettings> | undefined): AppSe
   merged.suggestionWeights = { ...base_.suggestionWeights, ...(stored.suggestionWeights ?? {}) };
   merged.enabledTypes = (stored.enabledTypes ?? base_.enabledTypes).filter(Boolean);
   if (merged.enabledTypes.length === 0) merged.enabledTypes = [...DEFAULT_ENABLED_TYPES];
+  merged.contextEnabled = stored.contextEnabled === true;
+  merged.contextContribution = clampContribution(
+    stored.contextContribution ?? base_.contextContribution,
+  );
+  merged.contextByType = clampByType(stored.contextByType);
+  merged.facets = hydrateFacets(stored.facets);
   merged.schemaVersion = SETTINGS_SCHEMA_VERSION;
   return merged;
+}
+
+function clampByType(
+  stored: Partial<Record<EntityType, number>> | undefined,
+): Partial<Record<EntityType, number>> {
+  const out: Partial<Record<EntityType, number>> = {};
+  for (const [type, value] of Object.entries(stored ?? {})) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    out[type as EntityType] = clampContribution(value);
+  }
+  return out;
+}
+
+/**
+ * Keep the user's facet edits, and adopt any built-in they have never seen.
+ *
+ * A facet the user renamed, reweighted or switched off stays exactly as they
+ * left it. A built-in added in a later release simply appears, because a
+ * question that never shows up is worse than one you can turn off.
+ */
+function hydrateFacets(stored: FacetConfig[] | undefined): FacetConfig[] {
+  if (!Array.isArray(stored)) return defaultFacets();
+  const clean = stored.filter(
+    (f): f is FacetConfig =>
+      !!f &&
+      typeof f.id === 'string' &&
+      !!f.id &&
+      typeof f.label === 'string' &&
+      f.label.length > 0,
+  );
+  if (clean.length === 0) return defaultFacets();
+  const seen = new Set(clean.map((f) => f.id));
+  const out = clean.map((f, i) => ({
+    ...f,
+    description: typeof f.description === 'string' ? f.description : '',
+    types: Array.isArray(f.types) ? [...f.types] : [],
+    weight: Number.isFinite(f.weight) ? Math.max(0, f.weight) : 1,
+    enabled: f.enabled !== false,
+    builtin: f.builtin === true,
+    order: Number.isFinite(f.order) ? f.order : i,
+  }));
+  for (const builtin of defaultFacets()) {
+    if (!seen.has(builtin.id)) out.push({ ...builtin, order: out.length });
+  }
+  return out;
 }
 
 export function portableSettings(settings: AppSettings): Pick<AppSettings, Portable> {
