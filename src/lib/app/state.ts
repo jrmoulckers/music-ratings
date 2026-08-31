@@ -8,6 +8,8 @@ import { computeScores } from '../domain/rollup';
 import { BUILTIN_SCALES, resolveScale } from '../domain/scales';
 import { typeNoun } from '../domain/reasons';
 import { EMPTY_SIGNALS, scoreSuggestions, type ListeningSignals } from '../domain/suggestions';
+import type { AlbumCompletion, PlayEvent } from '../domain/listening';
+import { PlayIndex, catalogueFrom, type Catalogue } from '../domain/listening-stats';
 import type {
   Collection,
   Comparison,
@@ -46,6 +48,8 @@ export interface World {
   annotations: EntityAnnotation[];
   collections: Collection[];
   scales: RatingScale[];
+  plays: PlayEvent[];
+  completions: AlbumCompletion[];
 }
 
 const EMPTY_WORLD: World = {
@@ -57,6 +61,8 @@ const EMPTY_WORLD: World = {
   annotations: [],
   collections: [],
   scales: [],
+  plays: [],
+  completions: [],
 };
 
 export const world = writable<World>(EMPTY_WORLD);
@@ -243,6 +249,46 @@ export const pinnedIds: Readable<Set<EntityId>> = derived(world, ($world) => {
   return out;
 });
 
+/* -------------------------------------------------------------------------- */
+/* Listening                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The confirmed play log, in a form pages can query cheaply.
+ *
+ * Built once per data change and shared by every surface that shows listening,
+ * so an album page costs a handful of array lookups instead of a pass over
+ * however many plays have accumulated.
+ */
+export const playIndex: Readable<PlayIndex> = derived(
+  world,
+  ($world) => new PlayIndex($world.plays),
+);
+
+/** Catalogue lookups the statistics need, memoised alongside the graph. */
+export const catalogue: Readable<Catalogue> = derived(graph, ($graph) => catalogueFrom($graph));
+
+export const completions: Readable<AlbumCompletion[]> = derived(world, ($world) =>
+  [...$world.completions].sort((a, b) => b.endAt - a.endAt),
+);
+
+/**
+ * Completions still waiting for an answer.
+ *
+ * A snoozed prompt comes back when its time is up; a rated or dismissed one
+ * never does. The prompt outlives reloads and navigation on purpose — an album
+ * finished on the bus should still be there in the evening.
+ */
+export const openCompletions: Readable<AlbumCompletion[]> = derived(
+  [completions, settings, clock],
+  ([$completions, $settings, $clock]) => {
+    if (!$settings.completionPrompts) return [];
+    return $completions.filter(
+      (c) => c.prompt === 'open' || (c.prompt === 'snoozed' && (c.snoozeUntil ?? 0) <= $clock),
+    );
+  },
+);
+
 export const suggestions: Readable<Suggestion[]> = derived(
   [
     graph,
@@ -253,6 +299,7 @@ export const suggestions: Readable<Suggestion[]> = derived(
     settings,
     queueStatesById,
     pinnedIds,
+    openCompletions,
     clock,
     ratePassStartedAt,
   ],
@@ -265,6 +312,7 @@ export const suggestions: Readable<Suggestion[]> = derived(
     $settings,
     $queueStates,
     $pinned,
+    $openCompletions,
     $clock,
     $passStartedAt,
   ]) =>
@@ -280,6 +328,11 @@ export const suggestions: Readable<Suggestion[]> = derived(
       staleAfterDays: $settings.staleAfterDays,
       passStartedAt: $passStartedAt,
       pinnedIds: $pinned,
+      finishedAlbums: $openCompletions.map((c) => ({
+        albumId: c.albumId,
+        endAt: c.endAt,
+        trackCount: c.trackCount,
+      })),
       now: $clock,
     }),
 );

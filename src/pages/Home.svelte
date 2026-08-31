@@ -19,6 +19,7 @@
   import { relative } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import Empty from '../components/Empty.svelte';
+  import CompletionBand from '../components/CompletionBand.svelte';
   import Artwork from '../components/Artwork.svelte';
   import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
   import RatableRow from '../components/RatableRow.svelte';
@@ -106,6 +107,8 @@
         <kbd class="home__key">/</kbd>
       </button>
     </header>
+
+    <CompletionBand />
 
     <div class="home">
       <section class="home__now" aria-labelledby="next-head">

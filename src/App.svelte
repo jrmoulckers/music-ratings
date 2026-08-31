@@ -8,6 +8,7 @@
   import { closeSearch, openSearch, searchOpen } from './lib/app/search-overlay';
   import { bootFailure, ready, settings, startStateSync } from './lib/app/state';
   import { startSyncController } from './lib/app/sync';
+  import { watchListening } from './lib/listening/watch';
   import NavRail from './components/NavRail.svelte';
   import MiniPlayer from './components/MiniPlayer.svelte';
   import Notices from './components/Notices.svelte';
@@ -20,6 +21,7 @@
   import Home from './pages/Home.svelte';
   import Insights from './pages/Insights.svelte';
   import Library from './pages/Library.svelte';
+  import Listening from './pages/Listening.svelte';
   import NotFound from './pages/NotFound.svelte';
   import NowPlaying from './pages/NowPlaying.svelte';
   import Onboarding from './pages/Onboarding.svelte';
@@ -33,6 +35,7 @@
     const stopRouter = startRouter();
     const stopState = startStateSync();
     const stopSync = startSyncController();
+    const stopListening = watchListening();
 
     const up = () => (online = true);
     const down = () => (online = false);
@@ -43,6 +46,7 @@
       stopRouter();
       stopState();
       stopSync();
+      stopListening();
       removeEventListener('online', up);
       removeEventListener('offline', down);
     };
@@ -121,6 +125,8 @@
       <History />
     {:else if $route.name === 'insights'}
       <Insights />
+    {:else if $route.name === 'listening'}
+      <Listening />
     {:else if $route.name === 'now-playing'}
       <NowPlaying />
     {:else if $route.name === 'settings'}

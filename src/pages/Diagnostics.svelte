@@ -2,13 +2,16 @@
   import { onMount } from 'svelte';
 
   import { entityHref, href } from '../lib/app/router';
-  import { graph, settings, world } from '../lib/app/state';
+  import { graph, refreshWorld, settings, world } from '../lib/app/state';
   import { resolveConflict, syncNow } from '../lib/app/sync';
   import { UNAVAILABLE_FEATURES } from '../lib/spotify/capabilities';
   import { spotifySession } from '../lib/spotify/session';
   import { syncState } from '../lib/storage/autosync';
   import { countAll, storageEstimate } from '../lib/storage/db';
   import { countRecords } from '../lib/storage/sync';
+  import { readCoverage } from '../lib/listening/ingest';
+  import { observedSince, coverageNotes } from '../lib/listening/phrasing';
+  import type { ListeningCoverage } from '../lib/domain/listening';
   import { bytes, dateAndTime, percent } from '../lib/ui/format';
   import { pwa } from '../lib/app/pwa';
 
@@ -28,6 +31,9 @@
   let counts = $state<Record<string, number> | null>(null);
   let estimate = $state<{ usage: number; quota: number } | null>(null);
   let persisted = $state<boolean | null>(null);
+  let coverage = $state<ListeningCoverage | null>(null);
+  let seeding = $state(false);
+  let seeded = $state('');
 
   /** Store keys are code. These are what the reader is actually looking at. */
   const STORE_LABEL: Record<string, string> = {
@@ -36,6 +42,8 @@
     ratings: 'Rating events',
     comparisons: 'Comparisons',
     queueStates: 'Queue decisions',
+    plays: 'Confirmed plays',
+    completions: 'Finished records',
     lists: 'Your lists',
     listItems: 'Items in lists',
     signals: 'Spotify signals',
@@ -50,8 +58,49 @@
       counts = await countAll();
       estimate = await storageEstimate();
       persisted = (await navigator.storage?.persisted?.()) ?? null;
+      coverage = await readCoverage();
     })();
   });
+
+  /**
+   * Development only. The Listening surface cannot be judged empty, and a real
+   * account takes weeks to fill, so this writes a few months of made-up history
+   * — including a record finished minutes ago — under locally-added items that
+   * can never be confused with anything Spotify confirmed.
+   */
+  const seedDemo = async () => {
+    seeding = true;
+    seeded = '';
+    try {
+      const { seedDemoListening } = await import('../lib/listening/demo');
+      const result = await seedDemoListening();
+      await refreshWorld();
+      counts = await countAll();
+      seeded = `Wrote ${result.plays.toLocaleString()} plays and ${result.completions.length} finished ${result.completions.length === 1 ? 'record' : 'records'}.`;
+    } catch (error) {
+      seeded =
+        error instanceof Error ? error.message : 'Could not write the demonstration history.';
+    } finally {
+      seeding = false;
+    }
+  };
+
+  const removeDemo = async () => {
+    seeding = true;
+    seeded = '';
+    try {
+      const { clearDemoListening } = await import('../lib/listening/demo');
+      const removed = await clearDemoListening();
+      await refreshWorld();
+      counts = await countAll();
+      seeded = `Removed ${removed.plays.toLocaleString()} plays and ${removed.completions} completions. The invented items themselves stay in the library until you delete them there.`;
+    } catch (error) {
+      seeded =
+        error instanceof Error ? error.message : 'Could not remove the demonstration history.';
+    } finally {
+      seeding = false;
+    }
+  };
 
   const orphans = $derived.by(() => {
     const missing: { id: string; kind: string }[] = [];
@@ -166,6 +215,86 @@
             ? 'not marked persistent: a browser short of space could evict it. Export a backup, or install the app, which usually grants persistence.'
             : 'of unknown persistence in this browser.'}
       </p>
+    </section>
+
+    <section class="group" aria-labelledby="d-listening">
+      <h2 id="d-listening" class="group__head title">Listening history</h2>
+      {#if coverage && coverage.firstFetchAt}
+        <p class="note">{observedSince(coverage.firstFetchAt)}</p>
+        <ul class="rows">
+          <li>
+            <span class="rows__label">Last checked</span>
+            <span class="figure"
+              >{coverage.lastFetchAt ? dateAndTime(coverage.lastFetchAt) : 'never'}</span
+            >
+          </li>
+          <li>
+            <span class="rows__label">Returned last time</span>
+            <span class="figure">
+              {coverage.lastFetchCount} plays · {coverage.lastFetchNew} new
+            </span>
+          </li>
+          <li>
+            <span class="rows__label">Newest play seen</span>
+            <span class="figure"
+              >{coverage.newestSeenAt ? dateAndTime(coverage.newestSeenAt) : 'none yet'}</span
+            >
+          </li>
+          <li>
+            <span class="rows__label">Checks that came back full</span>
+            <span class="figure">{coverage.saturatedFetches}</span>
+          </li>
+          <li>
+            <span class="rows__label">Known gaps</span>
+            <span class="figure">{coverage.gaps.length}</span>
+          </li>
+        </ul>
+        {#each coverageNotes(coverage) as line (line)}
+          <p class="note note--small note--warn">{line}</p>
+        {/each}
+      {:else}
+        <p class="note">
+          No listening has been observed yet. Connect Spotify and refresh, and plays it confirms
+          will be recorded from that moment on.
+        </p>
+      {/if}
+      <p class="note note--small">
+        Spotify returns only the fifty most recent plays per check, so anything played between two
+        checks that pushed past fifty is gone for good. Nothing here is a lifetime total.
+      </p>
+      <div class="row">
+        <a class="btn btn--quiet" href={href('/listening')}>Listening</a>
+        <a class="btn btn--quiet" href={href('/settings')}>History settings</a>
+      </div>
+
+      {#if import.meta.env.DEV}
+        <div class="row">
+          <button
+            type="button"
+            class="btn btn--small"
+            disabled={seeding}
+            onclick={() => void seedDemo()}
+          >
+            {seeding ? 'Writing…' : 'Seed demonstration history'}
+          </button>
+          <button
+            type="button"
+            class="btn btn--small btn--quiet"
+            disabled={seeding}
+            onclick={() => void removeDemo()}
+          >
+            Remove it
+          </button>
+        </div>
+        <p class="note note--small">
+          Development only. Writes a few months of invented listening under locally-added items,
+          including a record finished minutes ago. Running it again replaces what it wrote last time
+          rather than layering a second history on top.
+        </p>
+        {#if seeded}
+          <p class="note note--small" role="status">{seeded}</p>
+        {/if}
+      {/if}
     </section>
 
     <section class="group" aria-labelledby="d-sync">

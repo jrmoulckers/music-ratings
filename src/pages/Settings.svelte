@@ -42,7 +42,10 @@
     snapshotFileName,
   } from '../lib/storage/snapshot';
   import { markDataChanged } from '../lib/storage/changes';
-  import { dateAndTime, relative } from '../lib/ui/format';
+  import { countPlays, listPlays, purgeListeningHistory } from '../lib/storage/repo';
+  import { PLAY_SCHEMA_VERSION, RECENTLY_PLAYED_WINDOW } from '../lib/domain/listening';
+  import { completions } from '../lib/app/state';
+  import { dateAndTime, fullDate, relative } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import ScaleReadingCell from '../components/ScaleReadingCell.svelte';
 
@@ -230,6 +233,72 @@
       markDataChanged();
       await loadAll();
       notify('Everything local has been erased.');
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* -------------------------------------------------------------------- */
+  /* Listening history                                                    */
+  /* -------------------------------------------------------------------- */
+
+  let playCount = $state<number | null>(null);
+  let confirmForget = $state(false);
+  let forgetTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    // Re-counted whenever the log changes, so the figure beside the delete
+    // button is never stale enough to make the button feel dishonest.
+    void $completions;
+    void countPlays().then((n) => (playCount = n));
+  });
+
+  async function exportListening(): Promise<void> {
+    const plays = await listPlays();
+    const payload = {
+      kind: 'music-ratings.listening',
+      schemaVersion: PLAY_SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      observedFrom: $settings.listeningObservedFrom
+        ? new Date($settings.listeningObservedFrom).toISOString()
+        : null,
+      note: 'Plays confirmed by Spotify recently-played only. Not a complete listening history: Spotify returns the latest 50 plays per request, so anything played while this app was closed was never observed.',
+      plays,
+      completions: $completions,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `music-ratings-listening-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    notify(`Exported ${plays.length.toLocaleString()} plays as plain JSON.`);
+  }
+
+  /**
+   * Deleting takes two taps rather than a browser confirm box.
+   *
+   * The dialog would be the easy thing, but it hands the sentence to the
+   * browser to render and gives no room to say what survives. The button says
+   * what it is about to do, waits, and reverts if it is left alone.
+   */
+  async function deleteListening(): Promise<void> {
+    if (!confirmForget) {
+      confirmForget = true;
+      forgetTimer = setTimeout(() => (confirmForget = false), 5000);
+      return;
+    }
+    clearTimeout(forgetTimer);
+    confirmForget = false;
+    busy = true;
+    try {
+      const removed = await purgeListeningHistory();
+      await updateSettings({ listeningObservedFrom: 0 });
+      await loadAll();
+      notify(
+        `Deleted ${removed.plays.toLocaleString()} plays and ${removed.completions.toLocaleString()} completions. Your ratings are untouched.`,
+      );
     } finally {
       busy = false;
     }
@@ -1046,6 +1115,192 @@
           : 'none — the app uses whatever Spotify is already playing on'}. Choose one from the
         device list in Now Playing.
       </p>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="group" aria-labelledby="s-listening">
+      <h2 id="s-listening" class="group__head title">Listening history</h2>
+
+      <p class="note">
+        With this on, the app keeps a record of what Spotify says you played. It only counts a play
+        once Spotify itself lists it in your recently played — never from how far a track got in
+        this app. That log is yours: it stays on your devices, travels in your OneDrive copy if you
+        sync, and can be exported or deleted here at any time.
+      </p>
+
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={$settings.listeningEnabled}
+          onchange={(event) =>
+            void updateSettings({ listeningEnabled: event.currentTarget.checked })}
+        />
+        <span>
+          <span>Keep a record of what I played</span>
+          <span class="note note--small">
+            {#if $settings.listeningObservedFrom > 0}
+              Watching since {fullDate($settings.listeningObservedFrom)}. Turning this off stops new
+              plays being recorded and leaves what is already stored alone.
+            {:else}
+              Nothing recorded yet. Recording starts the next time listening is refreshed.
+            {/if}
+          </span>
+        </span>
+      </label>
+
+      <p class="note note--small">
+        Spotify returns only the latest {RECENTLY_PLAYED_WINDOW} plays each time it is asked, so anything
+        played while this app was closed for a long stretch was never visible to it. Nothing here is a
+        lifetime total, and Spotify publishes no comparison with other listeners, so this app shows none.
+      </p>
+
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={$settings.completionPrompts}
+          disabled={!$settings.listeningEnabled}
+          onchange={(event) =>
+            void updateSettings({ completionPrompts: event.currentTarget.checked })}
+        />
+        <span>
+          <span>Tell me when I finish a record</span>
+          <span class="note note--small">
+            Shows a card on Home and Rate once every available track on an album has a confirmed
+            play inside the window below. It waits to be answered; it never interrupts playback and
+            never rates anything for you.
+          </span>
+        </span>
+      </label>
+
+      <label class="field">
+        <span class="label">Completion window</span>
+        <select
+          class="select"
+          value={String($settings.completionWindowDays)}
+          disabled={!$settings.listeningEnabled}
+          onchange={(event) =>
+            void updateSettings({ completionWindowDays: Number(event.currentTarget.value) })}
+        >
+          <option value="1">One day — a record heard in a single stretch</option>
+          <option value="7">A week</option>
+          <option value="30">A month (default)</option>
+          <option value="90">Three months</option>
+          <option value="365">A year — very forgiving</option>
+        </select>
+        <span class="note note--small">
+          How close together the plays have to be. Every track must be heard inside this span for
+          the record to count as finished, so a long window means tracks heard months apart can
+          still close an album.
+        </span>
+      </label>
+
+      <label class="field">
+        <span class="label">Finishing a record again</span>
+        <select
+          class="select"
+          value={$settings.recompletionMode}
+          disabled={!$settings.listeningEnabled}
+          onchange={(event) =>
+            void updateSettings({
+              recompletionMode: event.currentTarget.value as AppSettings['recompletionMode'],
+            })}
+        >
+          <option value="off">Only ever record the first time</option>
+          <option value="fresh">Every fresh listen through (default)</option>
+          <option value="cooldown">A fresh listen, but not too soon</option>
+        </select>
+        <span class="note note--small">
+          A fresh listen means every track heard again after the last completion ended — the same
+          evidence can never close a record twice.
+        </span>
+      </label>
+
+      {#if $settings.recompletionMode === 'cooldown'}
+        <label class="field">
+          <span class="label">Wait at least</span>
+          <select
+            class="select"
+            value={String($settings.recompletionCooldownDays)}
+            onchange={(event) =>
+              void updateSettings({ recompletionCooldownDays: Number(event.currentTarget.value) })}
+          >
+            <option value="30">A month</option>
+            <option value="90">Three months (default)</option>
+            <option value="180">Six months</option>
+            <option value="365">A year</option>
+          </select>
+        </label>
+      {/if}
+
+      <label class="field">
+        <span class="label">Rank listening by</span>
+        <select
+          class="select"
+          value={$settings.listeningBasis}
+          onchange={(event) =>
+            void updateSettings({
+              listeningBasis: event.currentTarget.value as AppSettings['listeningBasis'],
+            })}
+        >
+          <option value="plays">Number of plays</option>
+          <option value="minutes">Estimated minutes</option>
+        </select>
+        <span class="note note--small">
+          Minutes are worked out from track lengths. Spotify does not say how much of a track was
+          actually heard, so it is the length of what was played, not time spent listening.
+        </span>
+      </label>
+
+      <label class="field">
+        <span class="label">Keep plays for</span>
+        <select
+          class="select"
+          value={String($settings.listeningRetentionDays)}
+          onchange={(event) =>
+            void updateSettings({ listeningRetentionDays: Number(event.currentTarget.value) })}
+        >
+          <option value="0">As long as I keep them</option>
+          <option value="365">A year</option>
+          <option value="730">Two years</option>
+          <option value="1825">Five years</option>
+        </select>
+        <span class="note note--small">
+          Older plays are removed on the next refresh. Completions already recorded are kept — they
+          store their own evidence.
+        </span>
+      </label>
+
+      <div class="row">
+        <div>
+          <p class="row__label">What is stored</p>
+          <p class="note note--small">
+            {playCount === null ? '…' : playCount.toLocaleString()} plays · {$completions.length.toLocaleString()}
+            completions{$settings.listeningObservedFrom > 0
+              ? ` · since ${fullDate($settings.listeningObservedFrom)}`
+              : ''}
+          </p>
+        </div>
+        <button type="button" class="btn btn--small" onclick={() => void exportListening()}>
+          Export listening history
+        </button>
+      </div>
+
+      <div class="row">
+        <div>
+          <p class="row__label">Forget what I played</p>
+          <p class="note note--small">
+            Deletes every play and every completion, here and on your other devices next time they
+            sync. Your ratings are untouched — they are separate records and always were.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn btn--small btn--danger"
+          onclick={() => void deleteListening()}
+        >
+          {confirmForget ? 'Tap again to delete' : 'Delete listening history'}
+        </button>
+      </div>
     </section>
 
     <!-- ---------------------------------------------------------------- -->

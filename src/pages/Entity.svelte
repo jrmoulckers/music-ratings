@@ -51,6 +51,7 @@
   import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
   import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
+  import EntityListening from '../components/EntityListening.svelte';
   import Artwork from '../components/Artwork.svelte';
   import RatableRow from '../components/RatableRow.svelte';
   import RatePanel from '../components/RatePanel.svelte';
@@ -629,6 +630,8 @@
           </p>
         </section>
       {/if}
+
+      <EntityListening {entity} />
 
       {#if history.length > 0}
         <section aria-labelledby="history-head">

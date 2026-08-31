@@ -18,10 +18,11 @@ import type {
   RatingEvent,
   RatingScale,
 } from '../domain/types';
+import type { AlbumCompletion, PlayEvent } from '../domain/listening';
 import type { AppSettings } from './settings';
 
 export const DB_NAME = 'music-ratings';
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /**
  * Everything the app knows lives here, on this device, in the user's browser.
@@ -53,6 +54,27 @@ export interface AppDB extends DBSchema {
   annotations: { key: EntityId; value: EntityAnnotation };
   collections: { key: string; value: Collection };
   scales: { key: string; value: RatingScale };
+  /**
+   * Spotify-confirmed plays. Keyed on a deterministic id built from the
+   * provider item and the exact instant, so two devices writing the same play
+   * write the same row and sync merges it rather than counting it twice.
+   */
+  plays: {
+    key: string;
+    value: PlayEvent;
+    indexes: {
+      byAt: number;
+      byEntity: EntityId;
+      byEntityAt: [EntityId, number];
+      byUpdated: number;
+    };
+  };
+  /** Records heard all the way through, with the evidence that proved it. */
+  completions: {
+    key: string;
+    value: AlbumCompletion;
+    indexes: { byAlbum: EntityId; byAt: number; byUpdated: number };
+  };
   /** Free-form singletons: settings, sync bookkeeping, provider cursors. */
   meta: { key: string; value: unknown };
 }
@@ -66,6 +88,8 @@ export type StoreName =
   | 'annotations'
   | 'collections'
   | 'scales'
+  | 'plays'
+  | 'completions'
   | 'meta';
 
 /** Stores whose records take part in sync. `meta` is handled separately. */
@@ -78,6 +102,8 @@ export const SYNCED_STORES = [
   'annotations',
   'collections',
   'scales',
+  'plays',
+  'completions',
 ] as const satisfies readonly StoreName[];
 
 export type SyncedStore = (typeof SYNCED_STORES)[number];
@@ -186,6 +212,20 @@ function openAt(version: number | undefined): Promise<IDBPDatabase<AppDB>> {
         // is purged outright rather than tombstoned: it was never real data,
         // and leaving it behind is exactly the confusion the removal fixes.
         purgeSeededSampleData(transaction);
+      }
+      if (oldVersion < 4) {
+        // v4 added the listening log. Confirmed plays are indexed by entity
+        // and time together so an album's window can be read without a scan.
+        const plays = database.createObjectStore('plays', { keyPath: 'id' });
+        plays.createIndex('byAt', 'at');
+        plays.createIndex('byEntity', 'entityId');
+        plays.createIndex('byEntityAt', ['entityId', 'at']);
+        plays.createIndex('byUpdated', 'updatedAt');
+
+        const completions = database.createObjectStore('completions', { keyPath: 'id' });
+        completions.createIndex('byAlbum', 'albumId');
+        completions.createIndex('byAt', 'endAt');
+        completions.createIndex('byUpdated', 'updatedAt');
       }
     },
     blocked() {

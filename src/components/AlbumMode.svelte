@@ -1,6 +1,6 @@
 <script lang="ts">
   import { entityHref } from '../lib/app/router';
-  import { explicitRatings, graph, scaleForType, scores } from '../lib/app/state';
+  import { explicitRatings, graph, playIndex, scaleForType, scores } from '../lib/app/state';
   import {
     albumProgress,
     albumRows,
@@ -45,12 +45,35 @@
     new Set(tracks.filter((t) => $explicitRatings.has(t.id)).map((t) => t.id)),
   );
 
+  /**
+   * Two different claims, kept apart.
+   *
+   * This device watching playback move past a track is not the same as Spotify
+   * having recorded it, and only the second one counts anywhere else in the app.
+   * The gap between them is real — Spotify reports a play some time after the
+   * fact — so the list says which it has rather than quietly promoting one to
+   * the other.
+   */
+  const confirmed = $derived.by(() => {
+    if (!session.albumId) return new Set<string>();
+    const since = session.startedAt;
+    return new Set(
+      tracks
+        .filter((track) => {
+          const last = $playIndex.lastPlayOf(track.id);
+          return last !== null && last >= since;
+        })
+        .map((track) => track.id),
+    );
+  });
+
   const rows = $derived(
     albumRows({
       tracks,
       currentUri: onAlbum ? (snapshot?.item?.uri ?? null) : null,
       listened,
       rated,
+      confirmed,
     }),
   );
   const progress = $derived(albumProgress(rows));
@@ -104,7 +127,7 @@
           <p class="note">
             {progress.rated} of {progress.total} tracks rated{progress.listened > 0
               ? ` · ${progress.listened} heard this sitting`
-              : ''}
+              : ''}{confirmed.size > 0 ? ` · ${confirmed.size} confirmed by Spotify` : ''}
           </p>
         </div>
         <div class="row">
@@ -194,7 +217,7 @@
               class:album__state--now={row.state === 'current'}
               title={status.spoken}
             >
-              <span aria-hidden="true">{row.state === 'upcoming' ? '' : status.text}</span>
+              <span aria-hidden="true">{status.text}</span>
               <span class="sr-only">{status.spoken}</span>
             </span>
             <div class="album__row">
@@ -208,6 +231,12 @@
           </li>
         {/each}
       </ol>
+      <p class="note note--small album__legend">
+        <span class="mono">confirmed</span> means Spotify has recorded the play, which is the only
+        thing that counts towards finishing a record.
+        <span class="mono">heard here</span> means this device watched it play through and Spotify has
+        not reported it back yet — usually a matter of minutes.
+      </p>
     {/if}
   </section>
 {/if}
@@ -272,6 +301,13 @@
   }
   .album__state--now {
     font-weight: 600;
+    color: var(--ink-quiet);
+  }
+  .album__legend {
+    padding-top: var(--s2);
+  }
+  .album__legend .mono {
+    font-size: 0.6875rem;
     color: var(--ink-quiet);
   }
   .album__row {

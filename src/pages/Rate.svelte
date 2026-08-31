@@ -21,6 +21,7 @@
   import { clearQueueState } from '../lib/storage/repo';
   import { plural, relative } from '../lib/ui/format';
   import AutoLoad from '../components/AutoLoad.svelte';
+  import CompletionBand from '../components/CompletionBand.svelte';
   import Empty from '../components/Empty.svelte';
   import Icon from '../lib/ui/Icon.svelte';
   import RatableRow from '../components/RatableRow.svelte';
@@ -133,6 +134,8 @@
         : ''}{setAside.length > 0 ? ` · ${setAside.length} set aside` : ''}
     </p>
   </header>
+
+  <CompletionBand heading="Finished records" />
 
   <div class="controls">
     <div class="controls__filters">

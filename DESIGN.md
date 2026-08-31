@@ -291,6 +291,8 @@ Playback progress is the one exception, because it is a reading rather than a tr
 - **Now Playing** (`NowPlaying`) — not a second remote control. The bar keeps the transport; the page spends its room on what the bar cannot hold: the sleeve at size, the full identity, the deeper rating editor, album-session progress and its track list, Up Next open by default, and the context, device and queue detail. Nothing that the bar already shows is repeated immediately above it. Every control Spotify refuses is disabled with the reason on it rather than failing after the press; when the track changes under an open editor the editor stays pinned to what you were rating and says so, because silently moving an unsaved draft onto a different track would record an opinion nobody held.
 - **Device picker** (`DevicePicker`) — the sheet listing what Spotify can see, each with its kind, whether it is active, and whether it is restricted. Transfer moves playback; a restricted device says why it cannot. With nothing listed it gives the three real recoveries — open Spotify somewhere, look again, or turn this browser into a device — rather than an empty list.
 - **Album mode** (`AlbumMode`) — a record listened to in order and rated as it goes. The status column states what is true and no more: **Now playing**, **Played this session** only where Spotify has confirmed a play in this sitting, **Awaiting Spotify** where the app watched it play but Spotify has not caught up, **Earlier track** for a position the playhead has passed without either — never "Passed", which would blame the listener for starting mid-record. Each row is a `RatableRow`; the current one is `aria-current` and highlighted but never scrolled to while you are editing another. `x of y rated` and an **Unrated from this record** filter make the gap the thing you close. The record's own rating is a separate control that stays separate.
+- **Completed rail** (`TrackRail`) — the signature rail, reused to state a fact rather than take a rating. Cut detents, one per track, filled to the number heard. It is inert, unfocusable, labelled in words beside it, and swept once in ink when a completion has just arrived.
+- **Album complete** (`AlbumComplete`) — the earned moment, not a queue suggestion. Artwork, identity, completed rail, timing, tracks rated, observed plays, current rating or rollup, and provenance make the evidence inspectable. It is a stored record rather than a toast: it survives navigation, reload and sync until answered, never blocks playback, and never steals an editor already open on something else.
 - **Search overlay** (`SearchOverlay`) — `/` or Ctrl/Cmd+K from anywhere. Answers instantly and offline from your own library; searching the Spotify catalogue is a deliberate second step, and the answers Spotify actually gave lead the list rather than the metadata they dragged in. Two records that would look identical — the 1969 master and the 2019 remaster, both real, both ratable — are told apart by the smallest fact that separates them, and rows that are already distinct get nothing.
 - **Recent searches** (`RecentSearches`) — the last eight things you looked for, on an empty field, in both search surfaces from one implementation. Device-local and never synced: what you searched for is not a rating.
 - **Detail page** (`Entity`) — asks each kind the question it can answer. Containers get their own word for their contents — a release has a **Tracklist**, a playlist has **Tracks**, an artist has **Releases** and then **Tracks**, a show has **Episodes**, an audiobook has **Chapters** — and leaves are never asked what is inside them at all, so a track has no empty contents section and no button offering to load something Spotify will never return. A leaf leads with what it belongs to instead: **Appears on**, **By**, **From**, grouped by kind and linked, with the record it came from given more weight than the eleventh playlist someone added it to. Two editions of one record are two rows told apart by the smallest fact that separates them. The margin carries three groups and no more — the score with one line of plain reading and the working folded behind it, your note and tags together, and everything technical under **Details** — because a column of ten equal links is a column nobody reads. The page is the context: rows in its own lists do not reprint the name at the top of it.
@@ -300,7 +302,7 @@ Playback progress is the one exception, because it is a reading rather than a tr
 
 ### Do
 
-- Do name a page for what it does — Home, Rate, Compare, Library, Rankings, History, Insights, Settings.
+- Do name a page for what it does — Home, Rate, Compare, Library, Rankings, History, Listening, Insights, Settings.
 - Do render an explicit rating in `--ink` and a computed rollup in `--ink-quiet`, so the two are never confused.
 - Do draw a rating in the shape its scale already has: five stars for stars, the tier list's own six colours for S–F. A control nobody has to learn beats a consistent one they do.
 - Do make a dense scale composed and then saved — draft, **Save rating**, Cancel — and never let a resting placeholder become a recorded value.
@@ -319,6 +321,8 @@ Playback progress is the one exception, because it is a reading rather than a tr
 - Do say which record you mean when two of them would look the same, using the smallest fact that separates them.
 - Do ask a thing the question its kind can answer, and let the graph edges — not the page template — decide whether it holds anything.
 - Do leave out of a row whatever the page above it has already said.
+- Do print a share with its numerator and denominator beside it — "34 of 52 known tracks (65%)" — so the reader can check the arithmetic and see what the denominator actually was.
+- Do qualify every observed figure with the date observation began, and say plainly where the record has holes.
 
 ### Don't
 
@@ -328,6 +332,8 @@ Playback progress is the one exception, because it is a reading rather than a tr
 - Don't repeat a surface inside itself: the persistent bar is the only transport, so Now Playing never draws a second set of controls or a second scrubber above it.
 - Don't build a now-playing display that only displays. Every visible piece of state is a control, and the rating beside it is the real one.
 - Don't treat connecting an account as finishing setup. Setup is done when the person has been through all three pages and pressed the last button; coming back from Spotify's redirect returns them to the page they were on, not past it.
+- Don't claim a standing among other listeners. Spotify publishes no population data, so "top 1% listener" would be invented; say what share of _your own_ observed listening something was instead.
+- Don't celebrate a completed record with confetti or a modal. It is an earned statement of fact with its evidence attached, and it waits rather than interrupting.
 - Don't reach for marketing hero type, pill spam, or an icon that is only decorative.
 - Don't set small text in `--accent` rather than `--accent-ink`.
 - Don't derive a scrim from `--ink` — it goes pale in dark mode and washes the page out.

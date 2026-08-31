@@ -201,6 +201,8 @@ export function snapshotCounts(snapshot: Snapshot): { label: string; count: numb
     annotations: 'notes and tags',
     collections: 'lists',
     scales: 'custom scales',
+    plays: 'confirmed plays',
+    completions: 'albums completed',
   };
   return SYNCED_STORES.map((store) => ({
     label: label[store],

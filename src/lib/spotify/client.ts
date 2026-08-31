@@ -725,6 +725,8 @@ export interface PlaylistItem {
 export interface PlayHistory {
   track: SpotifyTrack;
   played_at: string;
+  /** What it was played from, when Spotify says. Often absent. */
+  context?: PlaybackContext | null;
 }
 
 export interface SpotifyShow {

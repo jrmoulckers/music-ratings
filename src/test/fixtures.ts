@@ -8,6 +8,7 @@ import type {
   RatingEvent,
 } from '../lib/domain/types';
 import { entityId, membershipId } from '../lib/domain/ids';
+import { PLAY_SCHEMA_VERSION, playId, type PlayEvent } from '../lib/domain/listening';
 
 /** Deterministic fixtures for domain tests. No randomness, no wall clock. */
 
@@ -99,4 +100,48 @@ export function compare(
 export function resetFixtureCounters(): void {
   ratingSeq = 0;
   comparisonSeq = 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Listening                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const MINUTE = 60_000;
+export const HOUR = 3_600_000;
+export const DAY = 86_400_000;
+
+/** A confirmed play, with the same deterministic identity the real one gets. */
+export function play(
+  entity: Entity | EntityId,
+  at: number,
+  overrides: Partial<PlayEvent> = {},
+): PlayEvent {
+  const id = typeof entity === 'string' ? entity : entity.id;
+  const providerId = id.split(':').slice(2).join(':');
+  const provider = id.split(':')[1] ?? 'local';
+  return {
+    id: playId(provider, providerId, at),
+    entityId: id,
+    entityType: 'track',
+    at,
+    ingestedAt: at,
+    source: 'spotify-recently-played',
+    v: PLAY_SCHEMA_VERSION,
+    updatedAt: at,
+    ...overrides,
+  };
+}
+
+/** An album with `count` tracks, wired up and declared complete. */
+export function makeAlbum(
+  name: string,
+  count: number,
+  overrides: Partial<Entity> = {},
+): { album: Entity; tracks: Entity[]; entities: Entity[]; memberships: Membership[] } {
+  const album = makeEntity('album', name, { totalChildren: count, ...overrides });
+  const tracks = Array.from({ length: count }, (_, i) =>
+    makeEntity('track', `${name}-t${i + 1}`, { trackNumber: i + 1, durationMs: 200_000 }),
+  );
+  const memberships = tracks.map((track, i) => link(album, track, { position: i + 1 }));
+  return { album, tracks, entities: [album, ...tracks], memberships };
 }
