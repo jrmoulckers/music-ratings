@@ -32,6 +32,33 @@ export const EQUIVALENCE_BANDS = 10;
 /** Prints between the two ends of a range, e.g. `1 — 100`. */
 export const RANGE_SEPARATOR = ' — ';
 
+/**
+ * Detents a rail will seat one at a time before it stops being a rail.
+ *
+ * A detent is something you hit with a thumb. Past this many there is no room
+ * to hit any of them and no room to print what they are: a 1–100 scale drawn
+ * detent-by-detent is a ruler with a hundred numbers jammed together, which is
+ * not a control. Denser scales get the precision instrument instead — a track
+ * with graduations at round intervals, and an exact value you can type.
+ */
+export const RAIL_MAX_DETENTS = 16;
+
+/** Most graduations a track will ever label, however wide it gets. */
+export const RAIL_MAX_LABELS = 11;
+
+/** Graduations to assume before a track has been measured. */
+export const RAIL_DEFAULT_LABELS = 7;
+
+/** One graduation on a precision track. */
+export interface RailTick {
+  /** The value on the scale this graduation stands at. */
+  value: number;
+  /** Where it sits along the track: 0 at the low end, 1 at the high end. */
+  at: number;
+  /** What it prints, or null for an unlabelled mark that only aids orientation. */
+  label: string | null;
+}
+
 /** One position on a scale: its text, plus an icon key when it is drawn. */
 export interface ScaleReading {
   text: string;
@@ -178,6 +205,135 @@ export function clampRaw(scale: RatingScale, value: number): number {
   assertUsable(scale);
   if (!Number.isFinite(value)) return scale.min;
   return Math.min(scale.max, Math.max(scale.min, value));
+}
+
+/** The nearest value this scale can actually hold. */
+export function snapRaw(scale: RatingScale, value: number): number {
+  assertUsable(scale);
+  if (!Number.isFinite(value)) return scale.min;
+  return clampRaw(scale, roundToStep(scale, value));
+}
+
+/**
+ * Whether this scale has more positions than a rail can seat.
+ *
+ * Asked of the scale's own density, never of its id, so a custom 0–200 scale
+ * gets the same treatment as the built-in 1–100 one.
+ */
+export function isDenseScale(scale: RatingScale): boolean {
+  return detentCount(scale) > RAIL_MAX_DETENTS;
+}
+
+/** Intervals a graduated scale is allowed to count in, before scaling by ten. */
+const NICE_INTERVALS = [1, 2, 2.5, 5];
+
+/**
+ * The coarsest round interval that is no finer than `want` and still lands on
+ * values the scale can hold. Labelling 2.5 on a whole-number scale would name a
+ * value that does not exist there, so such an interval is passed over.
+ */
+function niceInterval(want: number, step: number): number {
+  const floor = Math.max(want, step);
+  for (let power = -6; power <= 9; power += 1) {
+    const magnitude = 10 ** power;
+    for (const n of NICE_INTERVALS) {
+      const candidate = round6(n * magnitude);
+      if (candidate < floor - 1e-9) continue;
+      const multiples = candidate / step;
+      if (Math.abs(multiples - Math.round(multiples)) > 1e-6) continue;
+      return candidate;
+    }
+  }
+  return step;
+}
+
+function round6(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+/**
+ * The graduations to draw on a precision track, given how many labels fit.
+ *
+ * Both ends are always labelled, because the ends of a scale are the two facts
+ * a reader most needs. Between them the marks land on round numbers rather than
+ * on the low end plus an offset, so 1–100 reads 1, 10, 20 … 100 and not 1, 12,
+ * 23. A round mark that would crowd an end is dropped rather than overprinted.
+ *
+ * Each gap also carries one unlabelled mark at its midpoint: enough to judge
+ * where 15 falls between 10 and 20, and never enough to become noise.
+ */
+export function railTicks(scale: RatingScale, maxLabels: number): RailTick[] {
+  assertUsable(scale);
+  const lo = scale.min;
+  const hi = scale.max;
+  const span = hi - lo;
+  if (span <= 0) return [];
+
+  const budget = Math.max(2, Math.min(Math.floor(maxLabels) || 2, RAIL_MAX_LABELS));
+  const interval = niceInterval(span / (budget - 1), scale.step);
+  const crowd = interval * 0.5;
+
+  const majors: number[] = [lo];
+  const first = Math.ceil(round6(lo / interval)) * interval;
+  for (let v = round6(first); v < hi - 1e-9; v = round6(v + interval)) {
+    if (v > lo + crowd && v < hi - crowd) majors.push(v);
+  }
+  majors.push(hi);
+
+  const at = (value: number) => (value - lo) / span;
+  const ticks: RailTick[] = [];
+  for (let i = 0; i < majors.length; i += 1) {
+    const value = majors[i] as number;
+    ticks.push({ value, at: at(value), label: formatRaw(scale, value) });
+    const next = majors[i + 1];
+    if (next === undefined) continue;
+    // An unlabelled mark halfway helps the eye divide the gap, but it still has
+    // to stand on a value this scale can reach — an integer rail drawing a mark
+    // at 50.5 is describing a place that does not exist. Snap it, and drop it
+    // if snapping lands it on a printed graduation.
+    const mid = snapRaw(scale, (value + next) / 2);
+    if (mid <= value || mid >= next) continue;
+    ticks.push({ value: mid, at: at(mid), label: null });
+  }
+  return ticks;
+}
+
+/**
+ * How many graduations a track of this width can label without them colliding.
+ *
+ * Driven by the width of the scale's own longest reading, so `0.0 to 10.0` gets
+ * fewer labels than `1 to 100` in the same space rather than the same number
+ * squeezed tighter.
+ */
+export function railLabelBudget(widthPx: number, scale: RatingScale): number {
+  if (!Number.isFinite(widthPx) || widthPx <= 0) return RAIL_DEFAULT_LABELS;
+  const chars = Math.max(formatRaw(scale, scale.min).length, formatRaw(scale, scale.max).length);
+  // Roughly the label's own width at the rail's type size, plus breathing room.
+  const perLabel = chars * 8 + 22;
+  return Math.max(2, Math.min(RAIL_MAX_LABELS, Math.floor(widthPx / perLabel)));
+}
+
+/**
+ * The next labelled graduation past `from`, for a page-sized jump.
+ *
+ * Null at either end. A jump that cannot move should do nothing, rather than
+ * commit the value that is already seated.
+ */
+export function nextGraduation(
+  ticks: readonly RailTick[],
+  from: number,
+  direction: 1 | -1,
+): number | null {
+  const labelled = ticks.filter((t) => t.label !== null).map((t) => t.value);
+  if (direction === 1) {
+    for (const value of labelled) if (value > from + 1e-9) return value;
+    return null;
+  }
+  for (let i = labelled.length - 1; i >= 0; i -= 1) {
+    const value = labelled[i] as number;
+    if (value < from - 1e-9) return value;
+  }
+  return null;
 }
 
 /**

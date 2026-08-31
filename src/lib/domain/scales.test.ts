@@ -5,6 +5,8 @@ import {
   DEFAULT_SCALE_ID,
   EQUIVALENCE_BANDS,
   EQUIVALENCE_MAX_ROWS,
+  RAIL_MAX_DETENTS,
+  RAIL_MAX_LABELS,
   RANGE_SEPARATOR,
   ScaleError,
   clampNormalized,
@@ -19,12 +21,17 @@ import {
   formatComputedOn,
   formatNormalizedOn,
   formatRaw,
+  isDenseScale,
   markIcon,
   migrateRating,
+  nextGraduation,
   normalize,
   normalizedForDetent,
+  railLabelBudget,
+  railTicks,
   resolveScale,
   scaleResolution,
+  snapRaw,
   validateCustomScale,
 } from './scales';
 import type { RatingScale } from './types';
@@ -118,6 +125,215 @@ describe('detents', () => {
   it('never lets float drift push the last detent past the maximum', () => {
     const values = detentValues(scale('decimal-10'));
     expect(values[values.length - 1]).toBe(10);
+  });
+});
+
+describe('rail density', () => {
+  it('decides by how many detents a scale cuts, never by its name', () => {
+    // Everything a hand can seat one notch at a time stays a detent rail.
+    for (const id of ['stars-5', 'half-stars-5', 'int-3', 'int-5', 'int-10', 'thumbs', 'tiers']) {
+      expect(isDenseScale(scale(id)), id).toBe(false);
+    }
+    // Everything past that is a ruler nobody can read, and gets the slider.
+    expect(isDenseScale(scale('int-100'))).toBe(true);
+    expect(isDenseScale(scale('decimal-10'))).toBe(true);
+  });
+
+  it('draws the line at the last count a rail can still seat', () => {
+    const at = (max: number): RatingScale => ({
+      id: 'probe',
+      label: 'probe',
+      kind: 'integer',
+      builtin: false,
+      min: 1,
+      max,
+      step: 1,
+    });
+    expect(detentCount(at(RAIL_MAX_DETENTS))).toBe(RAIL_MAX_DETENTS);
+    expect(isDenseScale(at(RAIL_MAX_DETENTS))).toBe(false);
+    expect(isDenseScale(at(RAIL_MAX_DETENTS + 1))).toBe(true);
+  });
+});
+
+describe('rail graduations', () => {
+  const labelled = (ticks: ReturnType<typeof railTicks>) =>
+    ticks.filter((t) => t.label !== null).map((t) => t.label);
+
+  it('prints round numbers across 1 to 100 instead of a hundred detents', () => {
+    expect(labelled(railTicks(scale('int-100'), 11))).toEqual([
+      '1',
+      '10',
+      '20',
+      '30',
+      '40',
+      '50',
+      '60',
+      '70',
+      '80',
+      '90',
+      '100',
+    ]);
+  });
+
+  it('thins the graduations rather than the range when there is less room', () => {
+    expect(labelled(railTicks(scale('int-100'), 6))).toEqual(['1', '20', '40', '60', '80', '100']);
+    // The budget is a ceiling, so a rail this narrow steps in fifties rather
+    // than printing five labels it does not have room for.
+    expect(labelled(railTicks(scale('int-100'), 4))).toEqual(['1', '50', '100']);
+    expect(labelled(railTicks(scale('int-100'), 2))).toEqual(['1', '100']);
+  });
+
+  it('formats decimal graduations in the scale\u2019s own precision', () => {
+    expect(labelled(railTicks(scale('decimal-10'), 6))).toEqual([
+      '0.0',
+      '2.0',
+      '4.0',
+      '6.0',
+      '8.0',
+      '10.0',
+    ]);
+    // A half-step is only offered where the scale can actually land on it.
+    expect(labelled(railTicks(scale('decimal-10'), 5))).toEqual([
+      '0.0',
+      '2.5',
+      '5.0',
+      '7.5',
+      '10.0',
+    ]);
+  });
+
+  it('never puts a mark on a value the scale cannot reach', () => {
+    // Labelled or not, every mark stands on a real step: an integer rail has
+    // nowhere to put 50.5.
+    for (const budget of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
+      for (const tick of railTicks(scale('int-100'), budget)) {
+        expect(Number.isInteger(tick.value), `${budget} produced ${tick.value}`).toBe(true);
+      }
+      for (const tick of railTicks(scale('decimal-10'), budget)) {
+        expect(tick.value, `${budget} produced ${tick.value}`).toBe(
+          snapRaw(scale('decimal-10'), tick.value),
+        );
+      }
+    }
+  });
+
+  it('always prints both ends, so the reader knows what the rail spans', () => {
+    for (const id of ['int-100', 'decimal-10']) {
+      for (const budget of [2, 3, 5, 7, 11]) {
+        const marks = labelled(railTicks(scale(id), budget));
+        expect(marks[0], `${id}@${budget}`).toBe(formatRaw(scale(id), scale(id).min));
+        expect(marks[marks.length - 1], `${id}@${budget}`).toBe(
+          formatRaw(scale(id), scale(id).max),
+        );
+      }
+    }
+  });
+
+  it('drops a graduation that would collide with an end rather than crowd it', () => {
+    // 1 and 100 are the ends; a major at 100 must not be doubled by one at 99.
+    const values = railTicks(scale('int-100'), 11).map((t) => t.value);
+    expect(values).not.toContain(99);
+    expect(values.filter((v) => v === 100)).toHaveLength(1);
+  });
+
+  it('places every mark along the rail in order and inside it', () => {
+    for (const id of ['int-100', 'decimal-10']) {
+      const ticks = railTicks(scale(id), 11);
+      const ats = ticks.map((t) => t.at);
+      expect(ats.at(0)).toBe(0);
+      expect(ats.at(-1)).toBe(1);
+      for (const t of ticks) {
+        expect(t.at, `${id} ${t.value}`).toBeGreaterThanOrEqual(0);
+        expect(t.at, `${id} ${t.value}`).toBeLessThanOrEqual(1);
+      }
+      for (let i = 1; i < ats.length; i += 1) {
+        expect(ats[i] as number, `${id} at ${i}`).toBeGreaterThan(ats[i - 1] as number);
+      }
+    }
+  });
+
+  it('measures position against the raw scale, not the canonical axis', () => {
+    // 1 on a 1..100 scale normalizes to 1, not 0. Reading position off the
+    // canonical axis would slide every graduation out from under the thumb.
+    const first = railTicks(scale('int-100'), 11).at(0);
+    expect(first?.value).toBe(1);
+    expect(first?.at).toBe(0);
+    expect(normalize(scale('int-100'), 1)).not.toBe(0);
+  });
+
+  it('keeps unlabelled marks between the printed ones for orientation', () => {
+    const ticks = railTicks(scale('int-100'), 11);
+    expect(ticks.filter((t) => t.label === null).length).toBeGreaterThan(0);
+    // A minor never sits on top of a major.
+    const majors = new Set(ticks.filter((t) => t.label !== null).map((t) => t.value));
+    for (const t of ticks) if (t.label === null) expect(majors.has(t.value)).toBe(false);
+  });
+});
+
+describe('rail label budget', () => {
+  it('prints more graduations on a wide rail than a narrow one', () => {
+    const wide = railLabelBudget(1200, scale('int-100'));
+    const phone = railLabelBudget(390, scale('int-100'));
+    const tiny = railLabelBudget(320, scale('int-100'));
+    expect(wide).toBeGreaterThan(phone);
+    expect(phone).toBeGreaterThanOrEqual(tiny);
+  });
+
+  it('never asks for more graduations than a rail can carry, or fewer than two', () => {
+    for (const width of [0, 40, 200, 390, 800, 1200, 4000]) {
+      const budget = railLabelBudget(width, scale('int-100'));
+      expect(budget, `${width}px`).toBeGreaterThanOrEqual(2);
+      expect(budget, `${width}px`).toBeLessThanOrEqual(RAIL_MAX_LABELS);
+    }
+  });
+
+  it('gives wide decimal labels more room each than narrow integer ones', () => {
+    expect(railLabelBudget(390, scale('decimal-10'))).toBeLessThanOrEqual(
+      railLabelBudget(390, scale('int-100')),
+    );
+  });
+});
+
+describe('snapping a raw value', () => {
+  it('holds a typed value inside the scale', () => {
+    expect(snapRaw(scale('int-100'), 250)).toBe(100);
+    expect(snapRaw(scale('int-100'), -9)).toBe(1);
+    expect(snapRaw(scale('decimal-10'), 99)).toBe(10);
+    expect(snapRaw(scale('decimal-10'), -1)).toBe(0);
+  });
+
+  it('lands on a step the scale actually has', () => {
+    expect(snapRaw(scale('int-100'), 36.7)).toBe(37);
+    expect(snapRaw(scale('decimal-10'), 4.44)).toBe(4.4);
+    expect(snapRaw(scale('decimal-10'), 4.46)).toBe(4.5);
+  });
+
+  it('does not leave float dust on a decimal step', () => {
+    for (let i = 0; i <= 100; i += 1) {
+      const snapped = snapRaw(scale('decimal-10'), i / 10);
+      expect(String(snapped).replace('-', '').split('.')[1]?.length ?? 0).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('refuses a value that is not a number', () => {
+    expect(snapRaw(scale('int-100'), Number.NaN)).toBe(1);
+  });
+});
+
+describe('jumping between graduations', () => {
+  const ticks = railTicks(scale('int-100'), 11);
+
+  it('moves to the next printed graduation, not a hidden fraction', () => {
+    expect(nextGraduation(ticks, 1, 1)).toBe(10);
+    expect(nextGraduation(ticks, 10, 1)).toBe(20);
+    expect(nextGraduation(ticks, 44, 1)).toBe(50);
+    expect(nextGraduation(ticks, 44, -1)).toBe(40);
+    expect(nextGraduation(ticks, 100, -1)).toBe(90);
+  });
+
+  it('stops at the ends instead of wrapping', () => {
+    expect(nextGraduation(ticks, 100, 1)).toBeNull();
+    expect(nextGraduation(ticks, 1, -1)).toBeNull();
   });
 });
 

@@ -5,12 +5,14 @@
     detentIndex,
     formatMark,
     formatRaw,
+    isDenseScale,
     markIcon,
     normalizedForDetent,
   } from '../lib/domain/scales';
   import type { RatingScale } from '../lib/domain/types';
   import Icon from '../lib/ui/Icon.svelte';
   import { ICON_PATHS, type IconName } from '../lib/ui/icons';
+  import PrecisionRail from './PrecisionRail.svelte';
 
   /**
    * The rail.
@@ -22,6 +24,13 @@
    * There is exactly one representation: the detents are real buttons, and the
    * spine, cuts and ink run through them. Nothing here is decorative twin of
    * something else.
+   *
+   * Past a certain density the detents stop being things you can hit or read,
+   * so the rail changes state rather than shrinking: `PrecisionRail` keeps the
+   * spine, the ink and the accent cut, and trades a hundred seats for a sliding
+   * one, round graduations and a value you can type. Which one you get is
+   * decided by the scale's own density, never by its name — every caller passes
+   * a scale and gets the control that scale deserves.
    */
 
   interface Props {
@@ -52,6 +61,7 @@
 
   let hovered = $state<number | null>(null);
 
+  const dense = $derived(isDenseScale(scale));
   const detents = $derived(detentValues(scale));
   const seated = $derived(value == null ? null : detentIndex(scale, value));
   const active = $derived(hovered ?? seated);
@@ -140,75 +150,79 @@
   });
 </script>
 
-<div
-  class="rail rail--{orientation}"
-  class:rail--marks={showMarks}
-  role="slider"
-  tabindex={disabled ? -1 : 0}
-  aria-label={label}
-  aria-valuemin={scale.min}
-  aria-valuemax={scale.max}
-  aria-valuenow={currentRaw ?? undefined}
-  aria-valuetext={value == null
-    ? 'Not yet rated'
-    : `${formatRaw(scale, denormalize(scale, value))} on ${scale.label}`}
-  aria-orientation={orientation}
-  aria-disabled={disabled}
-  onkeydown={onKeyDown}
-  onmouseleave={() => (hovered = null)}
->
-  <div class="rail__body">
-    <div class="rail__spine" aria-hidden="true"></div>
-    {#if seatedPercent !== null}
-      <div class="rail__ink" aria-hidden="true" style:--seated="{seatedPercent}%"></div>
-    {/if}
-
-    {#if orientation === 'horizontal'}
-      {#if active !== null}
-        <span
-          class="rail__reading"
-          aria-hidden="true"
-          style:--at="{((active + 0.5) / detents.length) * 100}%"
-        >
-          {#if iconFor(active)}
-            <Icon name={iconFor(active)!} size={18} />
-          {:else}
-            {markFor(active)}
-          {/if}
-        </span>
-      {:else}
-        <span class="rail__hint label" aria-hidden="true">Your rating</span>
+{#if dense}
+  <PrecisionRail {scale} {value} {onpreview} {oncommit} {label} {disabled} />
+{:else}
+  <div
+    class="rail rail--{orientation}"
+    class:rail--marks={showMarks}
+    role="slider"
+    tabindex={disabled ? -1 : 0}
+    aria-label={label}
+    aria-valuemin={scale.min}
+    aria-valuemax={scale.max}
+    aria-valuenow={currentRaw ?? undefined}
+    aria-valuetext={value == null
+      ? 'Not yet rated'
+      : `${formatRaw(scale, denormalize(scale, value))} on ${scale.label}`}
+    aria-orientation={orientation}
+    aria-disabled={disabled}
+    onkeydown={onKeyDown}
+    onmouseleave={() => (hovered = null)}
+  >
+    <div class="rail__body">
+      <div class="rail__spine" aria-hidden="true"></div>
+      {#if seatedPercent !== null}
+        <div class="rail__ink" aria-hidden="true" style:--seated="{seatedPercent}%"></div>
       {/if}
-    {/if}
 
-    {#each detents as _detent, index (index)}
-      <button
-        type="button"
-        class="rail__detent"
-        class:is-seated={seated === index}
-        class:is-active={active === index}
-        class:is-below={active !== null && index < active}
-        tabindex="-1"
-        aria-pressed={seated === index}
-        aria-label={labelFor(index)}
-        {disabled}
-        onclick={() => pick(index, true)}
-        onmouseenter={() => (hovered = index)}
-      >
-        <span class="rail__cut" aria-hidden="true"></span>
-        {#if showMarks}
-          <span class="rail__mark">
-            {#if iconFor(index)}
-              <Icon name={iconFor(index)!} size={15} />
+      {#if orientation === 'horizontal'}
+        {#if active !== null}
+          <span
+            class="rail__reading"
+            aria-hidden="true"
+            style:--at="{((active + 0.5) / detents.length) * 100}%"
+          >
+            {#if iconFor(active)}
+              <Icon name={iconFor(active)!} size={18} />
             {:else}
-              {markFor(index)}
+              {markFor(active)}
             {/if}
           </span>
+        {:else}
+          <span class="rail__hint label" aria-hidden="true">Your rating</span>
         {/if}
-      </button>
-    {/each}
+      {/if}
+
+      {#each detents as _detent, index (index)}
+        <button
+          type="button"
+          class="rail__detent"
+          class:is-seated={seated === index}
+          class:is-active={active === index}
+          class:is-below={active !== null && index < active}
+          tabindex="-1"
+          aria-pressed={seated === index}
+          aria-label={labelFor(index)}
+          {disabled}
+          onclick={() => pick(index, true)}
+          onmouseenter={() => (hovered = index)}
+        >
+          <span class="rail__cut" aria-hidden="true"></span>
+          {#if showMarks}
+            <span class="rail__mark">
+              {#if iconFor(index)}
+                <Icon name={iconFor(index)!} size={15} />
+              {:else}
+                {markFor(index)}
+              {/if}
+            </span>
+          {/if}
+        </button>
+      {/each}
+    </div>
   </div>
-</div>
+{/if}
 
 <style>
   .rail {
@@ -399,10 +413,11 @@
   }
 
   /* The read-out rides above the detent under the hand, so the rail answers
-     before the rating is committed. */
+     before the rating is committed. It is held clear of both ends: a reading
+     centred on the last detent would otherwise hang off the rail. */
   .rail__reading {
     position: absolute;
-    left: var(--at);
+    left: clamp(1.75rem, var(--at), calc(100% - 1.75rem));
     top: 0.3rem;
     transform: translateX(-50%);
     font-family: var(--display);

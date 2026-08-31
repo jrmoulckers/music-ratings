@@ -183,7 +183,7 @@ Music Ratings is a private instrument for deciding what you actually think of yo
 
 Depth is tonal, not lifted — three surface weights (sunk, base, raised) and a hairline rule do the work a shadow would do elsewhere. Corners are nearly square (3px / 5px) so a panel reads as a bounded field rather than a card floating on a gradient.
 
-The signature object is the **rail**: a ruled spine with cut detents that a rating is set into and stays lit where it was left. It is the same object at three sizes — the rating control (vertical on a wide screen, horizontal on a phone), the comparison pair, and the section navigation. Everything that sets a value in this app is a rail, so setting a value always feels the same.
+The signature object is the **rail**: a ruled spine with cut detents that a rating is set into and stays lit where it was left. It is the same object at three sizes — the rating control (vertical on a wide screen, horizontal on a phone), the comparison pair, and the section navigation. Everything that sets a value in this app is a rail, so setting a value always feels the same. Past 16 detents the rail changes state rather than shrinking: the cut slides, the graduations go round, and the reading becomes typeable — but it is still one spine, one ink, one cut.
 
 Type is one family, Libre Franklin, worked hard: near-black headings at a tight measure, small-caps letterspaced labels for the apparatus (kinds, keys, provenance, reasons), and tabular figures so columns of scores align. A monospace face appears only for machine facts — ids, file names, byte counts.
 
@@ -272,6 +272,7 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 ## Components
 
 - **Rail** (`RatingRail`) — the rating control. Vertical above `48rem`, horizontal on a phone. One tab stop; arrows walk detents, digits pick a known value, Home/End reach the ends. Detents are cut by whichever scale is active, so a 1–10 rail and an S–F tier rail are the same object with different cuts.
+- **Precision rail** (`PrecisionRail`) — the rail's second state, entered automatically past 16 detents. A hundred detents is not a hundred choices, so the cut slides instead of being one of a hundred, only round graduations are printed (`1 · 10 · 20 … 100`, thinned to `1 · 20 … 100` on a phone), and the reading becomes a number field you can type into, held in a fixed place above the track where it cannot run off either end. The choice is made from the scale's detent count, never its name, so a custom 0–50 scale gets it too. Same spine, same ink, same accent cut.
 - **Panel** (`RatePanel`, `ComparePanel`) — a raised bounded field holding exactly one decision, with its evidence above and its escapes (skip, snooze, don't know it) below.
 - **Entry row** — the list primitive everywhere: artwork, name and subtitle, kind label, score mark. Never a card.
 - **Score mark** (`ScoreMark`) — explicit ratings in `--ink`, computed rollups in `--ink-quiet`. The two are never rendered identically, because the app never overwrites one with the other.
