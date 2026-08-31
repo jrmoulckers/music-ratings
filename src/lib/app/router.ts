@@ -100,6 +100,30 @@ export function routeNameFor(path: string): RouteName {
   return parse(new URL(clean, 'http://local')).name;
 }
 
+/**
+ * Reduce an untrusted destination to somewhere inside this app.
+ *
+ * Anything that came back from a round trip through another origin — an OAuth
+ * continuation, a stored draft, a query parameter — is a redirect target an
+ * attacker would like to choose. Only a path this app has a route for survives;
+ * protocol-relative `//host`, absolute URLs, `javascript:` and unknown paths all
+ * fall back rather than being followed.
+ */
+export function safeInAppPath(path: unknown, fallback = '/'): string {
+  if (typeof path !== 'string' || path.length === 0) return fallback;
+  // `//host` and `/\host` are protocol-relative, not in-app.
+  if (!path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\')) return fallback;
+  let url: URL;
+  try {
+    url = new URL(path, 'http://local');
+  } catch {
+    return fallback;
+  }
+  if (url.origin !== 'http://local') return fallback;
+  if (parse(url).name === 'notfound') return fallback;
+  return `${url.pathname}${url.search}`;
+}
+
 function current(): Route {
   if (typeof location === 'undefined') {
     return { name: 'home', params: {}, query: new URLSearchParams(), path: '/' };

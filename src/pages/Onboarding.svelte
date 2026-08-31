@@ -1,12 +1,20 @@
 <script lang="ts">
   import { notify } from '../lib/app/notices';
-  import { navigate } from '../lib/app/router';
+  import {
+    clampStep,
+    clearOnboardingDraft,
+    onboardingResumePath,
+    patchOnboardingDraft,
+    readOnboardingDraft,
+    saveOnboardingDraft,
+  } from '../lib/app/onboarding';
+  import { navigate, route } from '../lib/app/router';
   import { allScales, entityLabel, settings, updateSettings } from '../lib/app/state';
   import { describeScale } from '../lib/domain/scales';
   import { ENTITY_TYPES } from '../lib/domain/types';
   import type { EntityType } from '../lib/domain/types';
   import { ENTITY_SUPPORT } from '../lib/spotify/capabilities';
-  import { connectSpotify } from '../lib/spotify/session';
+  import { connectSpotify, spotifySession } from '../lib/spotify/session';
   import Icon from '../lib/ui/Icon.svelte';
 
   /**
@@ -15,15 +23,51 @@
    * Three decisions, in the order they actually matter: where the catalogue
    * comes from, what you are willing to rate, and on what scale. Everything
    * else has a defensible default and lives in Settings.
+   *
+   * Connecting Spotify leaves the app entirely and comes back, so the answers
+   * so far live in a draft rather than in component state, and the page you are
+   * on lives in the address bar rather than in a variable. Between them, Back
+   * and Refresh behave the way they look like they should — and setup is only
+   * finished when someone finishes it.
    */
 
-  let step = $state(0);
-  let chosenTypes = $state<EntityType[]>([...$settings.enabledTypes]);
-  let scaleId = $state($settings.defaultScaleId);
+  const resumed = readOnboardingDraft();
+
+  let chosenTypes = $state<EntityType[]>(
+    resumed && resumed.types.length > 0 ? resumed.types : [...$settings.enabledTypes],
+  );
+  let scaleId = $state(resumed?.scaleId || $settings.defaultScaleId);
+  let clientId = $state(resumed?.clientId || $settings.spotifyClientId);
   let working = $state(false);
-  let clientId = $state($settings.spotifyClientId);
+
+  // Spotify has just come back if the draft says this run of setup connected it.
+  let justConnected = $state(resumed?.spotifyConnected === true && $spotifySession.connected);
+
+  // The page lives in the address bar, so Back and Refresh are the browser's
+  // job rather than something this component has to reimplement.
+  const step = $derived(clampStep($route.query.get('step') ?? resumed?.step ?? 0));
 
   const steps = ['Source', 'What you rate', 'Rating scale'];
+
+  // Every answer is written down as it is given, because the next thing the
+  // user does might be to leave for Spotify. Once setup has actually finished
+  // the draft is gone for good, and this must not resurrect it.
+  let finished = $state(false);
+  $effect(() => {
+    if (finished || $route.name !== 'onboarding') return;
+    saveOnboardingDraft({
+      step,
+      types: chosenTypes,
+      scaleId,
+      clientId,
+      connecting: false,
+      spotifyConnected: justConnected,
+    });
+  });
+
+  function goTo(next: number) {
+    navigate(onboardingResumePath(next));
+  }
 
   function toggleType(type: EntityType) {
     chosenTypes = chosenTypes.includes(type)
@@ -38,16 +82,23 @@
     }
     working = true;
     try {
-      // Types and scale are saved first so they survive the round trip to Spotify.
-      await updateSettings({
-        spotifyClientId: clientId.trim(),
-        enabledTypes: chosenTypes,
-        defaultScaleId: scaleId,
-        onboarded: true,
+      // The client ID is real configuration and the callback needs it to
+      // exchange the code, so it is saved. What you rate and on what scale are
+      // still questions, so they go in the draft — and `onboarded` stays false,
+      // because connecting an account is not finishing setup.
+      await updateSettings({ spotifyClientId: clientId.trim() });
+      patchOnboardingDraft({
+        step: 1,
+        types: chosenTypes,
+        scaleId,
+        clientId: clientId.trim(),
+        connecting: true,
+        spotifyConnected: false,
       });
-      await connectSpotify('/');
+      await connectSpotify(onboardingResumePath(1));
     } catch (error) {
       working = false;
+      patchOnboardingDraft({ connecting: false });
       notify(error instanceof Error ? error.message : 'Could not start the Spotify sign-in.', {
         tone: 'warn',
       });
@@ -57,11 +108,14 @@
   async function finish() {
     working = true;
     try {
+      // The one place `onboarded` becomes true.
       await updateSettings({
         enabledTypes: chosenTypes.length > 0 ? chosenTypes : ['artist', 'album', 'track'],
         defaultScaleId: scaleId,
         onboarded: true,
       });
+      finished = true;
+      clearOnboardingDraft();
       navigate('/', { replace: true });
     } finally {
       working = false;
@@ -120,7 +174,8 @@
             disabled={working}
             onclick={() => void chooseSpotify()}
           >
-            <Icon name="link" size={14} /> Connect and authorise
+            <Icon name="link" size={14} />
+            {$spotifySession.connected ? 'Reconnect Spotify' : 'Connect and authorise'}
           </button>
         </div>
 
@@ -128,12 +183,18 @@
           type="button"
           class="choice choice--quiet"
           disabled={working}
-          onclick={() => (step = 1)}
+          onclick={() => goTo(1)}
         >
-          <span class="choice__name">Set up without Spotify</span>
+          <span class="choice__name">
+            {$spotifySession.connected ? 'Carry on with setup' : 'Set up without Spotify'}
+          </span>
           <span class="note">
-            Start with nothing and add music by hand, or restore a backup from Settings. You can
-            connect Spotify later.
+            {#if $spotifySession.connected}
+              Spotify is connected. Next, choose what you want to rate.
+            {:else}
+              Start with nothing and add music by hand, or restore a backup from Settings. You can
+              connect Spotify later.
+            {/if}
           </span>
         </button>
       </div>
@@ -141,6 +202,12 @@
   {:else if step === 1}
     <section class="door__panel">
       <h2 class="title">What do you want to rate?</h2>
+      {#if justConnected}
+        <p class="note linked">
+          <Icon name="check" size={14} /> Spotify connected as {$spotifySession.profileName ??
+            'your account'}. Your library is loading in the background.
+        </p>
+      {/if}
       <p class="note">
         Only these appear in the rating queue, the rankings and the library. You can change this
         whenever you like; turning a type off hides it without deleting anything.
@@ -168,8 +235,8 @@
       </ul>
 
       <div class="row">
-        <button type="button" class="btn btn--quiet" onclick={() => (step = 0)}>Back</button>
-        <button type="button" class="btn btn--primary" onclick={() => (step = 2)}>Continue</button>
+        <button type="button" class="btn btn--quiet" onclick={() => goTo(0)}>Back</button>
+        <button type="button" class="btn btn--primary" onclick={() => goTo(2)}>Continue</button>
       </div>
     </section>
   {:else}
@@ -195,7 +262,7 @@
       </ul>
 
       <div class="row">
-        <button type="button" class="btn btn--quiet" onclick={() => (step = 1)}>Back</button>
+        <button type="button" class="btn btn--quiet" onclick={() => goTo(1)}>Back</button>
         <button
           type="button"
           class="btn btn--primary btn--wide"
@@ -312,6 +379,13 @@
   .choice .field {
     width: 100%;
     max-width: 26rem;
+  }
+
+  .linked {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--accent);
   }
 
   .types,

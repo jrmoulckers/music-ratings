@@ -3,6 +3,7 @@
 
   import { announcement } from './lib/app/notices';
   import { dismissUpdate, pwa, reloadForUpdate } from './lib/app/pwa';
+  import { onboardingResumePath } from './lib/app/onboarding';
   import { navigate, route, startRouter } from './lib/app/router';
   import { closeSearch, openSearch, searchOpen } from './lib/app/search-overlay';
   import { ready, settings, startStateSync } from './lib/app/state';
@@ -47,12 +48,13 @@
     };
   });
 
-  // Anyone who has not been through the front door gets sent there once.
+  // Anyone who has not been through the front door gets sent there once —
+  // to the step they had reached, not back to the beginning.
   $effect(() => {
     if (!$ready) return;
     const needsStart = !$settings.onboarded;
     const exempt = $route.name === 'onboarding' || $route.name === 'callback';
-    if (needsStart && !exempt) navigate('/start', { replace: true });
+    if (needsStart && !exempt) navigate(onboardingResumePath(), { replace: true });
   });
 
   const showRail = $derived($route.name !== 'onboarding' && $route.name !== 'callback');
