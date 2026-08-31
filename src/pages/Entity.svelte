@@ -24,8 +24,19 @@
     world,
   } from '../lib/app/state';
   import { rankingConfidence } from '../lib/domain/elo';
+  import { editionMarks } from '../lib/domain/editions';
   import { entityId } from '../lib/domain/ids';
   import { formatScore, historyFor, pickView } from '../lib/domain/ratings';
+  import {
+    canContain,
+    canExpand,
+    contentsHeading,
+    expectedChildType,
+    expectedOwnerType,
+    groupParents,
+    scoreGist,
+    trimContext,
+  } from '../lib/domain/relations';
   import type { Entity, EntityType, Provider, ScoreView } from '../lib/domain/types';
   import { startAlbumSession } from '../lib/playback/album';
   import { playbackEnqueue, playbackPlay } from '../lib/playback/store';
@@ -82,6 +93,74 @@
   let expanding = $state(false);
   let childLimit = $state(60);
   let openChildId = $state<string | null>(null);
+
+  /**
+   * Owning relationships, grouped by kind and shown as links.
+   *
+   * These used to be ten names under "Belongs to" in the margin, which made the
+   * one fact a track page owes the reader — the record it is from — the same
+   * weight as the eleventh playlist someone put it on.
+   */
+  const relations = $derived.by(() => {
+    const groups = groupParents(parents);
+    return groups
+      .map((group) => ({
+        ...group,
+        entities: group.ids
+          .map((pid) => $graph.entity(pid))
+          .filter((e): e is Entity => e !== undefined),
+      }))
+      .filter((group) => group.entities.length > 0);
+  });
+  /** Two editions of one record are two rows; say which is which. */
+  const relationMarks = $derived(editionMarks(relations.flatMap((group) => group.entities)));
+
+  /** The line under the title, unless the links below already say it. */
+  const heroSubtitle = $derived(
+    trimContext(
+      entity?.subtitle,
+      relations.flatMap((group) => group.entities.map((e) => e.name)),
+    ),
+  );
+
+  /**
+   * What this page has already said out loud, kept out of its own rows.
+   *
+   * On Rain Ledger, every track's subtitle is "Kestrel Harbour · Rain Ledger" —
+   * ten identical lines under ten different titles. The page is the context, so
+   * the rows only have to carry what differs.
+   */
+  const established = $derived([
+    ...(entity ? [entity.name] : []),
+    ...relations.flatMap((group) => group.entities.map((e) => e.name)),
+  ]);
+
+  /** Contents, split by kind so an artist's releases and tracks are not one heap. */
+  const CHILD_ORDER: EntityType[] = ['album', 'track', 'episode', 'chapter', 'playlist', 'artist'];
+  const childGroups = $derived.by(() => {
+    if (!entity || !canContain(entity.type)) return [];
+    const types = children
+      .map((edge) => edge.childType)
+      .filter((type, i, list) => list.indexOf(type) === i);
+    return types
+      .map((type) => {
+        const edges = children.filter((edge) => edge.childType === type);
+        return {
+          type,
+          edges,
+          heading: contentsHeading(entity.type, type),
+          rated: edges.filter((edge) => $explicitRatings.has(edge.childId)).length,
+        };
+      })
+      .sort((a, b) => order(a.type) - order(b.type));
+  });
+
+  function order(type: EntityType): number {
+    const index = CHILD_ORDER.indexOf(type);
+    return index === -1 ? CHILD_ORDER.length : index;
+  }
+
+  const gist = $derived(scoreGist(breakdown));
 
   $effect(() => {
     void id;
@@ -187,9 +266,6 @@
   const loadedTracks = $derived(
     entity?.type === 'album' ? $graph.childrenOfType(entity.id, 'track').length : children.length,
   );
-  const ratedChildren = $derived(
-    children.filter((edge) => $explicitRatings.has(edge.childId)).length,
-  );
   const shortOfWhole = $derived(
     entity?.type === 'album' &&
       fill?.status === 'incomplete' &&
@@ -278,7 +354,7 @@
             {#if entity.available === false}<span>· unavailable in your market</span>{/if}
           </p>
           <h1 class="item__name display">{entity.name}</h1>
-          {#if entity.subtitle}<p class="item__sub">{entity.subtitle}</p>{/if}
+          {#if heroSubtitle}<p class="item__sub">{heroSubtitle}</p>{/if}
           {#if entity.description}<p class="note item__desc">{entity.description}</p>{/if}
 
           <div class="row item__links">
@@ -379,88 +455,178 @@
         </div>
       </section>
 
-      {#if children.length > 0}
-        <section aria-labelledby="contents-head">
-          <div class="head">
-            <h2 id="contents-head" class="title">What's inside</h2>
-            <span class="label">
-              {#if entity.type === 'album'}
-                {plural(loadedTracks, 'track')}{#if ratedChildren > 0}
-                  · {ratedChildren} rated{/if}
-              {:else}
-                {plural(children.length, entityLabel(children[0]?.childType ?? 'track'))}
+      {#if relations.length > 0}
+        <div class="rel">
+          {#each relations as group (group.type)}
+            <section class="rel__group" aria-labelledby="rel-{group.type}">
+              <h2 id="rel-{group.type}" class="label">{group.heading}</h2>
+              <ul class="rel__list">
+                {#each group.entities.slice(0, 6) as related (related.id)}
+                  <li>
+                    <a class="rel__row" href={entityHref(related.id)}>
+                      <Artwork
+                        src={related.artworkUrl}
+                        thumb={related.artworkThumbUrl}
+                        name={related.name}
+                        size="sm"
+                      />
+                      <span class="rel__text">
+                        <span class="rel__name">{related.name}</span>
+                        {#if relationMarks.get(related.id)}
+                          <span class="note note--small">{relationMarks.get(related.id)}</span>
+                        {/if}
+                      </span>
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+              {#if group.entities.length > 6}
+                <details class="rel__more">
+                  <summary class="label">
+                    {group.entities.length - 6} more {entityLabel(
+                      group.type,
+                      group.entities.length - 6 !== 1,
+                    )}
+                  </summary>
+                  <ul class="rel__list">
+                    {#each group.entities.slice(6) as related (related.id)}
+                      <li>
+                        <a class="rel__row" href={entityHref(related.id)}>
+                          <Artwork
+                            src={related.artworkUrl}
+                            thumb={related.artworkThumbUrl}
+                            name={related.name}
+                            size="sm"
+                          />
+                          <span class="rel__text">
+                            <span class="rel__name">{related.name}</span>
+                            {#if relationMarks.get(related.id)}
+                              <span class="note note--small">{relationMarks.get(related.id)}</span>
+                            {/if}
+                          </span>
+                        </a>
+                      </li>
+                    {/each}
+                  </ul>
+                </details>
               {/if}
-            </span>
-          </div>
+            </section>
+          {/each}
+        </div>
+      {:else if !canContain(entity.type) && expectedOwnerType(entity.type)}
+        <p class="note note--small">
+          No {entityLabel(expectedOwnerType(entity.type) ?? 'album')} is recorded for this {entityLabel(
+            entity.type,
+          )} yet.
+        </p>
+      {/if}
 
-          {#if filling && shortOfWhole !== true}
-            <p class="note note--small" role="status">Loading the rest of this release…</p>
-          {/if}
-
-          {#if shortOfWhole && fill?.status === 'incomplete'}
-            <div class="short panel panel--sunk stack stack--tight" role="status">
-              <p class="note">
-                This tracklist is incomplete — {loadedTracks} of {fill.total ?? loadedTracks} tracks loaded.
-                {fill.reason}
-              </p>
-              <div class="row">
-                <button
-                  type="button"
-                  class="btn btn--small"
-                  disabled={filling}
-                  onclick={() => void retryFill()}
-                >
-                  {filling ? 'Trying…' : 'Try again'}
-                </button>
-                {#if entity.externalUrl}
-                  <a
-                    class="btn btn--small btn--quiet"
-                    href={entity.externalUrl}
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    Open in Spotify
-                  </a>
-                {/if}
-              </div>
+      {#if childGroups.length > 0}
+        {#each childGroups as group (group.type)}
+          <section aria-labelledby="contents-{group.type}">
+            <div class="head">
+              <h2 id="contents-{group.type}" class="title">{group.heading}</h2>
+              <span class="label">
+                {plural(
+                  entity.type === 'album' && group.type === 'track'
+                    ? loadedTracks
+                    : group.edges.length,
+                  entityLabel(group.type),
+                )}{#if group.rated > 0}
+                  · {group.rated} rated{/if}
+              </span>
             </div>
-          {/if}
 
-          <ul class="contents">
-            {#each children.slice(0, childLimit) as edge (edge.childId)}
-              {@const child = $graph.entity(edge.childId)}
-              {#if child}
-                <RatableRow
-                  entity={child}
-                  view={$settings.scoreView}
-                  position={child.trackNumber ??
-                    (edge.position !== undefined ? edge.position + 1 : undefined)}
-                  expanded={openChildId === child.id}
-                  ontoggle={() => (openChildId = openChildId === child.id ? null : child.id)}
-                />
+            {#if entity.type === 'album' && group.type === 'track'}
+              {#if filling && shortOfWhole !== true}
+                <p class="note note--small" role="status">Loading the rest of this release…</p>
               {/if}
-            {/each}
-          </ul>
 
-          <AutoLoad
-            hasMore={children.length > childLimit}
-            count={Math.min(childLimit, children.length)}
-            noun="entries"
-            onload={() => (childLimit += 60)}
-          />
-        </section>
+              {#if shortOfWhole && fill?.status === 'incomplete'}
+                <div class="short panel panel--sunk stack stack--tight" role="status">
+                  <p class="note">
+                    This tracklist is incomplete — {loadedTracks} of {fill.total ?? loadedTracks} tracks
+                    loaded. {fill.reason}
+                  </p>
+                  <div class="row">
+                    <button
+                      type="button"
+                      class="btn btn--small"
+                      disabled={filling}
+                      onclick={() => void retryFill()}
+                    >
+                      {filling ? 'Trying…' : 'Try again'}
+                    </button>
+                    {#if entity.externalUrl}
+                      <a
+                        class="btn btn--small btn--quiet"
+                        href={entity.externalUrl}
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        Open in Spotify
+                      </a>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            {/if}
+
+            <ul class="contents">
+              {#each group.edges.slice(0, childLimit) as edge (edge.childId)}
+                {@const child = $graph.entity(edge.childId)}
+                {#if child}
+                  <RatableRow
+                    entity={child}
+                    view={$settings.scoreView}
+                    position={child.trackNumber ??
+                      (edge.position !== undefined ? edge.position + 1 : undefined)}
+                    expanded={openChildId === child.id}
+                    ontoggle={() => (openChildId = openChildId === child.id ? null : child.id)}
+                    omit={established}
+                  />
+                {/if}
+              {/each}
+            </ul>
+
+            <AutoLoad
+              hasMore={group.edges.length > childLimit}
+              count={Math.min(childLimit, group.edges.length)}
+              noun={entityLabel(group.type, true)}
+              onload={() => (childLimit += 60)}
+            />
+          </section>
+        {/each}
       {:else if entity.type === 'album' && filling}
-        <section>
-          <div class="head"><h2 class="title">What's inside</h2></div>
+        <section aria-labelledby="contents-loading">
+          <div class="head">
+            <h2 id="contents-loading" class="title">{contentsHeading('album', 'track')}</h2>
+          </div>
           <p class="note" role="status">Loading this release…</p>
         </section>
-      {:else if entity.provider === 'spotify' && $spotifySession.connected}
-        <section>
-          <div class="head"><h2 class="title">What's inside</h2></div>
-          <p class="note">Nothing loaded yet for this item.</p>
+      {:else if canExpand(entity.type) && entity.provider === 'spotify' && $spotifySession.connected}
+        {@const noun = entityLabel(expectedChildType(entity.type), true)}
+        <section aria-labelledby="contents-empty">
+          <div class="head">
+            <h2 id="contents-empty" class="title">
+              {contentsHeading(entity.type, expectedChildType(entity.type))}
+            </h2>
+          </div>
+          <p class="note">No {noun} loaded yet.</p>
           <button type="button" class="btn" disabled={expanding} onclick={() => void expand()}>
-            {expanding ? 'Loading…' : 'Load its contents from Spotify'}
+            {expanding ? 'Loading…' : `Load the ${noun} from Spotify`}
           </button>
+        </section>
+      {:else if canExpand(entity.type)}
+        <section aria-labelledby="contents-offline">
+          <div class="head">
+            <h2 id="contents-offline" class="title">
+              {contentsHeading(entity.type, expectedChildType(entity.type))}
+            </h2>
+          </div>
+          <p class="note">
+            No {entityLabel(expectedChildType(entity.type), true)} loaded. Connect Spotify to fetch them.
+          </p>
         </section>
       {/if}
 
@@ -496,23 +662,20 @@
 
     <aside class="margin">
       {#if breakdown}
-        <WhyThisScore {breakdown} {scale} />
-      {/if}
-
-      {#if parents.length > 0}
         <div class="stack stack--tight">
-          <h2 class="label">Belongs to</h2>
-          {#each parents.slice(0, 10) as edge (edge.parentId)}
-            {@const parent = $graph.entity(edge.parentId)}
-            {#if parent}
-              <a class="margin__link" href={entityHref(parent.id)}>{parent.name}</a>
-            {/if}
-          {/each}
+          <h2 class="label">Score</h2>
+          {#if gist}<p class="note note--small">{gist}</p>{/if}
+          <details class="disclose">
+            <summary class="disclose__head">How this score was reached</summary>
+            <div class="disclose__body">
+              <WhyThisScore {breakdown} {scale} heading={false} />
+            </div>
+          </details>
         </div>
       {/if}
 
       <div class="stack stack--tight">
-        <h2 class="label">Your notes</h2>
+        <h2 class="label">Your notes and tags</h2>
         <label class="field">
           <span class="sr-only">A standing note about {entity.name}</span>
           <textarea
@@ -541,18 +704,22 @@
         </label>
       </div>
 
-      <div class="stack stack--tight">
-        <h2 class="label">Where this came from</h2>
-        <p class="note note--small">
-          {#if entity.provider === 'local'}
-            Added by hand on this device. Nothing about it came from Spotify.
-          {:else}
-            Read from the Spotify Web API{entity.provenance ? ` (${entity.provenance})` : ''}. Only
-            catalogue metadata is stored; your ratings are yours and are never sent to Spotify.
-          {/if}
-        </p>
-        <p class="mono">{entity.id}</p>
-      </div>
+      <details class="disclose">
+        <summary class="disclose__head">Details</summary>
+        <div class="disclose__body stack stack--tight">
+          <p class="note note--small">
+            {#if entity.provider === 'local'}
+              Added by hand on this device. Nothing about it came from Spotify.
+            {:else}
+              Read from the Spotify Web API{entity.provenance ? ` (${entity.provenance})` : ''}.
+              Only catalogue metadata is stored; your ratings are yours and are never sent to
+              Spotify.
+            {/if}
+          </p>
+          <p class="mono">{entity.id}</p>
+          <p class="note note--small">Last updated {dateAndTime(entity.updatedAt)}</p>
+        </div>
+      </details>
     </aside>
   </div>
 {/if}
@@ -622,6 +789,67 @@
     margin-bottom: var(--s3);
   }
 
+  .rel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: var(--s5);
+    padding-bottom: var(--s5);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
+  }
+  .rel__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    min-width: 0;
+  }
+  .rel__list {
+    display: flex;
+    flex-direction: column;
+  }
+  .rel__row {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding: var(--s2) 0;
+    min-height: 44px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .rel__row:hover .rel__name {
+    color: var(--accent-ink);
+  }
+  .rel__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .rel__name {
+    font-family: var(--display);
+    font-size: 0.9375rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rel__more summary {
+    cursor: pointer;
+    padding: var(--s2) 0;
+  }
+  .rel__more summary:hover {
+    color: var(--accent-ink);
+  }
+
+  .disclose__head {
+    cursor: pointer;
+    padding: var(--s2) 0;
+    font-size: 0.8125rem;
+  }
+  .disclose__head:hover {
+    color: var(--accent-ink);
+  }
+  .disclose__body {
+    padding-top: var(--s2);
+  }
+
   .contents,
   .history {
     display: flex;
@@ -653,9 +881,12 @@
     font-size: 0.8125rem;
   }
 
-  .margin__link {
-    font-size: 0.875rem;
-    color: var(--ink);
+  .margin {
+    /* The rail sticks, so it must never grow past the window and strand the
+       controls at its foot. */
+    max-height: calc(100dvh - var(--s5) - var(--player-h, 0px) - var(--s4));
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   @media (max-width: 48rem) {
@@ -665,6 +896,13 @@
     }
     .rating {
       padding: var(--s4);
+    }
+  }
+
+  @media (max-width: 68rem) {
+    .margin {
+      max-height: none;
+      overflow: visible;
     }
   }
 </style>

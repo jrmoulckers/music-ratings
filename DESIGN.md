@@ -293,6 +293,7 @@ Playback progress is the one exception, because it is a reading rather than a tr
 - **Album mode** (`AlbumMode`) — a record listened to in order and rated as it goes. The status column states what is true and no more: **Now playing**, **Played this session** only where Spotify has confirmed a play in this sitting, **Awaiting Spotify** where the app watched it play but Spotify has not caught up, **Earlier track** for a position the playhead has passed without either — never "Passed", which would blame the listener for starting mid-record. Each row is a `RatableRow`; the current one is `aria-current` and highlighted but never scrolled to while you are editing another. `x of y rated` and an **Unrated from this record** filter make the gap the thing you close. The record's own rating is a separate control that stays separate.
 - **Search overlay** (`SearchOverlay`) — `/` or Ctrl/Cmd+K from anywhere. Answers instantly and offline from your own library; searching the Spotify catalogue is a deliberate second step, and the answers Spotify actually gave lead the list rather than the metadata they dragged in. Two records that would look identical — the 1969 master and the 2019 remaster, both real, both ratable — are told apart by the smallest fact that separates them, and rows that are already distinct get nothing.
 - **Recent searches** (`RecentSearches`) — the last eight things you looked for, on an empty field, in both search surfaces from one implementation. Device-local and never synced: what you searched for is not a rating.
+- **Detail page** (`Entity`) — asks each kind the question it can answer. Containers get their own word for their contents — a release has a **Tracklist**, a playlist has **Tracks**, an artist has **Releases** and then **Tracks**, a show has **Episodes**, an audiobook has **Chapters** — and leaves are never asked what is inside them at all, so a track has no empty contents section and no button offering to load something Spotify will never return. A leaf leads with what it belongs to instead: **Appears on**, **By**, **From**, grouped by kind and linked, with the record it came from given more weight than the eleventh playlist someone added it to. Two editions of one record are two rows told apart by the smallest fact that separates them. The margin carries three groups and no more — the score with one line of plain reading and the working folded behind it, your note and tags together, and everything technical under **Details** — because a column of ten equal links is a column nobody reads. The page is the context: rows in its own lists do not reprint the name at the top of it.
 - **Empty states** — every one names what is missing and offers the action that fixes it.
 
 ## Do's and Don'ts
@@ -316,6 +317,8 @@ Playback progress is the one exception, because it is a reading rather than a tr
 - Do mount `InlineRating` wherever something can be rated, and extend its API rather than drawing a second control that looks like it.
 - Do open the app against whatever database version is already on the device. Refusing to start protects nothing and puts the user's own ratings out of reach.
 - Do say which record you mean when two of them would look the same, using the smallest fact that separates them.
+- Do ask a thing the question its kind can answer, and let the graph edges — not the page template — decide whether it holds anything.
+- Do leave out of a row whatever the page above it has already said.
 
 ### Don't
 
@@ -335,3 +338,4 @@ Playback progress is the one exception, because it is a reading rather than a tr
 - Don't print an ambiguous fraction. "2 of 13" cannot mean loaded on one screen and rated on the next; a release header says "13 tracks · 2 rated".
 - Don't claim a play that Spotify has not confirmed, and don't let a track's position in the running order stand in for one.
 - Don't merge two catalogue records because they look alike. They may be two editions, each with its own rating; distinguish them instead.
+- Don't offer to load contents a leaf cannot have, or contents Spotify will not return. An empty state that apologises for missing data is a page inventing a hole in it.

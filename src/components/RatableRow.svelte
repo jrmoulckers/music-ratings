@@ -9,6 +9,7 @@
   } from '../lib/app/state';
   import { entityHref } from '../lib/app/router';
   import { playedReason } from '../lib/domain/reasons';
+  import { trimContext } from '../lib/domain/relations';
   import { suggestionSourceLabel } from '../lib/domain/suggestions';
   import type { Entity, RatingContext, ScoreView, Suggestion } from '../lib/domain/types';
   import { duration, releaseYear } from '../lib/ui/format';
@@ -47,6 +48,11 @@
     onafter?: (() => void) | undefined;
     /** Recorded on every rating made from this row. */
     where?: RatingContext | undefined;
+    /**
+     * Names the surrounding page has already established, dropped from the
+     * subtitle. An album's tracklist should not print the album on every line.
+     */
+    omit?: readonly string[];
   }
 
   let {
@@ -60,6 +66,7 @@
     ontoggle,
     onafter,
     where,
+    omit,
   }: Props = $props();
 
   const scale = $derived($scaleForType(entity.type));
@@ -82,7 +89,7 @@
 
   const sub = $derived(
     [
-      entity.subtitle,
+      trimContext(entity.subtitle, omit ?? []),
       releaseYear(entity.releaseDate),
       duration(entity.durationMs),
       entity.available === false ? 'unavailable in your market' : '',

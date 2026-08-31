@@ -16,9 +16,11 @@
   interface Props {
     breakdown: ScoreBreakdown;
     scale: RatingScale;
+    /** Off when a disclosure already names this panel, so the label is not read twice. */
+    heading?: boolean;
   }
 
-  let { breakdown, scale }: Props = $props();
+  let { breakdown, scale, heading = true }: Props = $props();
 
   const context = $derived(breakdown.context ?? null);
 
@@ -48,7 +50,9 @@
 </script>
 
 <div class="why">
-  <h3 class="label">How this score was reached</h3>
+  {#if heading}
+    <h3 class="label">How this score was reached</h3>
+  {/if}
 
   <ol class="why__channels">
     {#each breakdown.channels as channel (channel.channel)}
@@ -80,7 +84,7 @@
 
   {#if context}
     <div class="why__context">
-      <h4 class="label">Deeper rating</h4>
+      <h3 class="label">Deeper rating</h3>
       <p class="why__blend">
         <span class="why__part">
           <span class="note note--small">Your rating</span>
@@ -179,7 +183,7 @@
 
   {#if breakdown.exclusions.length > 0}
     <div class="why__excluded">
-      <h4 class="label">Left out on purpose</h4>
+      <h3 class="label">Left out on purpose</h3>
       <ul class="why__list">
         {#each breakdown.exclusions as exclusion (exclusion.code)}
           <li><span class="note">{exclusion.detail}</span></li>
