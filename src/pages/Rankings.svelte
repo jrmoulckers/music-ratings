@@ -1,7 +1,7 @@
 <script lang="ts">
   import { get } from 'svelte/store';
 
-  import { entityHref, navigate } from '../lib/app/router';
+  import { navigate } from '../lib/app/router';
   import {
     annotationsById,
     entityLabel,
@@ -14,8 +14,9 @@
   } from '../lib/app/state';
   import { buildRankedList, TIME_RANGES } from '../lib/domain/lists';
   import type { EntityType, ScoreView } from '../lib/domain/types';
+  import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
-  import EntryRow from '../components/EntryRow.svelte';
+  import RatableRow from '../components/RatableRow.svelte';
 
   /**
    * Rankings.
@@ -30,6 +31,8 @@
 
   let { query }: Props = $props();
 
+  const PAGE = 40;
+
   let type = $state<EntityType>('album');
   let direction = $state<'top' | 'bottom'>('top');
   let view = $state<ScoreView>('blended');
@@ -38,6 +41,8 @@
   let minComparisons = $state(0);
   let requireExplicit = $state(false);
   let tag = $state('');
+  let limit = $state(PAGE);
+  let openId = $state<string | null>(null);
 
   // As in the library: the address bar carries the list so it can be shared, and
   // `applied` keeps the URL and the controls from chasing each other.
@@ -82,12 +87,25 @@
         minComparisons,
         requireExplicit,
         ...(tag ? { tags: [tag] } : {}),
-        limit: 100,
+        limit,
       },
     ),
   );
 
   const scale = $derived($scaleForType(type));
+
+  // A different question starts at the top of its own answer.
+  $effect(() => {
+    void type;
+    void direction;
+    void view;
+    void rangeId;
+    void minCoverage;
+    void minComparisons;
+    void requireExplicit;
+    void tag;
+    limit = PAGE;
+  });
 
   /**
    * The kind and the direction are filter state, not the identity of the page,
@@ -117,20 +135,24 @@
         {#each list.rows as row (row.entityId)}
           {@const entity = $graph.entity(row.entityId)}
           {#if entity}
-            <li>
-              <a class="ranks__link" href={entityHref(row.entityId)}>
-                <EntryRow
-                  {entity}
-                  breakdown={row.breakdown}
-                  {view}
-                  position={row.position}
-                  tied={row.tied}
-                />
-              </a>
-            </li>
+            <RatableRow
+              {entity}
+              {view}
+              position={row.position}
+              tied={row.tied}
+              expanded={openId === row.entityId}
+              ontoggle={() => (openId = openId === row.entityId ? null : row.entityId)}
+            />
           {/if}
         {/each}
       </ol>
+
+      <AutoLoad
+        hasMore={list.rows.length >= limit && list.considered > limit}
+        count={list.rows.length}
+        noun="ranked entries"
+        onload={() => (limit += PAGE)}
+      />
     {:else}
       <Empty
         title="Nothing to show"
@@ -252,11 +274,6 @@
   .ranks {
     display: flex;
     flex-direction: column;
-  }
-  .ranks__link {
-    display: block;
-    text-decoration: none;
-    color: inherit;
   }
 
   .dropped {

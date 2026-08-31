@@ -1,6 +1,18 @@
 import { rankingConfidence, type RankingTable } from './elo';
 import type { ContainmentGraph } from './graph';
 import type { ExplicitRating } from './ratings';
+import {
+  comparisonReason,
+  coverageReason,
+  pinnedReason,
+  playedReason,
+  relativeDays,
+  relativePlay,
+  savedReason,
+  staleReason,
+  topReason,
+  unratedChildReason,
+} from './reasons';
 import type {
   EntityId,
   EntityType,
@@ -13,6 +25,8 @@ import type {
 } from './types';
 import { SUGGESTION_SOURCES } from './types';
 import { hashString } from './ids';
+
+export { relativeDays, relativePlay };
 
 /**
  * What to rate next.
@@ -67,6 +81,11 @@ export interface SuggestionInput {
   enabledTypes: readonly EntityType[];
   /** A rating older than this is offered for review. */
   staleAfterDays: number;
+  /**
+   * Start of the current rating pass. Anything skipped since then stays out of
+   * the queue for the rest of it, however long the user keeps working.
+   */
+  passStartedAt?: number;
   pinnedIds?: ReadonlySet<EntityId>;
   now?: number;
 }
@@ -98,12 +117,16 @@ export const TIER_INFERRED = 1;
 /**
  * How long a skip holds.
  *
- * Skip means "not this, not now". It has to actually remove the item from the
- * queue, or the queue looks like it is insisting. It is not a permanent verdict
- * either, so it lapses — and playing the thing again clears it immediately,
- * because pressing play is a louder signal than a dismissal from this morning.
+ * Skip means "not this, not now" — it is a dismissal, not a verdict, so it is
+ * scoped to the sitting rather than stamped on the item. An item skipped during
+ * the current pass stays gone for that pass however long it runs, and the grace
+ * window carries the same decision across a reload or a detour into an item's
+ * page, which are not new sittings in any sense the user would recognise.
+ *
+ * Playing the thing again overrides both at once: pressing play is a louder
+ * signal than a dismissal from earlier.
  */
-export const SKIP_COOLDOWN_MS = 6 * 3_600_000;
+export const SKIP_PASS_GRACE_MS = 30 * 60_000;
 
 /** Half-life for how quickly a play stops being a reason to rate something. */
 const PLAY_HALF_LIFE_DAYS = 10;
@@ -111,30 +134,6 @@ const PLAY_HALF_LIFE_DAYS = 10;
 function decay(ageMs: number, halfLifeDays: number): number {
   if (!(halfLifeDays > 0)) return 1;
   return 2 ** (-Math.max(0, ageMs / DAY) / halfLifeDays);
-}
-
-function relativeDays(ms: number): string {
-  const days = Math.round(ms / DAY);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 14) return `${days} days ago`;
-  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
-  const months = Math.round(days / 30);
-  if (months < 24) return `${months} months ago`;
-  return `${Math.round(days / 365)} years ago`;
-}
-
-/**
- * A play within the hour is the whole reason this queue exists, so it is worth
- * saying in minutes rather than rounding it away to "today".
- */
-function relativePlay(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  return relativeDays(ms);
 }
 
 /**
@@ -155,12 +154,6 @@ export function collapsePlays(plays: readonly PlaySignal[]): PlaySignal[] {
   }
   return [...best.values()];
 }
-
-const TERM_LABEL: Record<TopSignal['term'], string> = {
-  short: 'the last four weeks',
-  medium: 'the last six months',
-  long: 'your all-time listening',
-};
 
 const TERM_SOURCE: Record<TopSignal['term'], SuggestionSource> = {
   short: 'topShortTerm',
@@ -201,6 +194,24 @@ function add(
 }
 
 /**
+ * Whether a skipped item may come back.
+ *
+ * Three questions, in the order that matters: have you played it since you
+ * pushed it away, did you push it away during this pass, and was that recent
+ * enough that this is plainly still the same sitting.
+ */
+export function skipHasLapsed(
+  state: QueueState,
+  item: { lastPlayedAt?: number },
+  now: number,
+  passStartedAt: number,
+): boolean {
+  if ((item.lastPlayedAt ?? 0) > state.at) return true;
+  if (state.at >= passStartedAt) return false;
+  return now - state.at >= SKIP_PASS_GRACE_MS;
+}
+
+/**
  * Deterministic given identical inputs: no randomness, no wall-clock reads
  * beyond the `now` you pass in.
  */
@@ -224,7 +235,7 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
       'recentlyPlayed',
       signal,
       w.recentlyPlayed,
-      `You played this ${relativePlay(now - play.at)}.`,
+      playedReason(now - play.at),
     );
     const item = acc.get(play.entityId);
     if (item) item.lastPlayedAt = Math.max(item.lastPlayedAt ?? 0, play.at);
@@ -240,7 +251,7 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
       TERM_SOURCE[top.term],
       signal,
       w[TERM_SOURCE[top.term]],
-      `Number ${top.rank + 1} in ${TERM_LABEL[top.term]}.`,
+      topReason(top.term, top.rank + 1),
     );
   }
 
@@ -255,7 +266,7 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
       'savedLibrary',
       signal,
       w.savedLibrary,
-      saved.savedAt ? `Saved to your library ${relativeDays(age)}.` : 'Saved to your library.',
+      saved.savedAt ? savedReason(age) : savedReason(),
     );
   }
 
@@ -268,10 +279,18 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     if (children.length === 0) continue;
 
     const coverage = parentScore?.coverage;
-    const coverageShortfall = coverage && coverage.total > 0 ? 1 - coverage.ratio : 0;
+    const shortOnCoverage = Boolean(coverage && coverage.total > 0 && !coverage.meetsMinimum);
+    // Named from the children this parent actually holds, so an artist that
+    // only has releases recorded is never described as missing tracks.
+    const childTypes = children.flatMap((edge) => {
+      const child = graph.entity(edge.childId);
+      return child ? [child.type] : [];
+    });
+    const ratedChildren = children.filter((edge) => input.explicit.has(edge.childId)).length;
 
     for (const edge of children) {
       if (input.explicit.has(edge.childId)) continue;
+      const child = graph.entity(edge.childId);
       if (parentRated) {
         add(
           acc,
@@ -281,19 +300,27 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
           'unratedChild',
           0.4 + 0.6 * (parentRated.normalized / 100),
           w.unratedChild,
-          `You rated ${parent.name} but not this.`,
+          unratedChildReason(parent.name, child?.type ?? parent.type),
         );
       }
-      if (coverage && !coverage.meetsMinimum && coverageShortfall > 0) {
+      // Only one of these two ever prints for the same parent: "you rated the
+      // album but not this" and "no tracks from the album rated yet" are the
+      // same observation, and stacking them reads like the queue is nagging.
+      if (shortOnCoverage && !parentRated) {
         add(
           acc,
           graph,
           enabled,
           edge.childId,
           'coverageGap',
-          coverageShortfall,
+          1 - (coverage?.ratio ?? 0),
           w.coverageGap,
-          `${parent.name} is only ${Math.round((coverage.ratio || 0) * 100)}% rated.`,
+          coverageReason(
+            parent.name,
+            childTypes,
+            ratedChildren,
+            coverage?.total ?? children.length,
+          ),
         );
       }
     }
@@ -306,16 +333,7 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
     const age = now - rating.at;
     if (age > staleMs) {
       const signal = Math.min(1, (age - staleMs) / staleMs);
-      add(
-        acc,
-        graph,
-        enabled,
-        entityId,
-        'staleRating',
-        signal,
-        w.staleRating,
-        `Last rated ${relativeDays(age)}. Still right?`,
-      );
+      add(acc, graph, enabled, entityId, 'staleRating', signal, w.staleRating, staleReason(age));
     }
   }
 
@@ -331,35 +349,29 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
         'lowConfidenceRank',
         1 - confidence,
         w.lowConfidenceRank,
-        state.comparisons === 0
-          ? 'Never compared against anything.'
-          : `Only ${state.comparisons} comparison${state.comparisons === 1 ? '' : 's'} so far.`,
+        comparisonReason(state.comparisons),
       );
     }
   }
 
   if (input.pinnedIds) {
     for (const entityId of input.pinnedIds) {
-      add(acc, graph, enabled, entityId, 'pinned', 1, w.pinned, 'You pinned this.');
+      add(acc, graph, enabled, entityId, 'pinned', 1, w.pinned, pinnedReason());
     }
   }
 
   /* --- queue state ------------------------------------------------------- */
 
   const out: Suggestion[] = [];
+  const passStartedAt = input.passStartedAt ?? now;
   for (const item of acc.values()) {
     const state = input.queueStates.get(item.entityId);
     if (state && !state.deleted) {
       if (state.kind === 'snoozed' && (state.until ?? 0) > now) continue;
+      // Retired from the interface, kept here so a record that synced from an
+      // older version of the app still means what it meant when it was made.
       if (state.kind === 'unfamiliar' && now - state.at < 90 * DAY) continue;
-      if (state.kind === 'skipped') {
-        // A skip removes the item outright — a queue that keeps re-offering
-        // what you just pushed away is not listening. It lapses after the
-        // cooldown, and playing the thing again overrides it at once.
-        const playedSince = (item.lastPlayedAt ?? 0) > state.at;
-        const lapsed = now - state.at >= SKIP_COOLDOWN_MS;
-        if (!playedSince && !lapsed) continue;
-      }
+      if (state.kind === 'skipped' && !skipHasLapsed(state, item, now, passStartedAt)) continue;
     }
     const reasons = [...item.reasons.values()].sort((a, b) => b.weight - a.weight);
     let score = reasons.reduce((acc2, r) => acc2 + r.weight, 0);
@@ -400,26 +412,31 @@ export function scoreSuggestions(input: SuggestionInput): Suggestion[] {
   return out;
 }
 
+/**
+ * The short category word beside a reason.
+ *
+ * One or two words only. The sentence next to it already carries the specifics
+ * — "#3 in your all-time listening." — so a label that repeated the window
+ * would be the same fact printed twice on one line.
+ */
 export function suggestionSourceLabel(source: SuggestionSource): string {
   switch (source) {
     case 'recentlyPlayed':
-      return 'Recently played';
+      return 'Played';
     case 'topShortTerm':
-      return 'Top — 4 weeks';
     case 'topMediumTerm':
-      return 'Top — 6 months';
     case 'topLongTerm':
-      return 'Top — all time';
+      return 'Top';
     case 'savedLibrary':
-      return 'Saved library';
+      return 'Saved';
     case 'unratedChild':
-      return 'Unrated inside something you rated';
+      return 'Unrated';
     case 'staleRating':
-      return 'Due for review';
+      return 'Review';
     case 'lowConfidenceRank':
-      return 'Unsettled ranking';
+      return 'Unsettled';
     case 'coverageGap':
-      return 'Coverage gap';
+      return 'Coverage';
     case 'pinned':
       return 'Pinned';
     default:

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { notify } from '../lib/app/notices';
   import { entityHref } from '../lib/app/router';
-  import { graph, settings } from '../lib/app/state';
+  import { graph, entityLabelCap, settings } from '../lib/app/state';
   import type { Entity, Membership } from '../lib/domain/types';
   import { SpotifyClient } from '../lib/spotify/client';
   import { searchCatalogue } from '../lib/spotify/library';
@@ -9,6 +9,8 @@
   import { saveMemberships, upsertEntities } from '../lib/storage/repo';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
+  import AutoLoad from './AutoLoad.svelte';
+  import EntityTypeIcon from './EntityTypeIcon.svelte';
 
   /**
    * Reaching past your library into Spotify's catalogue.
@@ -33,6 +35,7 @@
     term = initialTerm;
   });
   let running = $state(false);
+  let shown = $state(20);
   let found = $state<{ entities: Entity[]; memberships: Membership[] }>({
     entities: [],
     memberships: [],
@@ -70,6 +73,7 @@
       // Attribute the outcome to the term that was asked for, so editing the
       // box clears the last answer instead of leaving it to look current.
       resultsFor = asked;
+      shown = 20;
       running = false;
     }
   }
@@ -131,7 +135,7 @@
       <p class="note">Spotify returned nothing for that, in the types you have enabled.</p>
     {:else if results.length > 0}
       <ul class="find__rows">
-        {#each results.slice(0, 20) as entity (entity.id)}
+        {#each results.slice(0, shown) as entity (entity.id)}
           {@const already = $graph.has(entity.id)}
           <li>
             <Artwork src={entity.artworkThumbUrl} name={entity.name} size="sm" />
@@ -139,7 +143,10 @@
               <span class="find__name">{entity.name}</span>
               {#if entity.subtitle}<span class="note note--small">{entity.subtitle}</span>{/if}
             </span>
-            <span class="label">{entity.type}</span>
+            <span class="label find__kind">
+              <EntityTypeIcon type={entity.type} size={14} />
+              <span>{entityLabelCap(entity.type)}</span>
+            </span>
             {#if already}
               <a class="btn btn--small btn--quiet" href={entityHref(entity.id)}>In your library</a>
             {:else}
@@ -150,6 +157,13 @@
           </li>
         {/each}
       </ul>
+
+      <AutoLoad
+        hasMore={results.length > shown}
+        count={Math.min(shown, results.length)}
+        noun="results"
+        onload={() => (shown += 20)}
+      />
     {/if}
   {/if}
 </section>
@@ -187,6 +201,12 @@
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .find__kind {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
     white-space: nowrap;
   }
 </style>

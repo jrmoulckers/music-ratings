@@ -7,12 +7,13 @@ import { defaultRollupConfigByType } from './rollup';
 import {
   DEFAULT_SUGGESTION_WEIGHTS,
   EMPTY_SIGNALS,
-  SKIP_COOLDOWN_MS,
+  SKIP_PASS_GRACE_MS,
   TIER_INFERRED,
   TIER_JUST_PLAYED,
   collapsePlays,
   emptySuggestionWeights,
   scoreSuggestions,
+  skipHasLapsed,
   suggestionSourceLabel,
   type ListeningSignals,
   type SuggestionInput,
@@ -23,6 +24,7 @@ import {
   type Entity,
   type Membership,
   type QueueState,
+  type ScoreBreakdown,
   type RatingEvent,
 } from './types';
 
@@ -334,12 +336,15 @@ describe('queue states', () => {
     expect(skipped).toEqual([]);
   });
 
-  it('lets a skip lapse once the cooldown has run out', () => {
-    // The play sits behind both skips, so only the cooldown is under test here.
+  it('holds a skip for the whole pass, however long the pass runs', () => {
+    // The play sits well behind the skip, so only the dismissal is under test.
     const longAgo: Partial<ListeningSignals> = {
       recentlyPlayed: [{ entityId: track.id, at: T0 - 2 * DAY, index: 0 }],
     };
+    const passStartedAt = T0 - 8 * 3600_000;
 
+    // Skipped four hours into an eight-hour sitting: still gone, even though
+    // that is far longer than the grace window that covers a page reload.
     const stillHeld = scoreSuggestions(
       input({
         entities: [track],
@@ -349,34 +354,69 @@ describe('queue states', () => {
             id: track.id,
             entityType: 'track',
             kind: 'skipped',
-            at: T0 - SKIP_COOLDOWN_MS + 1000,
+            at: passStartedAt + 4 * 3600_000,
             updatedAt: T0,
           },
         ],
+        overrides: { passStartedAt },
       }),
     );
     expect(stillHeld).toEqual([]);
+  });
 
-    const lapsed = scoreSuggestions(
-      input({
-        entities: [track],
-        signals: longAgo,
-        queueStates: [
-          {
-            id: track.id,
-            entityType: 'track',
-            kind: 'skipped',
-            at: T0 - SKIP_COOLDOWN_MS - 1000,
-            updatedAt: T0,
-          },
-        ],
-      }),
-    );
-    expect(lapsed).toHaveLength(1);
+  it('brings a skip back at the next sitting, once the grace window has passed', () => {
+    const longAgo: Partial<ListeningSignals> = {
+      recentlyPlayed: [{ entityId: track.id, at: T0 - 2 * DAY, index: 0 }],
+    };
+
+    const skipped = (age: number, passStartedAt: number) =>
+      scoreSuggestions(
+        input({
+          entities: [track],
+          signals: longAgo,
+          queueStates: [
+            {
+              id: track.id,
+              entityType: 'track',
+              kind: 'skipped',
+              at: T0 - age,
+              updatedAt: T0,
+            },
+          ],
+          overrides: { passStartedAt },
+        }),
+      );
+
+    // Coming back a minute later is the same sitting in every sense that
+    // matters, so a reload or a detour into an item's page does not undo it.
+    expect(skipped(SKIP_PASS_GRACE_MS - 60_000, T0)).toEqual([]);
+
+    // Coming back an hour later is not.
+    expect(skipped(SKIP_PASS_GRACE_MS + 60_000, T0)).toHaveLength(1);
+  });
+
+  it('states the skip contract directly', () => {
+    const state: QueueState = {
+      id: track.id,
+      entityType: 'track',
+      kind: 'skipped',
+      at: T0 - 10 * 60_000,
+      updatedAt: T0,
+    };
+
+    // Skipped during this pass: held.
+    expect(skipHasLapsed(state, {}, T0, T0 - 30 * 60_000)).toBe(false);
+    // Skipped before this pass but only just: still held by the grace window.
+    expect(skipHasLapsed(state, {}, T0, T0)).toBe(false);
+    // Skipped before this pass and long enough ago: back.
+    expect(skipHasLapsed({ ...state, at: T0 - 2 * 3600_000 }, {}, T0, T0)).toBe(true);
+    // Played since: back regardless of either rule.
+    expect(skipHasLapsed(state, { lastPlayedAt: T0 - 60_000 }, T0, T0 - 30 * 60_000)).toBe(true);
   });
 
   it('brings a skipped item back the moment you play it again', () => {
     const skippedAt = T0 - 3600_000;
+    const passStartedAt = skippedAt - 60_000;
     const state: QueueState = {
       id: track.id,
       entityType: 'track',
@@ -392,6 +432,7 @@ describe('queue states', () => {
           entities: [track],
           signals: { recentlyPlayed: [{ entityId: track.id, at: skippedAt - 1000, index: 0 }] },
           queueStates: [state],
+          overrides: { passStartedAt },
         }),
       ),
     ).toEqual([]);
@@ -402,6 +443,7 @@ describe('queue states', () => {
         entities: [track],
         signals: { recentlyPlayed: [{ entityId: track.id, at: skippedAt + 60_000, index: 0 }] },
         queueStates: [state],
+        overrides: { passStartedAt },
       }),
     );
     expect(revived).toHaveLength(1);
@@ -475,7 +517,7 @@ describe('what you just played', () => {
     );
     expect(out).toHaveLength(1);
     expect(out[0]!.lastPlayedAt).toBe(T0 - 90_000);
-    expect(out[0]!.reasons[0]!.detail).toBe('You played this 2 minutes ago.');
+    expect(out[0]!.reasons[0]!.detail).toBe('Played 2 minutes ago.');
   });
 
   it('collapses even when the newest play is not the first in the window', () => {
@@ -518,11 +560,11 @@ describe('what you just played', () => {
         }),
       )[0]!.reasons[0]!.detail;
 
-    expect(said(20_000)).toBe('You played this just now.');
-    expect(said(60_000)).toBe('You played this 1 minute ago.');
-    expect(said(25 * 60_000)).toBe('You played this 25 minutes ago.');
-    expect(said(3 * 3600_000)).toBe('You played this 3 hours ago.');
-    expect(said(2 * DAY)).toBe('You played this 2 days ago.');
+    expect(said(20_000)).toBe('Played just now.');
+    expect(said(60_000)).toBe('Played 1 minute ago.');
+    expect(said(25 * 60_000)).toBe('Played 25 minutes ago.');
+    expect(said(3 * 3600_000)).toBe('Played 3 hours ago.');
+    expect(said(2 * DAY)).toBe('Played 2 days ago.');
   });
 });
 
@@ -564,11 +606,152 @@ describe('determinism and configuration', () => {
     expect(out).toEqual([]);
   });
 
-  it('labels every source in plain language', () => {
+  it('labels every source with a short plain word, not its identifier', () => {
     for (const source of Object.keys(DEFAULT_SUGGESTION_WEIGHTS)) {
-      const label = suggestionSourceLabel(source as keyof typeof DEFAULT_SUGGESTION_WEIGHTS);
-      expect(label.length).toBeGreaterThan(3);
-      expect(label).not.toMatch(/[A-Z]{2,}/);
+      const key = source as keyof typeof DEFAULT_SUGGESTION_WEIGHTS;
+      const label = suggestionSourceLabel(key);
+      expect(label, key).not.toBe(key);
+      expect(label, key).toMatch(/^[A-Z][a-z]+( [a-z]+)?$/);
+      expect(label.length, key).toBeLessThanOrEqual(14);
+    }
+  });
+
+  it('does not repeat the listening window in both the label and the sentence', () => {
+    // "Top four weeks" beside "#3 in your last four weeks." says it twice.
+    for (const term of ['topShortTerm', 'topMediumTerm', 'topLongTerm'] as const) {
+      expect(suggestionSourceLabel(term)).toBe('Top');
+    }
+  });
+});
+
+describe('what the queue says about an item', () => {
+  /** A parent whose contents are recorded but almost entirely unjudged. */
+  function thinCoverage(entity: Entity, rated: number, total: number) {
+    const breakdown: ScoreBreakdown = {
+      entityId: entity.id,
+      entityType: entity.type,
+      explicit: null,
+      rollup: null,
+      blended: null,
+      channels: [],
+      coverage: { rated, total, ratio: total === 0 ? 0 : rated / total, meetsMinimum: false },
+      confidence: 0.1,
+      method: 'mean',
+      exclusions: [],
+      computedAt: T0,
+    };
+    return new Map([[entity.id, breakdown]]);
+  }
+
+  it('writes a listening position as a rank, not as a sentence about numbers', () => {
+    const track = makeEntity('track', 'ranked');
+    const detail = (term: 'short' | 'medium' | 'long', rank: number) =>
+      scoreSuggestions(
+        input({
+          entities: [track],
+          signals: { top: [{ entityId: track.id, term, rank: rank - 1, of: 50 }] },
+        }),
+      )[0]!.reasons.find((r) => r.source.startsWith('top'))!.detail;
+
+    expect(detail('long', 3)).toBe('#3 in your all-time listening.');
+    expect(detail('short', 1)).toBe('#1 in your last four weeks.');
+    expect(detail('medium', 8)).toBe('#8 in your last six months.');
+  });
+
+  it('never tells you a release is a percentage', () => {
+    const album = makeEntity('album', 'coverage-album');
+    const one = makeEntity('track', 'c1');
+    const two = makeEntity('track', 'c2');
+    const out = scoreSuggestions(
+      input({
+        entities: [album, one, two],
+        memberships: [link(album, one, { position: 0 }), link(album, two, { position: 1 })],
+        signals: { saved: [{ entityId: album.id, savedAt: T0 - 1000 }] },
+        overrides: { scores: thinCoverage(album, 0, 2) },
+      }),
+    );
+
+    const details = out.flatMap((s) => s.reasons.map((r) => r.detail));
+    expect(details.length).toBeGreaterThan(0);
+    for (const detail of details) {
+      expect(detail).not.toMatch(/%/);
+      expect(detail).not.toMatch(/is only/);
+      expect(detail).not.toMatch(/Number \d/);
+      expect(detail.endsWith('.')).toBe(true);
+    }
+  });
+
+  it('counts what is rated in a parent using the child’s own noun', () => {
+    const album = makeEntity('album', 'partly-rated');
+    const one = makeEntity('track', 'p1');
+    const two = makeEntity('track', 'p2');
+    const three = makeEntity('track', 'p3');
+    const out = scoreSuggestions(
+      input({
+        entities: [album, one, two, three],
+        memberships: [
+          link(album, one, { position: 0 }),
+          link(album, two, { position: 1 }),
+          link(album, three, { position: 2 }),
+        ],
+        ratings: [rate(one, 80, { at: T0 - DAY })],
+        overrides: { scores: thinCoverage(album, 1, 3) },
+      }),
+    );
+
+    const coverage = out.flatMap((s) => s.reasons).find((r) => r.source === 'coverageGap');
+    expect(coverage).toBeDefined();
+    expect(coverage!.detail).toBe(`1 of 3 tracks rated in ${album.name}.`);
+  });
+
+  it('says nothing is rated rather than nought per cent', () => {
+    const album = makeEntity('album', 'untouched');
+    const one = makeEntity('track', 'u1');
+    const two = makeEntity('track', 'u2');
+    const out = scoreSuggestions(
+      input({
+        entities: [album, one, two],
+        memberships: [link(album, one, { position: 0 }), link(album, two, { position: 1 })],
+        overrides: { scores: thinCoverage(album, 0, 2) },
+      }),
+    );
+
+    const coverage = out.flatMap((s) => s.reasons).find((r) => r.source === 'coverageGap');
+    expect(coverage?.detail).toBe(`No tracks from ${album.name} rated yet.`);
+  });
+
+  it('says you rated the parent but not this child, in the child’s own noun', () => {
+    const album = makeEntity('album', 'rated-parent');
+    const one = makeEntity('track', 'r1');
+    const out = scoreSuggestions(
+      input({
+        entities: [album, one],
+        memberships: [link(album, one, { position: 0 })],
+        ratings: [rate(album, 70, { at: T0 - DAY })],
+      }),
+    );
+
+    const reason = out.flatMap((s) => s.reasons).find((r) => r.source === 'unratedChild');
+    expect(reason?.detail).toBe(`You rated ${album.name} but not this track.`);
+  });
+
+  it('does not stack the two coverage sentences on one item', () => {
+    // "You rated the album but not this" and "no tracks rated yet" describe the
+    // same gap. Printing both reads like nagging.
+    const album = makeEntity('album', 'both-reasons');
+    const one = makeEntity('track', 'b1');
+    const out = scoreSuggestions(
+      input({
+        entities: [album, one],
+        memberships: [link(album, one, { position: 0 })],
+        ratings: [rate(album, 70, { at: T0 - DAY })],
+        overrides: { scores: thinCoverage(album, 0, 1) },
+      }),
+    );
+
+    for (const suggestion of out) {
+      const sources = suggestion.reasons.map((r) => r.source);
+      expect(sources.includes('unratedChild') && sources.includes('coverageGap')).toBe(false);
     }
   });
 });

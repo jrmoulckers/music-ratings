@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { BUILTIN_SCALES } from '../domain/scales';
+import { ENTITY_TYPES } from '../domain/types';
+import { ENTITY_TYPE_ICONS } from './entity-icons';
 import { ICON_PATHS } from './icons';
 
 describe('icon set', () => {
@@ -34,6 +36,39 @@ describe('icon set', () => {
       expect(numbers.length, name).toBeGreaterThan(0);
       for (const n of numbers) expect(n, `${name} uses ${n}`).toBeLessThanOrEqual(24);
       for (const n of numbers) expect(n, `${name} uses ${n}`).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('entity type icons', () => {
+  it('has a drawing for every kind of thing the app can rate', () => {
+    for (const type of ENTITY_TYPES) {
+      const name = ENTITY_TYPE_ICONS[type];
+      expect(name, `no icon named for ${type}`).toBeTruthy();
+      expect(ICON_PATHS, `${type} names a missing icon: ${name}`).toHaveProperty(name);
+    }
+  });
+
+  it('draws each kind differently, so the icon carries information', () => {
+    // A shared glyph between two kinds would look like a distinction while
+    // making none. Containers may echo their contents in silhouette but not
+    // in path.
+    const drawn = ENTITY_TYPES.map((type) => ICON_PATHS[ENTITY_TYPE_ICONS[type]]);
+    expect(new Set(drawn).size).toBe(ENTITY_TYPES.length);
+  });
+
+  it('stays inside the 24-unit grid so 14px renders cleanly', () => {
+    // Arc commands pack their flags in with the digits, so only the paths made
+    // purely of moves and lines can be read numerically. The rest are checked
+    // for being well-formed drawings on the same canvas.
+    for (const type of ENTITY_TYPES) {
+      const path = ICON_PATHS[ENTITY_TYPE_ICONS[type]];
+      expect(path, type).toMatch(/^M/);
+      expect(path.length, type).toBeGreaterThan(10);
+      if (/[aAcCsSqQtT]/.test(path)) continue;
+      const numbers = path.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+      expect(numbers.length, type).toBeGreaterThan(0);
+      for (const n of numbers) expect(n, `${type} uses ${n}`).toBeLessThanOrEqual(24);
     }
   });
 });

@@ -274,10 +274,12 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 
 - **Rail** (`RatingRail`) — the rating control. Vertical above `48rem`, horizontal on a phone. One tab stop; arrows walk detents, digits pick a known value, Home/End reach the ends. Detents are cut by whichever scale is active, so a 1–10 rail and an S–F tier rail are the same object with different cuts.
 - **Precision rail** (`PrecisionRail`) — the rail's second state, entered automatically past 16 detents. A hundred detents is not a hundred choices, so the cut slides instead of being one of a hundred, only round graduations are printed (`1 · 10 · 20 … 100`, thinned to `1 · 20 … 100` on a phone), and the reading becomes a number field you can type into, held in a fixed place above the track where it cannot run off either end. The choice is made from the scale's detent count, never its name, so a custom 0–50 scale gets it too. Same spine, same ink, same accent cut.
-- **Panel** (`RatePanel`, `ComparePanel`) — a raised bounded field holding exactly one decision, with its evidence above and its escapes (skip, snooze, don't know it) below. `RatePanel` also has an `inline` state that drops its own frame and heading so a queue row can host it without two frames around one item.
-- **Queue slip** (`QueueItem`) — the Rate page's row. Artwork, name, kind, why it is here and when it was last played, then Rate / Skip / Snooze / Don't know it. It hangs off the queue's accent rail by a cut that lengthens on hover and thickens when open; opening it expands the shared `RatePanel` in place rather than navigating away. Rate is the only framed button in the row, so twenty rows do not read as a wall of buttons.
-- **Entry row** — the list primitive everywhere: artwork, name and subtitle, kind label, score mark. Never a card.
-- **Score mark** (`ScoreMark`) — explicit ratings in `--ink`, computed rollups in `--ink-quiet`. The two are never rendered identically, because the app never overwrites one with the other.
+- **Panel** (`RatePanel`, `ComparePanel`) — a raised bounded field holding exactly one decision, with its evidence above and its escapes below. `RatePanel` also has an `inline` state that drops its own frame and heading so a row can host it without two frames around one item, and a `shortcuts` flag that means "queue semantics apply" — it gates the keyboard shortcuts, the swipe gestures and the footer, so the same panel is a plain rating editor on a detail page and a queue station on Rate.
+- **Ratable row** (`RatableRow`) — the one list primitive for anything you can rate: Rate, Library, Rankings, entity contents, search results, dashboard suggestions. Artwork or rank, name, kind icon and word, why it is here, then the compact rating control, the score mark, a Rate / Edit rating disclosure, and — only where a queue exists — Skip and Snooze behind a hairline. Opening the disclosure expands the shared `RatePanel` in place rather than navigating away; Escape closes it and returns focus to the disclosure. Rating something must never depend on which page you found it on, so no page reimplements either half.
+- **Quick rate** (`QuickRate`) — the compact rating affordance inside a row. Coarse scales get pressable detent marks in one bordered strip; dense scales get a number field with −/+ steppers. Both commit through the same action as the full rail, so the row and the expanded editor can never disagree.
+- **Auto load** (`AutoLoad`) — the end of a list, watched. An IntersectionObserver sentinel 800px ahead of the viewport appends the next batch itself, guarded against a double request while a batch renders and falling back to scroll measurement where the observer is missing. A "show more" button asks you to confirm that you meant to keep reading, which is a strange thing to ask of someone who is already scrolling; the app has none. Explicit **Refresh** is a different thing and stays.
+- **Entity type icon** (`EntityTypeIcon`) — one silhouette per kind: artist, release, track, playlist, show, episode, audiobook, chapter. Decorative beside a visible type word, labelled when it stands alone, so a screen reader is never told the kind twice.
+- **Score mark** (`ScoreMark`) — explicit ratings in `--ink`, computed rollups in `--ink-quiet`. The two are never rendered identically, because the app never overwrites one with the other. A row hides it when it would print the number the quick control is already showing.
 - **Search overlay** — `/` or Ctrl/Cmd+K from anywhere. Answers instantly and offline from your own library; searching the Spotify catalogue is a deliberate second step.
 - **Empty states** — every one names what is missing and offers the action that fixes it.
 
@@ -291,6 +293,8 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Do give every empty state a name for what is missing and the action that fixes it.
 - Do keep transitions on `transform` and `opacity`, and let them collapse under `prefers-reduced-motion`.
 - Do draw structure at one device pixel with `--hairline` rather than at a fixed 1px.
+- Do give a list of ratable things a `RatableRow` and let the end of it load itself.
+- Do write a suggestion reason as a sentence a person would say: "Played 2 hours ago.", "#3 in your all-time listening.", "No tracks from Rain Ledger rated yet."
 
 ### Don't
 
@@ -300,3 +304,6 @@ Three durations (`90ms`, `160ms`, `260ms`) and one ease (`cubic-bezier(0.22, 0.6
 - Don't set small text in `--accent` rather than `--accent-ink`.
 - Don't derive a scrim from `--ink` — it goes pale in dark mode and washes the page out.
 - Don't use themed vocabulary in the UI. Labels say what a thing is: "Your rating", not a metaphor for one.
+- Don't put a "Show more" or "Load more" button on an ordinary scrolling list.
+- Don't say the same thing twice in one row — not a chip and a sentence that opens on the chip's word, and not a score mark repeating the number in the field beside it.
+- Don't report a state as a percentage where a count is what the reader wants: "3 of 12 tracks rated", never "25% rated".

@@ -1,6 +1,12 @@
 <script lang="ts">
-  import { rate, markUnfamiliar, skip, snooze } from '../lib/app/actions';
-  import { annotationsById, explicitRatings, scaleForType, scores } from '../lib/app/state';
+  import { rate, skip, snooze } from '../lib/app/actions';
+  import {
+    annotationsById,
+    entityLabelCap,
+    explicitRatings,
+    scaleForType,
+    scores,
+  } from '../lib/app/state';
   import { CONFIDENCE_LABEL } from '../lib/domain/ratings';
   import { formatComputedOn } from '../lib/domain/scales';
   import type { Entity, RatingConfidence, Suggestion } from '../lib/domain/types';
@@ -10,6 +16,7 @@
   import Icon from '../lib/ui/Icon.svelte';
   import { relative } from '../lib/ui/format';
   import Artwork from './Artwork.svelte';
+  import EntityTypeIcon from './EntityTypeIcon.svelte';
   import RatingRail from './RatingRail.svelte';
 
   /**
@@ -30,7 +37,11 @@
      * row reads as one record rather than a card inside a card.
      */
     inline?: boolean;
-    /** Only the open editor listens for the queue's single-key shortcuts. */
+    /**
+     * Queue semantics. Skip and snooze only mean something where there is a
+     * queue to leave, so on a detail page or a search result the panel is a
+     * rating editor and nothing else.
+     */
     shortcuts?: boolean;
   }
 
@@ -96,9 +107,6 @@
     } else if (event.key === 'z' || event.key === 'Z') {
       event.preventDefault();
       void run(() => snooze(entity));
-    } else if (event.key === '?') {
-      event.preventDefault();
-      void run(() => markUnfamiliar(entity));
     }
   }
 </script>
@@ -111,9 +119,9 @@
   class:is-dragging={dragOffset !== 0}
   style:--drag="{dragOffset}px"
   use:swipe={{
-    onMove: (dx) => (dragOffset = Math.max(-140, Math.min(140, dx))),
-    onLeft: () => void run(() => skip(entity)),
-    onRight: () => void run(() => snooze(entity)),
+    onMove: (dx) => (dragOffset = shortcuts ? Math.max(-140, Math.min(140, dx)) : 0),
+    onLeft: () => shortcuts && void run(() => skip(entity)),
+    onRight: () => shortcuts && void run(() => snooze(entity)),
     onEnd: () => (dragOffset = 0),
   }}
 >
@@ -129,7 +137,10 @@
       <div class="panel__id">
         <h2 class="panel__name title">{entity.name}</h2>
         {#if entity.subtitle}<p class="note">{entity.subtitle}</p>{/if}
-        <p class="label">{entity.type}</p>
+        <p class="label panel__kind">
+          <EntityTypeIcon type={entity.type} size={14} />
+          <span>{entityLabelCap(entity.type)}</span>
+        </p>
       </div>
     </header>
   {/if}
@@ -147,8 +158,8 @@
 
   {#if existing}
     <p class="panel__prior note">
-      You last rated this {relative(existing.at)}. Seating a new value keeps the old one in the
-      record.
+      You last rated this {relative(existing.at)}. A new rating is saved alongside the old one, not
+      over it.
     </p>
   {:else if breakdown?.rollup !== null && breakdown?.rollup !== undefined}
     <p class="panel__prior note">
@@ -200,29 +211,30 @@
     </fieldset>
   </div>
 
-  <footer class="panel__actions">
-    {#if inline}
-      <!-- The row above already carries skip, snooze and not-familiar. -->
-      <p class="note">
-        Pick a value above to rate this. <kbd>S</kbd> skips, <kbd>Z</kbd> snoozes,
-        <kbd>?</kbd> marks it one you do not know.
-      </p>
-    {:else}
-      <button type="button" class="btn btn--small" onclick={() => void run(() => skip(entity))}>
-        <Icon name="arrow-right" size={13} /> Skip <kbd>S</kbd>
-      </button>
-      <button type="button" class="btn btn--small" onclick={() => void run(() => snooze(entity))}>
-        <Icon name="clock" size={13} /> Snooze <kbd>Z</kbd>
-      </button>
-      <button
-        type="button"
-        class="btn btn--small"
-        onclick={() => void run(() => markUnfamiliar(entity))}
-      >
-        Don't know it <kbd>?</kbd>
-      </button>
-    {/if}
-  </footer>
+  {#if inline || shortcuts}
+    <footer class="panel__actions">
+      {#if inline}
+        <!-- The row above already carries skip and snooze. -->
+        <p class="note">
+          {#if existing}
+            Choose a new value above to rate this again.
+          {:else}
+            Choose a value above to rate this.
+          {/if}
+          {#if shortcuts}
+            <kbd>S</kbd> skips, <kbd>Z</kbd> snoozes.
+          {/if}
+        </p>
+      {:else}
+        <button type="button" class="btn btn--small" onclick={() => void run(() => skip(entity))}>
+          <Icon name="arrow-right" size={13} /> Skip <kbd>S</kbd>
+        </button>
+        <button type="button" class="btn btn--small" onclick={() => void run(() => snooze(entity))}>
+          <Icon name="clock" size={13} /> Snooze <kbd>Z</kbd>
+        </button>
+      {/if}
+    </footer>
+  {/if}
 </article>
 
 <style>
@@ -278,6 +290,11 @@
   }
   .panel__name {
     font-size: clamp(1.375rem, 1.1rem + 1.1vw, 1.875rem);
+  }
+  .panel__kind {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
   }
 
   .panel__reasons {

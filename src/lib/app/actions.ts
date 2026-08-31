@@ -65,25 +65,30 @@ export async function rate(
 export async function skip(entity: Entity): Promise<void> {
   await setQueueState(entity.id, entity.type, 'skipped');
   announce(`${entity.name} skipped.`);
-  notify(`Skipped ${entity.name}. It is out of the queue for six hours, or until you play it.`, {
+  notify(`Skipped ${entity.name}. It is out of the queue for the rest of this pass.`, {
     action: { label: 'Undo', run: () => clearQueueState(entity.id) },
   });
 }
 
 export async function snooze(entity: Entity, days = 30): Promise<void> {
-  await setQueueState(entity.id, entity.type, 'snoozed', Date.now() + days * DAY);
-  announce(`${entity.name} snoozed for ${days} days.`);
-  notify(`Snoozed ${entity.name} for ${days} days.`, {
+  const until = Date.now() + days * DAY;
+  await setQueueState(entity.id, entity.type, 'snoozed', until);
+  const when = new Date(until).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  announce(`${entity.name} snoozed until ${when}.`);
+  notify(`Snoozed ${entity.name} until ${when}.`, {
     action: { label: 'Undo', run: () => clearQueueState(entity.id) },
   });
 }
 
-export async function markUnfamiliar(entity: Entity): Promise<void> {
-  await setQueueState(entity.id, entity.type, 'unfamiliar');
-  announce(`${entity.name} marked as not familiar.`);
-  notify(`Marked ${entity.name} as one you do not know yet.`, {
-    action: { label: 'Undo', run: () => clearQueueState(entity.id) },
-  });
+export async function restoreToQueue(entity: Entity): Promise<void> {
+  await clearQueueState(entity.id);
+  const spoken = `${entity.name} is back in the queue.`;
+  announce(spoken);
+  notify(spoken);
 }
 
 export async function pin(entity: Entity, kind: 'favorite' | 'avoid' | null): Promise<void> {

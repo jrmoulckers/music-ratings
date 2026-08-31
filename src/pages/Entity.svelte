@@ -7,6 +7,7 @@
   import {
     annotationsById,
     entityLabel,
+    entityLabelCap,
     explicitRatings,
     graph,
     rankings,
@@ -25,9 +26,11 @@
   import { deleteRating, saveMemberships, upsertEntities } from '../lib/storage/repo';
   import { dateAndTime, duration, relative, releaseYear } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
+  import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
-  import EntryRow from '../components/EntryRow.svelte';
+  import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
   import Artwork from '../components/Artwork.svelte';
+  import RatableRow from '../components/RatableRow.svelte';
   import RatingRail from '../components/RatingRail.svelte';
   import ScoreMark from '../components/ScoreMark.svelte';
   import WhyThisScore from '../components/WhyThisScore.svelte';
@@ -66,6 +69,8 @@
   let noteDraft = $state('');
   let tagDraft = $state('');
   let expanding = $state(false);
+  let childLimit = $state(60);
+  let openChildId = $state<string | null>(null);
 
   $effect(() => {
     void id;
@@ -151,12 +156,13 @@
           priority
         />
         <div class="item__id">
-          <p class="label">
-            {entityLabel(entity.type)}
-            {#if entity.releaseDate}· {releaseYear(entity.releaseDate)}{/if}
-            {#if entity.durationMs}· {duration(entity.durationMs)}{/if}
-            {#if entity.explicitContent}· explicit{/if}
-            {#if entity.available === false}· unavailable in your market{/if}
+          <p class="label item__kind">
+            <EntityTypeIcon type={entity.type} size={14} />
+            <span>{entityLabelCap(entity.type)}</span>
+            {#if entity.releaseDate}<span>· {releaseYear(entity.releaseDate)}</span>{/if}
+            {#if entity.durationMs}<span>· {duration(entity.durationMs)}</span>{/if}
+            {#if entity.explicitContent}<span>· explicit</span>{/if}
+            {#if entity.available === false}<span>· unavailable in your market</span>{/if}
           </p>
           <h1 class="item__name display">{entity.name}</h1>
           {#if entity.subtitle}<p class="item__sub">{entity.subtitle}</p>{/if}
@@ -260,22 +266,26 @@
             >
           </div>
           <ul class="contents">
-            {#each children.slice(0, 60) as edge (edge.childId)}
+            {#each children.slice(0, childLimit) as edge (edge.childId)}
               {@const child = $graph.entity(edge.childId)}
               {#if child}
-                <li>
-                  <a class="contents__link" href={entityHref(child.id)}>
-                    <EntryRow
-                      entity={child}
-                      breakdown={$scores.get(child.id)}
-                      view={$settings.scoreView}
-                      position={edge.position !== undefined ? edge.position + 1 : undefined}
-                    />
-                  </a>
-                </li>
+                <RatableRow
+                  entity={child}
+                  view={$settings.scoreView}
+                  position={edge.position !== undefined ? edge.position + 1 : undefined}
+                  expanded={openChildId === child.id}
+                  ontoggle={() => (openChildId = openChildId === child.id ? null : child.id)}
+                />
               {/if}
             {/each}
           </ul>
+
+          <AutoLoad
+            hasMore={children.length > childLimit}
+            count={Math.min(childLimit, children.length)}
+            noun="entries"
+            onload={() => (childLimit += 60)}
+          />
         </section>
       {:else if entity.provider === 'spotify' && $spotifySession.connected}
         <section>
@@ -398,6 +408,12 @@
     font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.75rem);
     line-height: 1.05;
   }
+  .item__kind {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    flex-wrap: wrap;
+  }
   .item__sub {
     font-family: var(--display);
     font-size: 1.0625rem;
@@ -439,11 +455,6 @@
   .history {
     display: flex;
     flex-direction: column;
-  }
-  .contents__link {
-    display: block;
-    text-decoration: none;
-    color: inherit;
   }
 
   .history li {

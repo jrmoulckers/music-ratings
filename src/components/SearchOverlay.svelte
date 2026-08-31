@@ -12,6 +12,7 @@
   import { saveMemberships, upsertEntities } from '../lib/storage/repo';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
+  import EntityTypeIcon from './EntityTypeIcon.svelte';
   import RatingRail from './RatingRail.svelte';
 
   /**
@@ -172,10 +173,11 @@
           <div class="seat__id">
             <h2 class="title">{picked.name}</h2>
             {#if picked.subtitle}<p class="note">{picked.subtitle}</p>{/if}
-            <p class="label">
-              {entityLabelCap(picked.type)}
+            <p class="label seat__kind">
+              <EntityTypeIcon type={picked.type} size={14} />
+              <span>{entityLabelCap(picked.type)}</span>
               {#if existing}
-                · rated {formatComputedOn(scale, existing.normalized)}
+                <span>· rated {formatComputedOn(scale, existing.normalized)}</span>
               {/if}
             </p>
           </div>
@@ -220,7 +222,10 @@
                         <span class="note note--small">{entity.subtitle}</span>
                       {/if}
                     </span>
-                    <span class="label">{entityLabelCap(entity.type)}</span>
+                    <span class="label row__kind">
+                      <EntityTypeIcon type={entity.type} size={14} />
+                      <span>{entityLabelCap(entity.type)}</span>
+                    </span>
                     <span class="row__state">
                       {existing
                         ? formatComputedOn($scaleForType(entity.type), existing.normalized)
@@ -258,7 +263,10 @@
                         <span class="note note--small">{entity.subtitle}</span>
                       {/if}
                     </span>
-                    <span class="label">{entityLabelCap(entity.type)}</span>
+                    <span class="label row__kind">
+                      <EntityTypeIcon type={entity.type} size={14} />
+                      <span>{entityLabelCap(entity.type)}</span>
+                    </span>
                     <span class="row__state">Add &amp; rate</span>
                   </button>
                 </li>
@@ -397,6 +405,13 @@
   }
   .row__state {
     color: var(--accent-ink);
+    white-space: nowrap;
+  }
+  .row__kind,
+  .seat__kind {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
     white-space: nowrap;
   }
 

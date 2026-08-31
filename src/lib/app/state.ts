@@ -5,6 +5,7 @@ import { ContainmentGraph } from '../domain/graph';
 import { indexCurrentRatings, type ExplicitRating } from '../domain/ratings';
 import { computeScores } from '../domain/rollup';
 import { BUILTIN_SCALES, resolveScale } from '../domain/scales';
+import { typeNoun } from '../domain/reasons';
 import { EMPTY_SIGNALS, scoreSuggestions, type ListeningSignals } from '../domain/suggestions';
 import type {
   Collection,
@@ -71,6 +72,20 @@ export const signalsReadAt = writable<{ library: number | null; listening: numbe
 export const ready = writable(false);
 /** Bumped on every reload so relative times do not go stale mid-session. */
 export const clock = writable(Date.now());
+
+/**
+ * When the current rating pass began.
+ *
+ * A pass is one sitting with the queue. Skipping something takes it out for the
+ * rest of that pass, so the queue needs to know when the pass started — and
+ * starting a new one has to be an explicit act by the Rate page, not a side
+ * effect of any component that happens to mount.
+ */
+export const ratePassStartedAt = writable(Date.now());
+
+export function beginRatePass(): void {
+  ratePassStartedAt.set(Date.now());
+}
 
 let queue: Promise<void> = Promise.resolve();
 
@@ -191,8 +206,30 @@ export const pinnedIds: Readable<Set<EntityId>> = derived(world, ($world) => {
 });
 
 export const suggestions: Readable<Suggestion[]> = derived(
-  [graph, explicitRatings, scores, rankings, signals, settings, queueStatesById, pinnedIds, clock],
-  ([$graph, $explicit, $scores, $rankings, $signals, $settings, $queueStates, $pinned, $clock]) =>
+  [
+    graph,
+    explicitRatings,
+    scores,
+    rankings,
+    signals,
+    settings,
+    queueStatesById,
+    pinnedIds,
+    clock,
+    ratePassStartedAt,
+  ],
+  ([
+    $graph,
+    $explicit,
+    $scores,
+    $rankings,
+    $signals,
+    $settings,
+    $queueStates,
+    $pinned,
+    $clock,
+    $passStartedAt,
+  ]) =>
     scoreSuggestions({
       graph: $graph,
       explicit: $explicit,
@@ -203,6 +240,7 @@ export const suggestions: Readable<Suggestion[]> = derived(
       queueStates: $queueStates,
       enabledTypes: $settings.enabledTypes,
       staleAfterDays: $settings.staleAfterDays,
+      passStartedAt: $passStartedAt,
       pinnedIds: $pinned,
       now: $clock,
     }),
@@ -248,21 +286,11 @@ export const recentActivity: Readable<RatingEvent[]> = derived(world, ($world) =
     .slice(0, 12),
 );
 
-const TYPE_LABELS: Record<EntityType, [string, string]> = {
-  artist: ['artist', 'artists'],
-  album: ['release', 'releases'],
-  track: ['track', 'tracks'],
-  playlist: ['playlist', 'playlists'],
-  show: ['show', 'shows'],
-  episode: ['episode', 'episodes'],
-  audiobook: ['audiobook', 'audiobooks'],
-  chapter: ['chapter', 'chapters'],
-};
-
-export function entityLabel(type: EntityType, plural = false): string {
-  const pair = TYPE_LABELS[type];
-  return plural ? pair[1] : pair[0];
-}
+/**
+ * The words for each kind of thing live in the domain, so a reason sentence and
+ * a heading can never disagree about whether an album is a "release".
+ */
+export const entityLabel = typeNoun;
 
 /**
  * The same word at the head of a control or a heading.

@@ -1,18 +1,13 @@
 <script lang="ts">
   import { entityHref } from '../lib/app/router';
-  import {
-    entityLabel,
-    entityLabelCap,
-    graph,
-    scaleForType,
-    settings,
-    world,
-  } from '../lib/app/state';
+  import { entityLabelCap, graph, scaleForType, settings, world } from '../lib/app/state';
   import { formatScore } from '../lib/domain/ratings';
   import type { EntityType } from '../lib/domain/types';
   import { deleteRating, retractRating } from '../lib/storage/repo';
   import { dateAndTime, fullDate } from '../lib/ui/format';
+  import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
+  import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
 
   /**
    * The record.
@@ -98,8 +93,9 @@
                         {event.entityId} — no longer in the catalogue
                       </span>
                     {/if}
-                    <span class="label">
-                      {entityLabel(event.entityType)} · {dateAndTime(event.at)}
+                    <span class="label entry__kind">
+                      <EntityTypeIcon type={event.entityType} size={13} />
+                      {entityLabelCap(event.entityType)} · {dateAndTime(event.at)}
                       {#if event.confidence && event.confidence !== 'medium'}
                         · {event.confidence} confidence
                       {/if}
@@ -134,11 +130,13 @@
         {/each}
       </div>
 
-      {#if events.length > limit}
-        <button type="button" class="btn btn--wide" onclick={() => (limit += 120)}>
-          Show earlier entries
-        </button>
-      {/if}
+      <AutoLoad
+        hasMore={events.length > limit}
+        count={Math.min(limit, events.length)}
+        noun="entries"
+        onload={() => (limit += 120)}
+        endLabel="That is the whole record."
+      />
     {:else}
       <Empty
         title="Nothing recorded yet"
@@ -232,6 +230,11 @@
   .entry__name {
     color: var(--ink);
     font-size: 0.9375rem;
+  }
+  .entry__kind {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
   }
   .entry__name--gone {
     color: var(--ink-faint);

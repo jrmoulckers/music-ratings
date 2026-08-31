@@ -2,7 +2,7 @@
   import { entityHref, href } from '../lib/app/router';
   import {
     coverageByType,
-    entityLabel,
+    entityLabelCap,
     explicitRatings,
     graph,
     recentActivity,
@@ -20,6 +20,8 @@
   import Icon from '../lib/ui/Icon.svelte';
   import Empty from '../components/Empty.svelte';
   import Artwork from '../components/Artwork.svelte';
+  import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
+  import RatableRow from '../components/RatableRow.svelte';
 
   /**
    * Home.
@@ -34,6 +36,8 @@
   }
 
   let { online }: Props = $props();
+
+  let openId = $state<string | null>(null);
 
   const queued = $derived(
     $suggestions.slice(0, 6).flatMap((suggestion) => {
@@ -122,7 +126,10 @@
               priority
             />
             <div class="next__body">
-              <p class="label">{entityLabel(shownEntity.type)}</p>
+              <p class="label next__kind">
+                <EntityTypeIcon type={shownEntity.type} size={14} />
+                <span>{entityLabelCap(shownEntity.type)}</span>
+              </p>
               <p class="next__name display">{shownEntity.name}</p>
               {#if shownEntity.subtitle}<p class="note">{shownEntity.subtitle}</p>{/if}
               <ul class="next__reasons">
@@ -164,18 +171,16 @@
           </div>
           <ul class="played">
             {#each justPlayed.slice(0, 5) as row (row.entity.id)}
-              <li>
-                <a class="played__row" href={entityHref(row.entity.id)}>
-                  <Artwork src={row.entity.artworkThumbUrl} name={row.entity.name} size="sm" />
-                  <span class="played__id">
-                    <span class="played__name">{row.entity.name}</span>
-                    <span class="note note--small">
-                      {row.suggestion.reasons.find((r) => r.source === 'recentlyPlayed')?.detail ??
-                        'From your listening history'}
-                    </span>
-                  </span>
-                </a>
-              </li>
+              <RatableRow
+                entity={row.entity}
+                suggestion={row.suggestion}
+                queueActions
+                expanded={openId === row.entity.id}
+                ontoggle={() => (openId = openId === row.entity.id ? null : row.entity.id)}
+                onafter={() => {
+                  if (openId === row.entity.id) openId = null;
+                }}
+              />
             {/each}
           </ul>
         {/if}
@@ -219,7 +224,7 @@
       <h2 class="label">Coverage</h2>
       {#each $coverageByType as row (row.type)}
         <div class="cover">
-          <span class="cover__label">{entityLabel(row.type, true)}</span>
+          <span class="cover__label">{entityLabelCap(row.type, true)}</span>
           <span class="cover__bar" aria-hidden="true">
             <span class="cover__fill" style:width="{Math.round(row.ratio * 100)}%"></span>
           </span>
@@ -372,32 +377,16 @@
     justify-content: center;
   }
 
+  .next__kind {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+
   .played {
     display: flex;
     flex-direction: column;
     margin-bottom: var(--s5);
-  }
-  .played__row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: var(--s3);
-    align-items: center;
-    padding: var(--s2) 0;
-    border-bottom: var(--rule-weight) solid var(--border-faint);
-    text-decoration: none;
-    color: inherit;
-  }
-  .played__row:hover {
-    background: var(--surface-raised);
-  }
-  .played__id {
-    min-width: 0;
-  }
-  .played__name {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .head--spaced {

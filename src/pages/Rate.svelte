@@ -1,7 +1,14 @@
 <script lang="ts">
   import { href } from '../lib/app/router';
   import { openSearch } from '../lib/app/search-overlay';
-  import { graph, signalsReadAt, suggestions, world } from '../lib/app/state';
+  import {
+    beginRatePass,
+    entityLabelCap,
+    graph,
+    signalsReadAt,
+    suggestions,
+    world,
+  } from '../lib/app/state';
   import { TIER_JUST_PLAYED } from '../lib/domain/suggestions';
   import type { EntityType } from '../lib/domain/types';
   import {
@@ -13,9 +20,10 @@
   } from '../lib/spotify/session';
   import { clearQueueState } from '../lib/storage/repo';
   import { plural, relative } from '../lib/ui/format';
+  import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
   import Icon from '../lib/ui/Icon.svelte';
-  import QueueItem from '../components/QueueItem.svelte';
+  import RatableRow from '../components/RatableRow.svelte';
 
   /**
    * Rate.
@@ -31,6 +39,7 @@
   let filter = $state<'all' | 'played'>('all');
   let typeFilter = $state<EntityType | 'any'>('any');
   let shown = $state(PAGE);
+  let asideShown = $state(PAGE);
   let openId = $state<string | null>(null);
 
   const rows = $derived(
@@ -56,9 +65,9 @@
     $world.queueStates
       .filter((q) => !q.deleted && q.kind !== 'pinned')
       .map((q) => ({ state: q, entity: $graph.entity(q.id) }))
-      .filter((row) => row.entity)
-      .slice(0, 24),
+      .filter((row) => row.entity),
   );
+  const visibleAside = $derived(setAside.slice(0, asideShown));
 
   const listening = $derived($listeningStatus);
   const freshness = $derived(
@@ -77,6 +86,12 @@
     refreshListeningIfStale();
   });
 
+  // Arriving at the page starts a rating pass: whatever you skip stays gone for
+  // as long as you keep working, and coming back later is a fresh sitting.
+  $effect(() => {
+    beginRatePass();
+  });
+
   $effect(() => {
     noteListeningFetchedAt($signalsReadAt.listening);
   });
@@ -91,6 +106,21 @@
 
   function afterAction(id: string) {
     if (openId === id) openId = null;
+  }
+
+  /** What a set-aside row did, in the words the buttons used. */
+  function asideLabel(state: { kind: string; at: number; until?: number | undefined }): string {
+    if (state.kind === 'skipped') {
+      return `Skipped ${relative(state.at)} · back next time you rate`;
+    }
+    if (state.kind === 'snoozed' && state.until) {
+      return `Snoozed · back ${new Date(state.until).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+      })}`;
+    }
+    if (state.kind === 'unfamiliar') return `Marked unknown ${relative(state.at)}`;
+    return `${state.kind} ${relative(state.at)}`;
   }
 </script>
 
@@ -133,7 +163,7 @@
           <select class="select" bind:value={typeFilter}>
             <option value="any">Any kind</option>
             {#each presentTypes as type (type)}
-              <option value={type}>{type}</option>
+              <option value={type}>{entityLabelCap(type, true)}</option>
             {/each}
           </select>
         </label>
@@ -160,9 +190,10 @@
   {#if filtered.length > 0}
     <ol class="queue">
       {#each visible as row (row.entity.id)}
-        <QueueItem
+        <RatableRow
           entity={row.entity}
           suggestion={row.suggestion}
+          queueActions
           expanded={openId === row.entity.id}
           ontoggle={() => (openId = openId === row.entity.id ? null : row.entity.id)}
           onafter={() => afterAction(row.entity.id)}
@@ -171,14 +202,13 @@
       <span class="queue__cap" aria-hidden="true"></span>
     </ol>
 
-    {#if filtered.length > visible.length}
-      <div class="queue__more">
-        <button type="button" class="btn" onclick={() => (shown += PAGE)}>
-          Show {Math.min(PAGE, filtered.length - visible.length)} more
-        </button>
-        <span class="label">{filtered.length - visible.length} still waiting</span>
-      </div>
-    {/if}
+    <AutoLoad
+      hasMore={filtered.length > visible.length}
+      count={visible.length}
+      noun="suggestions"
+      onload={() => (shown += PAGE)}
+      endLabel="That is the whole queue."
+    />
   {:else if rows.length > 0}
     <Empty
       title="Nothing matches this filter"
@@ -224,14 +254,10 @@
         <span class="label">{setAside.length}</span>
       </div>
       <ul class="aside__rows">
-        {#each setAside as row (row.state.id)}
+        {#each visibleAside as row (row.state.id)}
           <li>
             <span class="aside__name">{row.entity?.name}</span>
-            <span class="label">
-              {row.state.kind === 'skipped'
-                ? `skipped ${relative(row.state.at)}, back after six hours`
-                : row.state.kind}{row.state.until ? ` until ${relative(row.state.until)}` : ''}
-            </span>
+            <span class="label">{asideLabel(row.state)}</span>
             <button
               type="button"
               class="btn btn--small btn--quiet"
@@ -242,6 +268,13 @@
           </li>
         {/each}
       </ul>
+
+      <AutoLoad
+        hasMore={setAside.length > visibleAside.length}
+        count={visibleAside.length}
+        noun="set-aside items"
+        onload={() => (asideShown += PAGE)}
+      />
     </section>
   {/if}
 </div>
@@ -313,14 +346,6 @@
     background: var(--accent);
   }
 
-  .queue__more {
-    display: flex;
-    align-items: center;
-    gap: var(--s4);
-    margin-top: var(--s4);
-    padding-left: 1.6rem;
-  }
-
   .aside {
     margin-top: var(--s7);
   }
@@ -349,9 +374,6 @@
     }
     .queue {
       --rail-inset: 1rem;
-    }
-    .queue__more {
-      padding-left: 1rem;
     }
   }
 </style>

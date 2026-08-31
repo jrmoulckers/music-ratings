@@ -39,6 +39,17 @@ export const ICON_PATHS = {
   pin: 'M9 3h6l-1 6 4 4H6l4-4z M12 13v8',
   'thumb-up': 'M3 11H7V21H3ZM7 11L10.5 3H12L13 5L12 9H18L19.5 11L17.7 21H7Z',
   'thumb-down': 'M3 3H7V13H3ZM7 13L10.5 21H12L13 19L12 15H18L19.5 13L17.7 3H7Z',
+
+  /* Kinds of things. One silhouette each, readable down to 14px: a figure, a
+     sleeve, a note, a stack of lines, a broadcast, a play, a book, a leaf. */
+  artist: 'M12 4a3.5 3.5 0 100 7 3.5 3.5 0 100-7M5 20v-1.5c0-2.5 3.1-4 7-4s7 1.5 7 4V20',
+  album: 'M12 3a9 9 0 100 18 9 9 0 100-18M12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 100-5',
+  track: 'M9 18a3 3 0 106 0 3 3 0 10-6 0M15 18V4l5 2',
+  playlist: 'M4 6h11M4 11h11M4 16h7M17 18a2 2 0 104 0 2 2 0 10-4 0M21 18V9',
+  show: 'M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3M6 11a6 6 0 0012 0M12 17v4M9 21h6',
+  episode: 'M12 3a9 9 0 100 18 9 9 0 100-18M10 8.5l6 3.5-6 3.5z',
+  audiobook: 'M5 4h9a3 3 0 013 3v13H8a3 3 0 01-3-3zM8 20a3 3 0 010-6h9M9 8h5',
+  chapter: 'M5 4h9a3 3 0 013 3v13H8a3 3 0 01-3-3zM8 20a3 3 0 010-6h9M12 4v6l2-1.5L16 10V4',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

@@ -1,18 +1,12 @@
 <script lang="ts">
-  import { entityHref, navigate } from '../lib/app/router';
-  import {
-    entityLabel,
-    entityLabelCap,
-    graph,
-    scaleForType,
-    scores,
-    settings,
-  } from '../lib/app/state';
+  import { navigate } from '../lib/app/router';
+  import { entityLabelCap, graph, scaleForType, scores, settings } from '../lib/app/state';
   import { ENTITY_TYPES, type EntityType } from '../lib/domain/types';
   import { autofocus } from '../lib/ui/actions';
   import Icon from '../lib/ui/Icon.svelte';
+  import AutoLoad from '../components/AutoLoad.svelte';
   import Empty from '../components/Empty.svelte';
-  import EntryRow from '../components/EntryRow.svelte';
+  import RatableRow from '../components/RatableRow.svelte';
   import SpotifySearch from '../components/SpotifySearch.svelte';
 
   /**
@@ -32,6 +26,7 @@
   let typeFilter = $state<EntityType | 'all'>('all');
   let ratedOnly = $state(false);
   let limit = $state(60);
+  let openId = $state<string | null>(null);
 
   // The address bar is the shareable copy of these filters. It seeds them on
   // arrival and follows them afterwards; `applied` stops the two from chasing
@@ -130,23 +125,19 @@
   {#if results.length > 0}
     <ul class="library">
       {#each results.slice(0, limit) as entity (entity.id)}
-        <li>
-          <a class="library__link" href={entityHref(entity.id)}>
-            <EntryRow
-              {entity}
-              breakdown={$scores.get(entity.id)}
-              view={$settings.scoreView}
-              note={entityLabel(entity.type)}
-            />
-          </a>
-        </li>
+        <RatableRow
+          {entity}
+          expanded={openId === entity.id}
+          ontoggle={() => (openId = openId === entity.id ? null : entity.id)}
+        />
       {/each}
     </ul>
-    {#if results.length > limit}
-      <button type="button" class="btn btn--wide" onclick={() => (limit += 60)}>
-        Show {Math.min(60, results.length - limit)} more
-      </button>
-    {/if}
+    <AutoLoad
+      hasMore={results.length > limit}
+      count={Math.min(limit, results.length)}
+      noun="entries"
+      onload={() => (limit += 60)}
+    />
   {:else}
     <Empty
       title={term ? `Nothing here matches “${term}”` : 'Your library is empty'}
@@ -199,11 +190,6 @@
   .library {
     display: flex;
     flex-direction: column;
-  }
-  .library__link {
-    display: block;
-    text-decoration: none;
-    color: inherit;
   }
 
   .scale-note {
