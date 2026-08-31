@@ -170,21 +170,18 @@
                 />
                 <span>
                   <span class="opts__name">{entityLabelCap(type, true)}</span>
-                  {#if ENTITY_MEANING[type]}
-                    <span class="note note--small">{ENTITY_MEANING[type]}</span>
-                  {/if}
+                  <span class="note note--small">{ENTITY_MEANING[type]}</span>
                   {#if ENTITY_SUPPORT[type].note}
-                    <span class="note note--small">{ENTITY_SUPPORT[type].note}</span>
+                    <span class="note note--small opts__limit">
+                      <span class="opts__tag">Spotify limit</span>
+                      {ENTITY_SUPPORT[type].note}
+                    </span>
                   {/if}
                 </span>
               </label>
             </li>
           {/each}
         </ul>
-        <p class="note note--small">
-          A single usually appears twice — once as a release, and once as the track inside it. You
-          can rate either, and the release counts its track towards its computed score.
-        </p>
       </div>
 
       <label class="field">
@@ -800,6 +797,22 @@
   .opts__name {
     display: block;
     font-size: 0.9375rem;
+  }
+  /* A limitation is not a definition, so it is marked as coming from Spotify
+     rather than sitting in the same voice as the description above it. */
+  .opts__limit {
+    display: block;
+    margin-top: 2px;
+  }
+  .opts__tag {
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-quiet);
+    border: var(--rule-weight) solid var(--border);
+    padding: 0 4px;
+    margin-right: 2px;
+    white-space: nowrap;
   }
 
   .weights {

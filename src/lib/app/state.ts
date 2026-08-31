@@ -264,14 +264,20 @@ export function entityLabelCap(type: EntityType, plural = false): string {
 }
 
 /**
- * What each kind of thing actually is, for the places a user is choosing which
- * ones to rate. Only the three that carry the whole catalogue need explaining;
- * the rest are named plainly enough, and their notes cover what Spotify will
- * and will not hand over.
+ * What each kind of thing is, in plain words.
+ *
+ * These are definitions, not caveats. What Spotify will and will not hand over
+ * lives in ENTITY_SUPPORT and is shown separately, so an API limitation never
+ * reads as part of the definition.
  */
-export const ENTITY_MEANING: Partial<Record<EntityType, string>> = {
-  artist: 'The performers and creators themselves — Radiohead, for instance.',
+export const ENTITY_MEANING: Record<EntityType, string> = {
+  artist: 'The people or groups who make the music. Example: Radiohead.',
   album:
-    'Anything published as a package: albums, EPs, singles, compilations and reissues. Rating a release judges the whole thing.',
-  track: 'One playable recording inside a release — a single song on an album, rated on its own.',
+    'Albums, EPs, singles, compilations, and deluxe editions. A single can be both a release and the track inside it.',
+  track: 'Individual songs or recordings. Example: one song from an album.',
+  playlist: 'Lists of tracks put together by you or by other listeners.',
+  show: 'Podcasts. Example: a weekly interview series.',
+  episode: 'Individual episodes of a show.',
+  audiobook: 'Books read aloud, divided into chapters.',
+  chapter: 'Individual chapters of an audiobook.',
 };

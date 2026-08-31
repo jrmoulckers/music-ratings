@@ -88,6 +88,16 @@ function parse(url: URL): Route {
   return { name: 'notfound', params: {}, query: url.searchParams, path };
 }
 
+/**
+ * Resolves an in-app path to a route name without touching history. Exported so
+ * navigation targets written by hand can be checked against the real table —
+ * a link to a path with no pattern silently lands on the not-found page.
+ */
+export function routeNameFor(path: string): RouteName {
+  const clean = path.startsWith('/') ? path : `/${path}`;
+  return parse(new URL(clean, 'http://local')).name;
+}
+
 function current(): Route {
   if (typeof location === 'undefined') {
     return { name: 'home', params: {}, query: new URLSearchParams(), path: '/' };

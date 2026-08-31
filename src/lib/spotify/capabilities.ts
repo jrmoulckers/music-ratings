@@ -21,23 +21,23 @@ export const ENTITY_SUPPORT: Record<EntityType, Capability> = {
   track: { available: true },
   playlist: {
     available: true,
-    note: 'Spotify-owned editorial and algorithmic playlists (Discover Weekly, Release Radar, mood mixes) are no longer readable by new apps, so only your own and other users\u2019 playlists appear.',
+    note: 'Spotify no longer lets new apps read its own playlists, such as Discover Weekly and Release Radar. Only yours and other listeners\u2019 appear.',
   },
   show: {
     available: true,
-    note: 'Podcast endpoints need the playback-position scope. Turn shows on to be asked for it the next time you connect.',
+    note: 'Needs the playback-position permission. Turn shows on to be asked for it next time you connect.',
   },
   episode: {
     available: true,
-    note: 'Episodes are read through their show. Recently played never includes podcast episodes, so episodes are suggested from your saved library instead.',
+    note: 'Recently played never includes podcast episodes, so these are suggested from your saved library instead.',
   },
   audiobook: {
     available: true,
-    note: 'Spotify serves audiobooks only in the US, UK, Canada, Ireland, New Zealand and Australia. Outside those markets the catalogue returns nothing and this stays empty.',
+    note: 'Spotify offers audiobooks only in the US, UK, Canada, Ireland, New Zealand and Australia. Elsewhere this stays empty.',
   },
   chapter: {
     available: true,
-    note: 'Chapters are read through their audiobook, and inherit the same market limits.',
+    note: 'Read through their audiobook, with the same country limits.',
   },
 };
 

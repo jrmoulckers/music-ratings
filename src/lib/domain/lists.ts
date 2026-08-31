@@ -67,6 +67,23 @@ function scoreFor(breakdown: ScoreBreakdown, view: ScoreView): number | null {
   return breakdown.blended;
 }
 
+/**
+ * Why something was left out, in plain words. These are read straight out to
+ * the user beside a count, so they say what happened rather than naming the
+ * internal threshold that caused it.
+ */
+export const DROP_REASONS = {
+  noScore: 'No score yet',
+  notRated: 'You have not rated it',
+  outsideRange: 'Rated outside the time range',
+  lowConfidence: 'Not confident enough yet',
+  lowCoverage: 'Too little of it rated',
+  fewComparisons: 'Too few comparisons',
+  missingTag: 'Missing the tag',
+  noSearchMatch: 'Does not match the search',
+  nothingToCompute: 'Nothing to compute a score from',
+} as const;
+
 export function buildRankedList(input: ListInput, filters: ListFilters): RankedList {
   const now = input.now ?? Date.now();
   const limit = filters.limit ?? 50;
@@ -80,31 +97,31 @@ export function buildRankedList(input: ListInput, filters: ListFilters): RankedL
   for (const entity of candidates) {
     const breakdown = input.scores.get(entity.id);
     if (!breakdown) {
-      drop('no score computed');
+      drop(DROP_REASONS.noScore);
       continue;
     }
     const rating = input.explicit.get(entity.id);
     if (filters.requireExplicit && !rating) {
-      drop('never rated directly');
+      drop(DROP_REASONS.notRated);
       continue;
     }
     if (filters.withinMs && filters.withinMs > 0) {
       if (!rating || now - rating.at > filters.withinMs) {
-        drop('outside the time range');
+        drop(DROP_REASONS.outsideRange);
         continue;
       }
     }
     if (filters.minConfidence != null && breakdown.confidence < filters.minConfidence) {
-      drop('below the confidence floor');
+      drop(DROP_REASONS.lowConfidence);
       continue;
     }
     if (filters.minCoverage != null && breakdown.coverage.ratio < filters.minCoverage) {
-      drop('below the coverage floor');
+      drop(DROP_REASONS.lowCoverage);
       continue;
     }
     if (filters.minComparisons != null) {
       if ((breakdown.ranking?.comparisons ?? 0) < filters.minComparisons) {
-        drop('too few comparisons');
+        drop(DROP_REASONS.fewComparisons);
         continue;
       }
     }
@@ -114,22 +131,20 @@ export function buildRankedList(input: ListInput, filters: ListFilters): RankedL
         ...(rating?.tags ?? []),
       ]);
       if (!filters.tags.every((t) => tags.has(t))) {
-        drop('missing a required tag');
+        drop(DROP_REASONS.missingTag);
         continue;
       }
     }
     if (needle) {
       const haystack = `${entity.name} ${entity.subtitle ?? ''}`.toLowerCase();
       if (!haystack.includes(needle)) {
-        drop('does not match the search');
+        drop(DROP_REASONS.noSearchMatch);
         continue;
       }
     }
     const value = scoreFor(breakdown, filters.view);
     if (value == null) {
-      drop(
-        filters.view === 'explicit' ? 'never rated directly' : 'no evidence for a computed score',
-      );
+      drop(filters.view === 'explicit' ? DROP_REASONS.notRated : DROP_REASONS.nothingToCompute);
       continue;
     }
     scored.push({ entityId: entity.id, score: value, breakdown });

@@ -89,20 +89,27 @@
 
   const scale = $derived($scaleForType(type));
 
+  /**
+   * The kind and the direction are filter state, not the identity of the page,
+   * so they live in the query string and the page stays `/rankings`.
+   */
   function syncUrl() {
     const params = new URLSearchParams({ type, dir: direction, view, range: rangeId });
     applied = params.toString();
-    navigate(`/lists?${params}`, { replace: true });
+    navigate(`/rankings?${params}`, { replace: true });
   }
 </script>
 
 <div class="sheet setting">
   <div class="stack">
     <header class="head">
-      <h1 class="display">{direction === 'top' ? 'Best' : 'Worst'} {entityLabel(type, true)}</h1>
-      <p class="label">
-        {list.rows.length} shown · {list.considered} considered
-      </p>
+      <h1 class="display">Rankings</h1>
+      <div class="head__meta">
+        <h2 class="label">{direction === 'top' ? 'Best' : 'Worst'} {entityLabel(type, true)}</h2>
+        <p class="label head__count">
+          {list.rows.length} shown · {list.considered} considered
+        </p>
+      </div>
     </header>
 
     {#if list.rows.length > 0}
@@ -126,8 +133,8 @@
       </ol>
     {:else}
       <Empty
-        title="Nothing clears these filters"
-        body="Every candidate was excluded. The counts below say why, so you can loosen the one that matters."
+        title="Nothing to show"
+        body="Every candidate was filtered out. The counts below say why, so you can relax the filter that is doing it."
         reasons={list.dropped}
       />
     {/if}
@@ -135,7 +142,7 @@
 
   <aside class="margin">
     <div class="stack stack--tight">
-      <h2 class="label">The list</h2>
+      <h2 class="label">What to show</h2>
 
       <label class="field">
         <span class="label">Kind</span>
@@ -147,7 +154,7 @@
       </label>
 
       <label class="field">
-        <span class="label">End</span>
+        <span class="label">Order</span>
         <select class="select" bind:value={direction} onchange={syncUrl}>
           <option value="top">Best first</option>
           <option value="bottom">Worst first</option>
@@ -158,13 +165,13 @@
         <span class="label">Score shown</span>
         <select class="select" bind:value={view} onchange={syncUrl}>
           <option value="blended">Blended</option>
-          <option value="explicit">What you said</option>
+          <option value="explicit">Your rating</option>
           <option value="rollup">Computed</option>
         </select>
       </label>
 
       <label class="field">
-        <span class="label">Rated within</span>
+        <span class="label">Time range</span>
         <select class="select" bind:value={rangeId} onchange={syncUrl}>
           {#each TIME_RANGES as option (option.id)}
             <option value={option.id}>{option.label}</option>
@@ -174,7 +181,7 @@
     </div>
 
     <div class="stack stack--tight">
-      <h2 class="label">Only count it if…</h2>
+      <h2 class="label">Requirements</h2>
 
       <label class="field">
         <span class="label">Coverage at least {Math.round(minCoverage * 100)}%</span>
@@ -188,7 +195,7 @@
 
       <label class="check">
         <input type="checkbox" bind:checked={requireExplicit} />
-        <span>You rated it yourself</span>
+        <span>Only things you rated yourself</span>
       </label>
 
       {#if allTags.length > 0}
@@ -206,7 +213,7 @@
 
     {#if list.dropped.length > 0 && list.rows.length > 0}
       <div class="stack stack--tight">
-        <h2 class="label">Left out</h2>
+        <h2 class="label">Not shown</h2>
         <dl class="dropped">
           {#each list.dropped as entry (entry.reason)}
             <div>
@@ -219,14 +226,29 @@
     {/if}
 
     <p class="note note--small">
-      Places are decided on each score in full, so two rows can print the same rounded figure
-      without being tied; a genuine tie is marked as one. Scores are shown on the {scale.label} scale,
-      and computed ones keep a decimal so a close order stays readable.
+      Positions use the full score, so two rows can show the same rounded number without being tied.
+      A real tie is marked as one. Scores use the {scale.label} scale, and computed scores keep a decimal
+      so a close order stays readable.
     </p>
   </aside>
 </div>
 
 <style>
+  /* The page is always "Rankings"; which slice you are looking at is filter
+     state, so it reads as a quiet second line rather than a second title. */
+  .head__meta {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s3);
+    flex-wrap: wrap;
+  }
+  .head__meta h2 {
+    color: var(--ink);
+  }
+  .head__count {
+    color: var(--ink-quiet);
+  }
+
   .ranks {
     display: flex;
     flex-direction: column;
