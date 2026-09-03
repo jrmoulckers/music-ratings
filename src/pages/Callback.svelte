@@ -60,12 +60,12 @@
           return;
         }
 
-        const account = await completeRedirect(oneDriveConfig());
-        if (account) {
+        const onedrive = await completeRedirect(oneDriveConfig());
+        if (onedrive) {
           await updateSettings({ syncEnabled: true });
           await startSyncIfEnabled();
           message = 'OneDrive connected.';
-          navigate('/settings', { replace: true });
+          navigate(safeInAppPath(onedrive.returnTo, '/settings'), { replace: true });
           return;
         }
 

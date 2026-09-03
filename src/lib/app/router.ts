@@ -66,6 +66,19 @@ export function href(path: string): string {
   return `${BASE}${clean}` || '/';
 }
 
+/**
+ * The absolute URL of an in-app path, for the few places that need a whole one.
+ *
+ * OAuth providers match a redirect URI character for character against a list
+ * registered by hand, so the URL an account round trip comes back to has to be
+ * one fixed address — not wherever the person happened to start from. Where
+ * they started is remembered separately and restored after the exchange.
+ */
+export function appUrl(path: string): string {
+  const origin = typeof location === 'undefined' ? '' : location.origin;
+  return `${origin}${href(path)}`;
+}
+
 export function entityHref(id: string): string {
   const [type, provider, ...rest] = id.split(':');
   return href(

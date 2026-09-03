@@ -1,0 +1,58 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one that is mid-flight: a half
+# published site is worse than a slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: GitHub Pages
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        # Pages serves a project site from /<repo>/, so every asset, the
+        # manifest and the service worker scope have to be built for that
+        # prefix. Derived from the repository name so a fork or a rename
+        # needs no edit here.
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+        with:
+          # Turns Pages on for this repository the first time, so a fresh
+          # clone deploys without a manual visit to Settings.
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

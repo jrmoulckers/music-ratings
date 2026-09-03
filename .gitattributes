@@ -1,0 +1,8 @@
+# One line ending everywhere. Prettier writes LF and CI checks formatting on
+# Linux, so a Windows checkout that silently converted to CRLF would show sixty
+# files as modified without a single changed character.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.woff2 binary

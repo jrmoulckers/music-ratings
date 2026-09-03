@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { routeNameFor } from './router';
+import { appUrl, routeNameFor } from './router';
 
 /**
  * The Rankings page once navigated to `/lists`, a path with no pattern behind
@@ -117,5 +117,12 @@ describe('router', () => {
     // The shape of the bug this guards against, proven rather than assumed.
     expect(resolves(`/lists?${HOLE}`)).toBe(false);
     expect(resolves(`/rankings?${HOLE}`)).toBe(true);
+  });
+
+  it('builds an absolute url for the addresses registered outside this app', () => {
+    // BASE is read once at import, so this covers the root deployment; the
+    // subpath case is exercised where it matters, in the OneDrive tests.
+    expect(appUrl('/callback')).toBe(`${location.origin}/callback`);
+    expect(appUrl('/')).toBe(`${location.origin}/`);
   });
 });

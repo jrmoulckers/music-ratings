@@ -1,5 +1,6 @@
 import type { AuthenticationResult, PublicClientApplication } from '@azure/msal-browser';
 
+import { appUrl } from '../app/router';
 import {
   ConflictError,
   InteractionRequiredError,
@@ -47,7 +48,12 @@ async function msal(config: OneDriveConfig): Promise<PublicClientApplication> {
     auth: {
       clientId: config.clientId,
       authority: 'https://login.microsoftonline.com/common',
-      redirectUri: `${location.origin}${location.pathname}`,
+      // One fixed address, whatever page you started from. Microsoft matches
+      // this against a list registered by hand, so deriving it from the current
+      // pathname meant every route needed registering — and the one route that
+      // finishes the exchange is `/callback`, which is where both providers
+      // already come back to.
+      redirectUri: appUrl('/callback'),
     },
     cache: { cacheLocation: 'localStorage' },
   });
@@ -56,17 +62,31 @@ async function msal(config: OneDriveConfig): Promise<PublicClientApplication> {
   return client;
 }
 
+/** What a completed round trip left behind: the account, and where to go back to. */
+export interface OneDriveReturn {
+  account: string | null;
+  returnTo: string | null;
+}
+
 /**
- * Must run once on startup: a redirect back from Microsoft arrives as a plain
- * page load, and MSAL only learns about it if we ask.
+ * Must run once on the page Microsoft returns to: a redirect back arrives as a
+ * plain page load, and MSAL only learns about it if we ask.
+ *
+ * Returns null when there was nothing to finish. Success is decided by the
+ * exchange itself and never by whether the return path survived, so a cleared
+ * session cannot turn a connected account into a silent no-op.
  */
-export async function completeRedirect(config: OneDriveConfig): Promise<string | null> {
+export async function completeRedirect(config: OneDriveConfig): Promise<OneDriveReturn | null> {
   const app = await msal(config);
-  const result = await app.handleRedirectPromise();
-  if (result?.account) app.setActiveAccount(result.account);
+  // Finish here. MSAL would otherwise navigate back to the page sign-in started
+  // on before resolving, and that page has no reason to know an account round
+  // trip is in flight — so nobody would ever complete it.
+  const result = await app.handleRedirectPromise({ navigateToLoginRequestUrl: false });
   const back = sessionStorage.getItem(RETURN_KEY);
-  if (back) sessionStorage.removeItem(RETURN_KEY);
-  return result ? back : null;
+  if (back !== null) sessionStorage.removeItem(RETURN_KEY);
+  if (!result) return null;
+  if (result.account) app.setActiveAccount(result.account);
+  return { account: result.account?.username ?? null, returnTo: back };
 }
 
 export async function signedInAccount(config: OneDriveConfig): Promise<string | null> {

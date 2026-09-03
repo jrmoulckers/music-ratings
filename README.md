@@ -2,6 +2,9 @@
 
 A private record of what you actually think of music.
 
+**Live:** <https://jrmoulckers.github.io/music-ratings/> — try it without connecting
+anything; the demo mode is the whole app on seeded fictional data.
+
 Music Ratings is a local-first, installable web app for rating the music in your Spotify
 library — and, more importantly, for turning a pile of disconnected scores into an
 honest ordering of your real favourites and least favourites. It does that with a
@@ -93,7 +96,7 @@ is a published secret.
 2. Give it any name and description.
 3. Under **Redirect URIs**, add the exact URL this app will return to:
    - Local development: `http://127.0.0.1:5173/callback`
-   - Deployed: `https://your-domain.example/callback`
+   - Deployed: `https://jrmoulckers.github.io/music-ratings/callback`
      (HTTPS is required for any non-loopback host.)
      The redirect URI must match **character for character**, including the trailing
      path and the absence of a trailing slash.
@@ -252,8 +255,10 @@ Music Ratings can read and write only its own folder, never the rest of your dri
 2. Under **Supported account types**, choose
    _Accounts in any organizational directory and personal Microsoft accounts_.
 3. Under **Redirect URI**, select the **Single-page application** platform and
-   enter your app's origin (`http://127.0.0.1:5173` locally, or your deployed
-   origin). Do not use the Web platform — it requires a secret.
+   enter the app's callback address — the same one Spotify uses, because both
+   providers return to the same route: `http://127.0.0.1:5173/callback` locally,
+   or `https://jrmoulckers.github.io/music-ratings/callback` when deployed.
+   Do not use the Web platform — it requires a secret.
 4. Under **API permissions**, add the delegated Microsoft Graph permissions
    `Files.ReadWrite.AppFolder` and `User.Read`.
 5. Copy the **Application (client) ID** into `VITE_ONEDRIVE_CLIENT_ID` or into
@@ -293,20 +298,43 @@ JSON snapshot to a file and imports it back on any device.
 
 ## Deployment
 
-The build output in `dist/` is a static site. Any static host works.
+The live site is <https://jrmoulckers.github.io/music-ratings/>.
+
+### GitHub Pages
+
+`.github/workflows/deploy.yml` builds and publishes on every push to `main`, and
+on demand from the Actions tab. It derives the base path from the repository
+name, so a fork or a rename needs no edit. In **Settings → Pages**, the source
+must be **GitHub Actions** rather than a branch; the workflow sets this on its
+first run.
+
+Nothing secret is involved. There is no client ID in the build — both are
+entered at runtime in **Settings**, which also lets a tester point the app at
+their own Spotify app.
+
+### Register the two redirect URIs by hand
+
+OAuth providers match a redirect URI character for character against a list you
+maintain, so a deployment is not connected until both are registered:
+
+| Provider             | Redirect URI                                           |
+| -------------------- | ------------------------------------------------------ |
+| Spotify (dashboard)  | `https://jrmoulckers.github.io/music-ratings/callback` |
+| Entra (SPA platform) | `https://jrmoulckers.github.io/music-ratings/callback` |
+
+Locally both are `http://127.0.0.1:5173/callback`. Add both entries to each app
+registration so one registration serves development and the deployed site.
+
+### Any other static host
 
 ```bash
 VITE_BASE_PATH=/ npm run build
 ```
 
-For a GitHub Pages **project** site, set the base path to the repository name:
-
-```bash
-VITE_BASE_PATH=/music-ratings/ npm run build
-```
-
-Then register `https://<user>.github.io/music-ratings/callback` as the
-Spotify redirect URI and `https://<user>.github.io` as the Entra SPA redirect URI.
+`dist/` is a static site; serve it from anywhere. Set `VITE_BASE_PATH` to the
+subdirectory if it is not served from the root — every asset URL, the manifest
+`start_url` and `scope`, and the service worker's navigation fallback are all
+built from it.
 
 The app is a single-page application with a history-API router, so the host must
 serve `index.html` for unknown paths. On GitHub Pages the build emits a `404.html`
