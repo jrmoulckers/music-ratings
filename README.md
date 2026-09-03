@@ -304,9 +304,11 @@ The live site is <https://jrmoulckers.github.io/music-ratings/>.
 
 `.github/workflows/deploy.yml` builds and publishes on every push to `main`, and
 on demand from the Actions tab. It derives the base path from the repository
-name, so a fork or a rename needs no edit. In **Settings → Pages**, the source
-must be **GitHub Actions** rather than a branch; the workflow sets this on its
-first run.
+name, so a fork or a rename needs no edit.
+
+Pages itself has to be switched on once by a person — the workflow's token is
+not allowed to create the site. In **Settings → Pages**, set the source to
+**GitHub Actions**. Every push after that deploys on its own.
 
 Nothing secret is involved. There is no client ID in the build — both are
 entered at runtime in **Settings**, which also lets a tester point the app at
