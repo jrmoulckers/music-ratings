@@ -16,7 +16,7 @@
   import { ENTITY_SUPPORT } from '../lib/spotify/capabilities';
   import { connectSpotify, spotifySession } from '../lib/spotify/session';
   import { connectOneDrive } from '../lib/app/sync';
-  import { HAS_BUILT_IN_ONEDRIVE, HAS_BUILT_IN_SPOTIFY } from '../lib/config';
+  import { HAS_BUILT_IN_SPOTIFY, resolveOneDriveClientId } from '../lib/config';
   import Icon from '../lib/ui/Icon.svelte';
 
   /**
@@ -41,6 +41,10 @@
   let scaleId = $state(resumed?.scaleId || $settings.defaultScaleId);
   let clientId = $state(resumed?.clientId || $settings.spotifyClientId);
   let working = $state(false);
+
+  // Restoring needs a Microsoft application to sign in as: this build's, or one
+  // the user configured before resetting setup.
+  const canRestore = $derived(!!resolveOneDriveClientId($settings.onedriveClientId));
 
   // Spotify has just come back if the draft says this run of setup connected it.
   let justConnected = $state(resumed?.spotifyConnected === true && $spotifySession.connected);
@@ -257,7 +261,7 @@
         </button>
       </div>
 
-      {#if HAS_BUILT_IN_ONEDRIVE}
+      {#if canRestore}
         <div class="returning">
           <p class="note note--small">Used this before?</p>
           <button
