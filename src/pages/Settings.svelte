@@ -45,6 +45,7 @@
   import { countPlays, listPlays, purgeListeningHistory } from '../lib/storage/repo';
   import { PLAY_SCHEMA_VERSION, RECENTLY_PLAYED_WINDOW } from '../lib/domain/listening';
   import { completions } from '../lib/app/state';
+  import { downloadJson } from '../lib/ui/download';
   import { dateAndTime, fullDate, relative } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import ScaleReadingCell from '../components/ScaleReadingCell.svelte';
@@ -189,13 +190,7 @@
 
   async function exportBackup() {
     const snapshot = await buildSnapshot($settings);
-    const blob = new Blob([serializeSnapshot(snapshot)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = snapshotFileName();
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadJson(serializeSnapshot(snapshot), snapshotFileName());
     notify('Backup downloaded. It is plain JSON you can read yourself.');
   }
 
@@ -266,13 +261,7 @@
       plays,
       completions: $completions,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `music-ratings-listening-${new Date().toISOString().slice(0, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadJson(payload, `music-ratings-listening-${new Date().toISOString().slice(0, 10)}.json`);
     notify(`Exported ${plays.length.toLocaleString()} plays as plain JSON.`);
   }
 
