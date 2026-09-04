@@ -260,6 +260,17 @@ Sync is opt-in. Turn it on in **Settings → Your copy in OneDrive** and press
 there is nothing to register. You sign in with your own Microsoft account and the
 backup goes to your own drive.
 
+### Getting your ratings back on a new device
+
+Setup's first page offers **Restore my ratings from OneDrive**. Sign in with the
+same Microsoft account and the backup comes down; if it holds anything, the rest of
+setup is skipped, because what you rate and on what scale were answered on the
+other device and travel in the file.
+
+If that account has no backup yet — a first device, or the wrong account — nothing
+is overwritten. Sync stays on so this device starts backing itself up, and setup
+carries on normally.
+
 ### Where the backup lives
 
 Two choices, and the choice decides what permission is asked for at sign-in:

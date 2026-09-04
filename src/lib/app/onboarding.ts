@@ -29,6 +29,8 @@ export interface OnboardingDraft {
   connecting: boolean;
   /** Spotify came back successfully during this run of setup. */
   spotifyConnected: boolean;
+  /** This trip left to sign in to OneDrive in order to restore a backup. */
+  restoring: boolean;
 }
 
 export function clampStep(value: unknown): number {
@@ -83,6 +85,7 @@ export function readOnboardingDraft(): OnboardingDraft | null {
     clientId: typeof draft.clientId === 'string' ? draft.clientId : '',
     connecting: draft.connecting === true,
     spotifyConnected: draft.spotifyConnected === true,
+    restoring: draft.restoring === true,
   };
 }
 
@@ -98,6 +101,7 @@ export function saveOnboardingDraft(draft: OnboardingDraft): void {
         clientId: draft.clientId,
         connecting: draft.connecting,
         spotifyConnected: draft.spotifyConnected,
+        restoring: draft.restoring,
       }),
     );
   } catch {
@@ -115,6 +119,7 @@ export function patchOnboardingDraft(patch: Partial<OnboardingDraft>): void {
     clientId: '',
     connecting: false,
     spotifyConnected: false,
+    restoring: false,
   };
   saveOnboardingDraft({ ...current, ...patch });
 }

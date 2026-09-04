@@ -50,13 +50,19 @@ vi.mock('../lib/spotify/auth', () => ({
     error instanceof Error ? error.message : 'Sign-in failed.',
 }));
 
+const oneDriveReturn = vi.fn(async (): Promise<{ returnTo: string } | null> => null);
+const restoreResult = vi.fn(async (): Promise<boolean> => false);
+const oneDriveConnectCalls: string[] = [];
+
 vi.mock('../lib/storage/onedrive', () => ({
-  completeRedirect: async () => null,
+  completeRedirect: async () => oneDriveReturn(),
 }));
 
 vi.mock('../lib/app/sync', () => ({
   oneDriveConfig: () => ({ clientId: '', redirectUri: '' }),
   startSyncIfEnabled: async () => undefined,
+  connectOneDrive: async (returnTo: string) => void oneDriveConnectCalls.push(returnTo),
+  restoreFromOneDrive: async () => restoreResult(),
 }));
 
 const Onboarding = (await import('../pages/Onboarding.svelte')).default;
@@ -100,8 +106,13 @@ async function settle(): Promise<void> {
 
 beforeEach(async () => {
   connectCalls.length = 0;
+  oneDriveConnectCalls.length = 0;
   signIn.mockReset();
   signIn.mockResolvedValue(null);
+  oneDriveReturn.mockReset();
+  oneDriveReturn.mockResolvedValue(null);
+  restoreResult.mockReset();
+  restoreResult.mockResolvedValue(false);
   spotifySession.set({ connected: false, profileName: null });
   sessionStorage.clear();
   await loadAll();
@@ -128,6 +139,7 @@ describe('the setup draft', () => {
       clientId: 'abc',
       connecting: true,
       spotifyConnected: false,
+      restoring: false,
     });
     expect(readOnboardingDraft()).toEqual({
       step: 1,
@@ -136,6 +148,7 @@ describe('the setup draft', () => {
       clientId: 'abc',
       connecting: true,
       spotifyConnected: false,
+      restoring: false,
     });
   });
 
@@ -273,6 +286,7 @@ describe('coming back from Spotify', () => {
       clientId: 'client-abc',
       connecting: true,
       spotifyConnected: false,
+      restoring: false,
     });
     signIn.mockResolvedValue({ tokens: {}, returnTo: '/start?step=1' });
     spotifySession.set({ connected: true, profileName: 'Jane' });
@@ -288,6 +302,7 @@ describe('coming back from Spotify', () => {
       scaleId: 'tiers',
       connecting: false,
       spotifyConnected: true,
+      restoring: false,
     });
   });
 
@@ -299,6 +314,7 @@ describe('coming back from Spotify', () => {
       clientId: 'client-abc',
       connecting: false,
       spotifyConnected: true,
+      restoring: false,
     });
     spotifySession.set({ connected: true, profileName: 'Jane' });
     navigate('/start?step=1', { replace: true });
@@ -355,6 +371,7 @@ describe('coming back from Spotify', () => {
       clientId: '',
       connecting: true,
       spotifyConnected: false,
+      restoring: false,
     });
     // A tampered continuation aiming straight at the app.
     signIn.mockResolvedValue({ tokens: {}, returnTo: '/rankings' });
@@ -374,6 +391,7 @@ describe('coming back from Spotify', () => {
       clientId: 'client-abc',
       connecting: true,
       spotifyConnected: false,
+      restoring: false,
     });
     signIn.mockRejectedValue(new Error('Spotify sign-in was cancelled. Nothing was connected.'));
 
@@ -409,6 +427,7 @@ describe('coming back from Spotify', () => {
       clientId: '',
       connecting: false,
       spotifyConnected: true,
+      restoring: false,
     });
     signIn.mockResolvedValue(null);
 
@@ -417,6 +436,117 @@ describe('coming back from Spotify', () => {
 
     expect(location.pathname + location.search).toBe('/start?step=2');
     expect(get(settings).onboarded).toBe(false);
+  });
+});
+
+/**
+ * The way back in for someone who has done this before.
+ *
+ * Setup exists to collect three answers. Someone restoring a backup has already
+ * given all three on another device, and they travelled in the file, so asking
+ * again is not diligence — it is making a returning user prove themselves. The
+ * rule is therefore narrow: setup may be skipped only once the backup has been
+ * read and found to contain something.
+ */
+describe('restoring instead of setting up', () => {
+  it('leaves for OneDrive with a note saying this was a restore', async () => {
+    render(Onboarding);
+
+    click(/Restore my ratings from OneDrive/);
+    await settle();
+
+    expect(oneDriveConnectCalls).toEqual(['/start?step=0']);
+    expect(readOnboardingDraft()).toMatchObject({ connecting: true, restoring: true });
+    // Still not finished: nothing has been restored yet.
+    expect(get(settings).onboarded).toBe(false);
+  });
+
+  it('skips the questions when the backup turns up', async () => {
+    saveOnboardingDraft({
+      step: 0,
+      types: [],
+      scaleId: '',
+      clientId: '',
+      connecting: true,
+      spotifyConnected: false,
+      restoring: true,
+    });
+    oneDriveReturn.mockResolvedValue({ returnTo: '/start?step=0' });
+    restoreResult.mockResolvedValue(true);
+
+    render(Callback);
+    await settle();
+
+    expect(get(settings).onboarded).toBe(true);
+    expect(get(settings).syncEnabled).toBe(true);
+    expect(location.pathname).toBe('/');
+    // Setup is genuinely over, so nothing is left to resume from.
+    expect(readOnboardingDraft()).toBeNull();
+  });
+
+  it('carries on with setup when that account has no backup', async () => {
+    saveOnboardingDraft({
+      step: 0,
+      types: [],
+      scaleId: '',
+      clientId: '',
+      connecting: true,
+      spotifyConnected: false,
+      restoring: true,
+    });
+    oneDriveReturn.mockResolvedValue({ returnTo: '/start?step=0' });
+    restoreResult.mockResolvedValue(false);
+
+    render(Callback);
+    await settle();
+
+    // An empty account is not a finished setup, and must never look like one.
+    expect(get(settings).onboarded).toBe(false);
+    expect(location.pathname + location.search).toBe('/start?step=0');
+    expect(readOnboardingDraft()).toMatchObject({ connecting: false, restoring: false });
+    // Sync still went on, so this device starts backing itself up regardless.
+    expect(get(settings).syncEnabled).toBe(true);
+  });
+
+  it('does not restore over a device that is already set up', async () => {
+    await updateSettings({ onboarded: true });
+    saveOnboardingDraft({
+      step: 0,
+      types: [],
+      scaleId: '',
+      clientId: '',
+      connecting: true,
+      spotifyConnected: false,
+      restoring: true,
+    });
+    oneDriveReturn.mockResolvedValue({ returnTo: '/settings' });
+
+    render(Callback);
+    await settle();
+
+    // A stale restore flag from an abandoned setup cannot reach in and replace
+    // a working device's data; this is an ordinary reconnect.
+    expect(restoreResult).not.toHaveBeenCalled();
+    expect(location.pathname).toBe('/settings');
+  });
+
+  it('offers the right retry when the restore sign-in fails', async () => {
+    saveOnboardingDraft({
+      step: 0,
+      types: [],
+      scaleId: '',
+      clientId: '',
+      connecting: true,
+      spotifyConnected: false,
+      restoring: true,
+    });
+    signIn.mockRejectedValue(new Error('The sign-in was cancelled.'));
+
+    render(Callback);
+    await settle();
+
+    expect(text()).toContain('Try OneDrive again');
+    expect(text()).not.toContain('Try Spotify again');
   });
 });
 

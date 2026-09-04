@@ -15,7 +15,8 @@
   import type { EntityType } from '../lib/domain/types';
   import { ENTITY_SUPPORT } from '../lib/spotify/capabilities';
   import { connectSpotify, spotifySession } from '../lib/spotify/session';
-  import { HAS_BUILT_IN_SPOTIFY } from '../lib/config';
+  import { connectOneDrive } from '../lib/app/sync';
+  import { HAS_BUILT_IN_ONEDRIVE, HAS_BUILT_IN_SPOTIFY } from '../lib/config';
   import Icon from '../lib/ui/Icon.svelte';
 
   /**
@@ -63,6 +64,7 @@
       clientId,
       connecting: false,
       spotifyConnected: justConnected,
+      restoring: false,
     });
   });
 
@@ -98,12 +100,43 @@
         clientId: own,
         connecting: true,
         spotifyConnected: false,
+        restoring: false,
       });
       await connectSpotify(onboardingResumePath(1));
     } catch (error) {
       working = false;
       patchOnboardingDraft({ connecting: false });
       notify(error instanceof Error ? error.message : 'Could not start the Spotify sign-in.', {
+        tone: 'warn',
+      });
+    }
+  }
+
+  /**
+   * The returning-user door: sign in to OneDrive and take the backup back.
+   *
+   * Setup is skipped entirely if a backup turns up, because someone who already
+   * has ratings has already answered these questions — the answers travel in the
+   * backup. That decision is made in the callback, once the file has actually
+   * been read; all this does is leave a note saying which door was used.
+   */
+  async function chooseRestore() {
+    working = true;
+    try {
+      patchOnboardingDraft({
+        step: 0,
+        types: chosenTypes,
+        scaleId,
+        clientId,
+        connecting: true,
+        spotifyConnected: justConnected,
+        restoring: true,
+      });
+      await connectOneDrive(onboardingResumePath(0));
+    } catch (error) {
+      working = false;
+      patchOnboardingDraft({ connecting: false, restoring: false });
+      notify(error instanceof Error ? error.message : 'Could not start the OneDrive sign-in.', {
         tone: 'warn',
       });
     }
@@ -218,12 +251,30 @@
             {#if $spotifySession.connected}
               Spotify is connected. Next, choose what you want to rate.
             {:else}
-              Start with nothing and add music by hand, or restore a backup from Settings. You can
-              connect Spotify later.
+              Start with nothing and add music by hand. You can connect Spotify later.
             {/if}
           </span>
         </button>
       </div>
+
+      {#if HAS_BUILT_IN_ONEDRIVE}
+        <div class="returning">
+          <p class="note note--small">Used this before?</p>
+          <button
+            type="button"
+            class="btn btn--quiet"
+            disabled={working}
+            onclick={() => void chooseRestore()}
+          >
+            <Icon name="cloud" size={14} />
+            Restore my ratings from OneDrive
+          </button>
+          <p class="note note--small">
+            Signs in to your Microsoft account and brings back the backup this app saved there.
+            Nothing on this device is overwritten if no backup is found.
+          </p>
+        </div>
+      {/if}
     </section>
   {:else if step === 1}
     <section class="door__panel">
@@ -448,5 +499,17 @@
   }
   .advanced .field {
     margin-top: var(--s3);
+  }
+
+  /* The way back in, for someone who has been here before. Quiet on purpose:
+     it is the rarer door, and it must not compete with connecting Spotify. */
+  .returning {
+    margin-top: var(--s4);
+    padding-top: var(--s4);
+    border-top: var(--rule-weight) solid var(--border-faint);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s2);
   }
 </style>
