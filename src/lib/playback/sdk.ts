@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { notify } from '../app/notices';
+import { hasScopes, storedTokens, STREAMING_SCOPE } from '../spotify/auth';
 import { accessToken } from '../spotify/client';
 import { spotifyConfig } from '../spotify/session';
 
@@ -16,8 +17,20 @@ import { spotifyConfig } from '../spotify/session';
 
 const SDK_URL = 'https://sdk.scdn.co/spotify-player.js';
 
+/**
+ * What a token without `streaming` actually means, in words.
+ *
+ * Spotify answers one with a bare "Invalid token scopes.", which names no
+ * scope, no app and no remedy. The permission is only asked for once the
+ * listener has switched the browser player on, so an existing sign-in will
+ * always be short of it the first time — the fix is a reconnect, and that is
+ * what the listener should be told.
+ */
+export const STREAMING_PERMISSION_MESSAGE =
+  'Playing in this browser needs one more Spotify permission. Reconnect Spotify to grant it.';
+
 export type BrowserPlayerStatus =
-  'off' | 'loading' | 'connecting' | 'ready' | 'unavailable' | 'error';
+  'off' | 'loading' | 'connecting' | 'ready' | 'unavailable' | 'needs-permission' | 'error';
 
 export interface BrowserPlayerState {
   status: BrowserPlayerStatus;
@@ -128,6 +141,18 @@ export async function startBrowserPlayer(): Promise<string | null> {
   if (state.status === 'ready' && state.deviceId) return state.deviceId;
   if (state.status === 'loading' || state.status === 'connecting') return null;
 
+  // Ask the token before asking Spotify. The SDK's own answer to a missing
+  // `streaming` scope is unactionable, and fetching a player script only to be
+  // refused by it is a slow way to learn something already on this device.
+  if (!hasScopes(storedTokens(), [STREAMING_SCOPE])) {
+    browserPlayer.set({
+      status: 'needs-permission',
+      deviceId: null,
+      error: STREAMING_PERMISSION_MESSAGE,
+    });
+    return null;
+  }
+
   browserPlayer.set({ status: 'loading', deviceId: null, error: null });
   try {
     const sdk = await loadSdk();
@@ -162,13 +187,17 @@ export async function startBrowserPlayer(): Promise<string | null> {
         reject(new Error(messageOf(payload, 'This browser cannot host a Spotify player.')));
       });
       instance.addListener('authentication_error', (payload) => {
+        // Spotify uses this one event for both "your sign-in is stale" and
+        // "your sign-in never included streaming", and only the second is
+        // fixable by reconnecting for a scope the app now needs.
+        const raw = messageOf(payload, '');
         reject(
-          new Error(
-            messageOf(
-              payload,
-              'Spotify would not accept the sign-in. Reconnect to grant playback permission.',
-            ),
-          ),
+          /scope/i.test(raw)
+            ? new StreamingPermissionError()
+            : new Error(
+                raw ||
+                  'Spotify would not accept the sign-in. Reconnect to grant playback permission.',
+              ),
         );
       });
       instance.addListener('account_error', () => {
@@ -191,8 +220,19 @@ export async function startBrowserPlayer(): Promise<string | null> {
   } catch (error) {
     stopBrowserPlayer();
     const message = error instanceof Error ? error.message : 'The browser player could not start.';
-    browserPlayer.set({ status: 'error', deviceId: null, error: message });
+    browserPlayer.set({
+      status: error instanceof StreamingPermissionError ? 'needs-permission' : 'error',
+      deviceId: null,
+      error: message,
+    });
     return null;
+  }
+}
+
+class StreamingPermissionError extends Error {
+  constructor() {
+    super(STREAMING_PERMISSION_MESSAGE);
+    this.name = 'StreamingPermissionError';
   }
 }
 

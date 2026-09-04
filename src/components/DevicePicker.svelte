@@ -1,6 +1,6 @@
 <script lang="ts">
   import { settings, updateSettings } from '../lib/app/state';
-  import { href } from '../lib/app/router';
+  import { href, route } from '../lib/app/router';
   import {
     browserPlayer,
     startBrowserPlayer,
@@ -9,7 +9,8 @@
   } from '../lib/playback/sdk';
   import { playback, playbackTransfer, refreshDevices } from '../lib/playback/store';
   import type { PlaybackDevice } from '../lib/playback/types';
-  import { spotifySession } from '../lib/spotify/session';
+  import { describeAuthError } from '../lib/spotify/auth';
+  import { connectSpotify, spotifySession } from '../lib/spotify/session';
   import Icon from '../lib/ui/Icon.svelte';
   import type { IconName } from '../lib/ui/icons';
 
@@ -33,6 +34,14 @@
   const devices = $derived($playback.devices);
   const demo = $derived($playback.source === 'demo');
   const activeId = $derived($playback.snapshot?.device?.id ?? null);
+  /**
+   * The sign-in cannot stream. True either because the stored scopes say so, or
+   * because Spotify said so when the player tried — one sentence covers both,
+   * and the way out of both is the same reconnect.
+   */
+  const needsStreaming = $derived(
+    $spotifySession.missingStreamingScope || $browserPlayer.status === 'needs-permission',
+  );
 
   function iconFor(device: PlaybackDevice): IconName {
     const type = device.type.toLowerCase();
@@ -55,7 +64,11 @@
       if (!$settings.browserPlayer) await updateSettings({ browserPlayer: true });
       const id = await startBrowserPlayer();
       if (!id) {
-        notice = $browserPlayer.error ?? 'This browser could not become a Spotify device.';
+        // A missing permission explains itself, with its own way out, in the
+        // panel below. Repeating it here would say the same thing twice.
+        if ($browserPlayer.status !== 'needs-permission') {
+          notice = $browserPlayer.error ?? 'This browser could not become a Spotify device.';
+        }
         return;
       }
       await unlockBrowserPlayer();
@@ -63,6 +76,16 @@
       onchosen?.();
     } finally {
       starting = false;
+    }
+  }
+
+  /** Sign in again, now asking for `streaming`, and come back to this screen. */
+  async function reconnect() {
+    notice = '';
+    try {
+      await connectSpotify($route.path);
+    } catch (error) {
+      notice = describeAuthError(error);
     }
   }
 </script>
@@ -119,12 +142,17 @@
         <button type="button" class="btn btn--small btn--quiet" onclick={stopBrowserPlayer}>
           Stop using this browser
         </button>
-      {:else if $spotifySession.missingStreamingScope}
+      {:else if needsStreaming}
         <p class="note">
-          Playing in this browser needs one more Spotify permission. Reconnect Spotify in Settings
-          after turning the browser player on.
+          Playing in this browser needs one more Spotify permission. Reconnect Spotify to grant it —
+          your ratings and library are untouched.
         </p>
-        <a class="btn btn--small" href={href('/settings')}>Open Settings</a>
+        <div class="row">
+          <button type="button" class="btn btn--small" onclick={() => void reconnect()}>
+            Reconnect Spotify
+          </button>
+          <a class="btn btn--small btn--quiet" href={href('/settings')}>Open Settings</a>
+        </div>
       {:else}
         <p class="note">
           This browser can become a Spotify device. It needs Spotify Premium, and sound only starts
