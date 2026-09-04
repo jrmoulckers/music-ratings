@@ -15,6 +15,7 @@
   import type { EntityType } from '../lib/domain/types';
   import { ENTITY_SUPPORT } from '../lib/spotify/capabilities';
   import { connectSpotify, spotifySession } from '../lib/spotify/session';
+  import { HAS_BUILT_IN_SPOTIFY } from '../lib/config';
   import Icon from '../lib/ui/Icon.svelte';
 
   /**
@@ -76,22 +77,25 @@
   }
 
   async function chooseSpotify() {
-    if (!clientId.trim()) {
+    const own = clientId.trim();
+    if (!own && !HAS_BUILT_IN_SPOTIFY) {
       notify('Spotify needs a client ID from your developer dashboard first.', { tone: 'warn' });
       return;
     }
     working = true;
     try {
-      // The client ID is real configuration and the callback needs it to
-      // exchange the code, so it is saved. What you rate and on what scale are
-      // still questions, so they go in the draft — and `onboarded` stays false,
-      // because connecting an account is not finishing setup.
-      await updateSettings({ spotifyClientId: clientId.trim() });
+      // An empty client ID is not a missing answer — it means "ask as this
+      // build", which is the path almost everyone takes. Either way the value
+      // is saved before leaving, because the callback needs it to exchange the
+      // code. What you rate and on what scale are still questions, so they go in
+      // the draft — and `onboarded` stays false, because connecting an account
+      // is not finishing setup.
+      await updateSettings({ spotifyClientId: own });
       patchOnboardingDraft({
         step: 1,
         types: chosenTypes,
         scaleId,
-        clientId: clientId.trim(),
+        clientId: own,
         connecting: true,
         spotifyConnected: false,
       });
@@ -152,22 +156,6 @@
             Reads your library, top items and recent plays so the queue knows what to put in front
             of you. Ratings are yours and never leave this device.
           </span>
-          <label class="field">
-            <span class="label">Spotify client ID</span>
-            <input
-              class="input"
-              bind:value={clientId}
-              placeholder="From your Spotify developer dashboard"
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </label>
-          <p class="note note--small">
-            The app in your dashboard must list
-            <code class="mono">{$settings.spotifyRedirectUri}</code>
-            as a redirect URI, and your account must be added to it. Spotify allows five accounts per
-            app in development mode.
-          </p>
           <button
             type="button"
             class="btn btn--primary"
@@ -175,8 +163,46 @@
             onclick={() => void chooseSpotify()}
           >
             <Icon name="link" size={14} />
-            {$spotifySession.connected ? 'Reconnect Spotify' : 'Connect and authorise'}
+            {$spotifySession.connected ? 'Reconnect Spotify' : 'Sign in with Spotify'}
           </button>
+
+          {#if HAS_BUILT_IN_SPOTIFY}
+            <details class="advanced">
+              <summary class="note note--small">Use my own Spotify app instead</summary>
+              <label class="field">
+                <span class="label">Spotify client ID</span>
+                <input
+                  class="input"
+                  bind:value={clientId}
+                  placeholder="Leave blank to use this app's"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <p class="note note--small">
+                Only needed if this app's Spotify sign-in turns you away. Register an app in the
+                Spotify developer dashboard, list
+                <code class="mono">{$settings.spotifyRedirectUri}</code>
+                as a redirect URI, and add your account to it.
+              </p>
+            </details>
+          {:else}
+            <label class="field">
+              <span class="label">Spotify client ID</span>
+              <input
+                class="input"
+                bind:value={clientId}
+                placeholder="From your Spotify developer dashboard"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+            <p class="note note--small">
+              The app in your dashboard must list
+              <code class="mono">{$settings.spotifyRedirectUri}</code>
+              as a redirect URI, and your account must be added to it.
+            </p>
+          {/if}
         </div>
 
         <button
@@ -409,5 +435,18 @@
 
   code.mono {
     word-break: break-all;
+  }
+
+  .advanced {
+    width: 100%;
+    margin-top: var(--s2);
+    border-top: var(--rule-weight) solid var(--border-faint);
+    padding-top: var(--s3);
+  }
+  .advanced summary {
+    cursor: pointer;
+  }
+  .advanced .field {
+    margin-top: var(--s3);
   }
 </style>

@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 
 import { notify } from './notices';
 import { settings } from './state';
+import { resolveOneDriveClientId } from '../config';
 import {
   catchUp,
   startAutoSync,
@@ -30,8 +31,11 @@ import {
 export function oneDriveConfig(): OneDriveConfig {
   const current = get(settings);
   return {
-    clientId: current.onedriveClientId,
+    // The user's own registration if they gave one, otherwise this build's.
+    clientId: resolveOneDriveClientId(current.onedriveClientId),
     fileName: current.syncFileName,
+    folderMode: current.onedriveFolderMode,
+    customPath: current.onedriveCustomPath,
   };
 }
 
@@ -39,7 +43,7 @@ let started = false;
 
 export async function startSyncIfEnabled(): Promise<void> {
   const current = get(settings);
-  if (!current.syncEnabled || !current.onedriveClientId) {
+  if (!current.syncEnabled || !resolveOneDriveClientId(current.onedriveClientId)) {
     stopAutoSync();
     started = false;
     return;

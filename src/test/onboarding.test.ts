@@ -224,7 +224,7 @@ describe('choosing Spotify at the front door', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     flushSync();
 
-    click(/Connect and authorise/);
+    click(/Sign in with Spotify/);
     await settle();
 
     expect(get(settings).onboarded).toBe(false);
@@ -237,7 +237,7 @@ describe('choosing Spotify at the front door', () => {
     input.value = 'client-abc';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     flushSync();
-    click(/Connect and authorise/);
+    click(/Sign in with Spotify/);
     await settle();
 
     expect(connectCalls).toEqual(['/start?step=1']);
@@ -248,11 +248,18 @@ describe('choosing Spotify at the front door', () => {
     });
   });
 
-  it('will not start a sign-in with no client ID to sign in with', async () => {
+  /**
+   * The whole point of shipping an application identity: an empty field is an
+   * answer, not a missing one. Nothing is written to the override, because
+   * storing a copy of the built-in ID would freeze this device on today's value.
+   */
+  it('signs in as the built-in application when no ID was given', async () => {
     render(Onboarding);
-    click(/Connect and authorise/);
+    click(/Sign in with Spotify/);
     await settle();
-    expect(connectCalls).toEqual([]);
+
+    expect(connectCalls).toEqual(['/start?step=1']);
+    expect(get(settings).spotifyClientId).toBe('');
     expect(get(settings).onboarded).toBe(false);
   });
 });

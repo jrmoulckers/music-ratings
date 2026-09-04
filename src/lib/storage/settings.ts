@@ -22,6 +22,7 @@ export type DensityChoice = 'cozy' | 'compact';
 export type ArtworkChoice = 'full' | 'thumbnails' | 'none';
 export type PollingChoice = 'responsive' | 'relaxed' | 'manual';
 export type ListeningBasis = 'plays' | 'minutes';
+export type OneDriveFolderMode = 'app' | 'custom';
 
 export interface AppSettings {
   /* ---- portable: the user's judgement, synced everywhere ---- */
@@ -86,9 +87,24 @@ export interface AppSettings {
   highContrast: boolean;
   syncEnabled: boolean;
   syncFileName: string;
+  /**
+   * Where in OneDrive the backup lives. `app` is a sandboxed folder only this
+   * app can see; `custom` is a folder of your choosing, which costs a broader
+   * permission because Graph cannot scope a delegated grant to one folder.
+   */
+  onedriveFolderMode: OneDriveFolderMode;
+  /** Slash-separated folder path from the drive root, used only in `custom` mode. */
+  onedriveCustomPath: string;
   onboarded: boolean;
+  /**
+   * Ask as your own registered application instead of this build's.
+   *
+   * Empty is the ordinary case, not a missing setting: it means "use the ID this
+   * build ships with". See `src/lib/config.ts`.
+   */
   spotifyClientId: string;
   spotifyRedirectUri: string;
+  /** Same bring-your-own arrangement as `spotifyClientId`, for Microsoft. */
   onedriveClientId: string;
   /**
    * Turn this browser into a Spotify device. Off by default: it needs the
@@ -146,6 +162,8 @@ export const LOCAL_SETTINGS = [
   'highContrast',
   'syncEnabled',
   'syncFileName',
+  'onedriveFolderMode',
+  'onedriveCustomPath',
   'onboarded',
   'spotifyClientId',
   'spotifyRedirectUri',
@@ -203,12 +221,16 @@ export function defaultSettings(): AppSettings {
     highContrast: false,
     syncEnabled: false,
     syncFileName: 'music-ratings.json',
+    onedriveFolderMode: 'app',
+    onedriveCustomPath: '',
     onboarded: false,
-    spotifyClientId: (import.meta.env?.VITE_SPOTIFY_CLIENT_ID as string | undefined) ?? '',
+    // Empty means "ask as this build". A value here is the user's own
+    // registration, and always wins — see `src/lib/config.ts`.
+    spotifyClientId: '',
     spotifyRedirectUri:
       (import.meta.env?.VITE_SPOTIFY_REDIRECT_URI as string | undefined) ??
       (typeof location === 'undefined' ? '' : `${location.origin}${base()}callback`),
-    onedriveClientId: (import.meta.env?.VITE_ONEDRIVE_CLIENT_ID as string | undefined) ?? '',
+    onedriveClientId: '',
     browserPlayer: false,
     preferredDeviceId: '',
     playbackPolling: 'responsive',
@@ -254,8 +276,38 @@ export function hydrateSettings(stored: Partial<AppSettings> | undefined): AppSe
     typeof stored.listeningObservedFrom === 'number' && stored.listeningObservedFrom > 0
       ? stored.listeningObservedFrom
       : 0;
+  merged.onedriveFolderMode = stored.onedriveFolderMode === 'custom' ? 'custom' : 'app';
+  merged.onedriveCustomPath = normalizeFolderPath(stored.onedriveCustomPath);
   merged.schemaVersion = SETTINGS_SCHEMA_VERSION;
   return merged;
+}
+
+/**
+ * Reduce whatever was typed to a plain sequence of folder names.
+ *
+ * Blank and `.` segments are dropped so stray slashes are harmless, and `..` is
+ * dropped rather than honoured: a backup path is a destination, never a way to
+ * climb somewhere the user did not name. An empty result means the drive root,
+ * which is a legitimate choice.
+ */
+export function normalizeFolderPath(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return (
+    value
+      .split(/[\\/]+/)
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0 && segment !== '.' && segment !== '..')
+      // The characters OneDrive refuses in an item name, plus control codes.
+      // Control codes are filtered by code point rather than matched by a regular
+      // expression, which cannot express them without embedding them literally.
+      .map((segment) =>
+        Array.from(segment.replace(/[:*?"<>|]/g, '-'))
+          .filter((character) => (character.codePointAt(0) ?? 0) > 0x1f)
+          .join(''),
+      )
+      .filter((segment) => segment.length > 0)
+      .join('/')
+  );
 }
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
