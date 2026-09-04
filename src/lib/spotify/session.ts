@@ -100,6 +100,20 @@ export function refreshSpotifySession(): void {
   spotifySession.set(read());
 }
 
+/**
+ * Turning the browser player on changes what a token has to carry, so the
+ * session is re-read whenever that switch moves. Without this, the sentence
+ * asking for a reconnect only appeared after a reload, and until then the app
+ * kept offering a device the current sign-in cannot drive.
+ */
+let wantedBrowserPlayer = get(settings).browserPlayer === true;
+settings.subscribe((current) => {
+  const wants = current.browserPlayer === true;
+  if (wants === wantedBrowserPlayer) return;
+  wantedBrowserPlayer = wants;
+  refreshSpotifySession();
+});
+
 export function spotifyConfig(): SpotifyConfig {
   const current = get(settings);
   const wantsPodcasts =
