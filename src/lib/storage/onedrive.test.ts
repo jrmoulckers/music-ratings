@@ -66,7 +66,7 @@ describe('the address Microsoft comes back to', () => {
     handleRedirectPromise.mockResolvedValue(null);
     await completeRedirect(CONFIG);
 
-    expect(captured?.auth.redirectUri).toBe(`${location.origin}/callback`);
+    expect(captured?.auth.redirectUri).toBe('https://rank.jrmoulckers.com/callback');
   });
 
   it('carries the deployment base on a project subpath', async () => {

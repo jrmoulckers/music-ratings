@@ -36,12 +36,10 @@ jobs:
       - run: npm ci
 
       - name: Build
-        # Pages serves a project site from /<repo>/, so every asset, the
-        # manifest and the service worker scope have to be built for that
-        # prefix. Derived from the repository name so a fork or a rename
-        # needs no edit here.
+        # The custom domain serves this site from its origin root. public/CNAME
+        # is copied into dist by Vite so each Pages artifact retains the domain.
         env:
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_BASE_PATH: /
         run: npm run build
 
       - uses: actions/configure-pages@v5

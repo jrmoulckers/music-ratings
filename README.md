@@ -2,7 +2,7 @@
 
 A private record of what you actually think of music.
 
-**Live:** <https://jrmoulckers.github.io/music-ratings/> — try it without connecting
+**Live:** <https://rank.jrmoulckers.com/> — try it without connecting
 anything; the demo mode is the whole app on seeded fictional data.
 
 Music Ratings is a local-first, installable web app for rating the music in your Spotify
@@ -96,7 +96,7 @@ is a published secret.
 2. Give it any name and description.
 3. Under **Redirect URIs**, add the exact URL this app will return to:
    - Local development: `http://127.0.0.1:5173/callback`
-   - Deployed: `https://jrmoulckers.github.io/music-ratings/callback`
+   - Deployed: `https://rank.jrmoulckers.com/callback`
      (HTTPS is required for any non-loopback host.)
      The redirect URI must match **character for character**, including the trailing
      path and the absence of a trailing slash.
@@ -257,7 +257,7 @@ Music Ratings can read and write only its own folder, never the rest of your dri
 3. Under **Redirect URI**, select the **Single-page application** platform and
    enter the app's callback address — the same one Spotify uses, because both
    providers return to the same route: `http://127.0.0.1:5173/callback` locally,
-   or `https://jrmoulckers.github.io/music-ratings/callback` when deployed.
+   or `https://rank.jrmoulckers.com/callback` when deployed.
    Do not use the Web platform — it requires a secret.
 4. Under **API permissions**, add the delegated Microsoft Graph permissions
    `Files.ReadWrite.AppFolder` and `User.Read`.
@@ -298,13 +298,14 @@ JSON snapshot to a file and imports it back on any device.
 
 ## Deployment
 
-The live site is <https://jrmoulckers.github.io/music-ratings/>.
+The live site is <https://rank.jrmoulckers.com/>.
 
 ### GitHub Pages
 
 `.github/workflows/deploy.yml` builds and publishes on every push to `main`, and
-on demand from the Actions tab. It derives the base path from the repository
-name, so a fork or a rename needs no edit.
+on demand from the Actions tab. Production is built for `/` because the custom
+domain serves the app at the origin root. `public/CNAME` is copied into every
+uploaded artifact so deployments retain `rank.jrmoulckers.com`.
 
 Pages itself has to be switched on once by a person — the workflow's token is
 not allowed to create the site. In **Settings → Pages**, set the source to
@@ -319,13 +320,20 @@ their own Spotify app.
 OAuth providers match a redirect URI character for character against a list you
 maintain, so a deployment is not connected until both are registered:
 
-| Provider             | Redirect URI                                           |
-| -------------------- | ------------------------------------------------------ |
-| Spotify (dashboard)  | `https://jrmoulckers.github.io/music-ratings/callback` |
-| Entra (SPA platform) | `https://jrmoulckers.github.io/music-ratings/callback` |
+| Provider             | Redirect URI                            |
+| -------------------- | --------------------------------------- |
+| Spotify (dashboard)  | `https://rank.jrmoulckers.com/callback` |
+| Entra (SPA platform) | `https://rank.jrmoulckers.com/callback` |
 
 Locally both are `http://127.0.0.1:5173/callback`. Add both entries to each app
 registration so one registration serves development and the deployed site.
+The old `https://jrmoulckers.github.io/music-ratings/callback` entry may remain
+temporarily during cutover, but it is not the canonical production callback and
+should be removed after the custom-domain deployment is stable.
+
+GitHub redirects the old project URL to the custom domain once Pages accepts the
+domain. Service workers are origin-scoped, so the old `github.io` worker cannot
+control or cache responses from `rank.jrmoulckers.com`.
 
 ### Any other static host
 
