@@ -122,7 +122,7 @@ describe('router', () => {
   it('builds an absolute url for the addresses registered outside this app', () => {
     // BASE is read once at import, so this covers the root deployment; the
     // subpath case is exercised where it matters, in the OneDrive tests.
-    expect(appUrl('/callback')).toBe(`${location.origin}/callback`);
-    expect(appUrl('/')).toBe(`${location.origin}/`);
+    expect(appUrl('/callback')).toBe('https://rank.jrmoulckers.com/callback');
+    expect(appUrl('/')).toBe('https://rank.jrmoulckers.com/');
   });
 });

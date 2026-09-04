@@ -5,6 +5,42 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+export function manifestForBase(base: string) {
+  return {
+    id: base,
+    name: 'Music Ratings — privately rate your music',
+    short_name: 'Music Ratings',
+    description:
+      'Privately rate and rank your music. Every score is explained, every rating stays on your own device.',
+    start_url: base,
+    scope: base,
+    theme_color: '#f5f5f7',
+    background_color: '#f5f5f7',
+    display: 'standalone' as const,
+    orientation: 'any' as const,
+    categories: ['music', 'productivity', 'utilities'],
+    icons: [
+      { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      {
+        src: 'pwa-maskable-512x512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+      { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+    ],
+    shortcuts: [
+      { name: 'Rate', url: `${base}rate` },
+      { name: 'Compare', url: `${base}compare` },
+    ],
+  };
+}
+
+export function navigationFallbackForBase(base: string): string {
+  return `${base}index.html`;
+}
+
 /**
  * Static hosts that serve `404.html` for unknown paths (GitHub Pages) need a
  * copy of the shell so deep links into the hand-rolled router resolve.
@@ -30,38 +66,10 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'offline-artwork.svg'],
-        manifest: {
-          id: base,
-          name: 'Music Ratings — privately rate your music',
-          short_name: 'Music Ratings',
-          description:
-            'Privately rate and rank your music. Every score is explained, every rating stays on your own device.',
-          start_url: base,
-          scope: base,
-          theme_color: '#f5f5f7',
-          background_color: '#f5f5f7',
-          display: 'standalone',
-          orientation: 'any',
-          categories: ['music', 'productivity', 'utilities'],
-          icons: [
-            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-            {
-              src: 'pwa-maskable-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable',
-            },
-            { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          ],
-          shortcuts: [
-            { name: 'Rate', url: `${base}rate` },
-            { name: 'Compare', url: `${base}compare` },
-          ],
-        },
+        manifest: manifestForBase(base),
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-          navigateFallback: `${base}index.html`,
+          navigateFallback: navigationFallbackForBase(base),
           navigateFallbackDenylist: [/^\/api\//],
           runtimeCaching: [
             {

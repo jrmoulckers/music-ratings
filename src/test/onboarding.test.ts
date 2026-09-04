@@ -336,7 +336,7 @@ describe('coming back from Spotify', () => {
     render(Callback);
     await settle();
 
-    expect(location.host).toBe('localhost:3000');
+    expect(location.host).toBe('rank.jrmoulckers.com');
     expect(location.pathname).toBe('/settings');
   });
 

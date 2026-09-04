@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.{test,spec}.ts'],
     environment: 'jsdom',
+    environmentOptions: { jsdom: { url: 'https://rank.jrmoulckers.com/' } },
     setupFiles: ['src/test/setup.ts'],
     restoreMocks: true,
   },
