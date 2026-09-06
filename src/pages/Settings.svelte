@@ -3,6 +3,13 @@
   import { RECENT_LIMIT, clearRecentSearches, recentSearches } from '../lib/app/recent-searches';
   import { installApp, pwa } from '../lib/app/pwa';
   import { href } from '../lib/app/router';
+  import { appUrl } from '../lib/app/router';
+  import {
+    HAS_BUILT_IN_ONEDRIVE,
+    HAS_BUILT_IN_SPOTIFY,
+    resolveOneDriveClientId,
+    resolveSpotifyClientId,
+  } from '../lib/config';
   import {
     allScales,
     entityLabel,
@@ -67,6 +74,12 @@
   let rollupType = $state<EntityType>('artist');
   let importFile = $state<HTMLInputElement | null>(null);
   let busy = $state(false);
+
+  // Sign-in is possible when either this build ships an identity or the user
+  // supplied their own, so an empty field is never on its own a blocker.
+  const spotifyReady = $derived(!!resolveSpotifyClientId($settings.spotifyClientId));
+  const oneDriveReady = $derived(!!resolveOneDriveClientId($settings.onedriveClientId));
+  const oneDriveRedirectUri = appUrl('/callback');
 
   const rollupConfig = $derived($settings.rollup[rollupType]);
 
@@ -985,41 +998,49 @@
           </p>
         {/if}
       {:else}
-        <label class="field">
-          <span class="label">Client ID</span>
-          <input
-            class="input"
-            value={$settings.spotifyClientId}
-            onchange={(event) =>
-              void updateSettings({ spotifyClientId: event.currentTarget.value.trim() })}
-            placeholder="From your Spotify developer dashboard"
-            spellcheck="false"
-          />
-        </label>
-        <label class="field">
-          <span class="label">Redirect URI</span>
-          <input
-            class="input"
-            value={$settings.spotifyRedirectUri}
-            onchange={(event) =>
-              void updateSettings({ spotifyRedirectUri: event.currentTarget.value.trim() })}
-            spellcheck="false"
-          />
-        </label>
         <button
           type="button"
           class="btn btn--primary"
-          disabled={!$settings.spotifyClientId}
+          disabled={!spotifyReady}
           onclick={() => void connectSpotify()}
         >
-          <Icon name="link" size={14} /> Connect Spotify
+          <Icon name="link" size={14} /> Sign in with Spotify
         </button>
+        <details class="advanced">
+          <summary class="note note--small">
+            {HAS_BUILT_IN_SPOTIFY ? 'Use my own Spotify app instead' : 'Spotify application'}
+          </summary>
+          <label class="field">
+            <span class="label">Client ID</span>
+            <input
+              class="input"
+              value={$settings.spotifyClientId}
+              onchange={(event) =>
+                void updateSettings({ spotifyClientId: event.currentTarget.value.trim() })}
+              placeholder={HAS_BUILT_IN_SPOTIFY
+                ? "Leave blank to use this app's"
+                : 'From your Spotify developer dashboard'}
+              spellcheck="false"
+            />
+          </label>
+          <label class="field">
+            <span class="label">Redirect URI</span>
+            <input
+              class="input"
+              value={$settings.spotifyRedirectUri}
+              onchange={(event) =>
+                void updateSettings({ spotifyRedirectUri: event.currentTarget.value.trim() })}
+              spellcheck="false"
+            />
+          </label>
+        </details>
       {/if}
 
       <p class="note note--small">
         This app uses Authorization Code with PKCE and never handles a client secret. In Spotify's
         development mode an app may authorise at most {DEVELOPMENT_MODE_USER_LIMIT} accounts, and each
-        must be added to the app in the dashboard.
+        must be added to the app in the dashboard. If this app's sign-in turns you away, register your
+        own and put its ID above.
       </p>
     </section>
 
@@ -1305,23 +1326,66 @@
         <span>
           <span class="opts__name">Keep a synced copy in my OneDrive</span>
           <span class="note note--small">
-            Written to an app-specific folder only this app can see. Nothing is stored on any server
-            of ours, because there isn't one.
+            Nothing is stored on any server of ours, because there isn't one. Signing in is enough —
+            no setup, no application to register.
           </span>
         </span>
       </label>
 
-      <label class="field">
-        <span class="label">Microsoft client ID</span>
-        <input
-          class="input"
-          value={$settings.onedriveClientId}
-          onchange={(event) =>
-            void updateSettings({ onedriveClientId: event.currentTarget.value.trim() })}
-          placeholder="From your Azure app registration"
-          spellcheck="false"
-        />
-      </label>
+      <fieldset class="opts">
+        <legend class="label">Where the backup lives</legend>
+        <label class="check">
+          <input
+            type="radio"
+            name="onedrive-folder"
+            value="app"
+            checked={$settings.onedriveFolderMode !== 'custom'}
+            onchange={() => void updateSettings({ onedriveFolderMode: 'app' })}
+          />
+          <span>
+            <span class="opts__name">A folder only this app can see</span>
+            <span class="note note--small">
+              Sandboxed by Microsoft under <code class="mono">Apps/Music Ratings</code>. This app is
+              given no sight of the rest of your drive.
+            </span>
+          </span>
+        </label>
+        <label class="check">
+          <input
+            type="radio"
+            name="onedrive-folder"
+            value="custom"
+            checked={$settings.onedriveFolderMode === 'custom'}
+            onchange={() => void updateSettings({ onedriveFolderMode: 'custom' })}
+          />
+          <span>
+            <span class="opts__name">A folder I choose</span>
+            <span class="note note--small">
+              Keeps the backup somewhere you can find it. OneDrive cannot limit an app to one
+              folder, so this asks for read and write across your drive — you will be asked to
+              approve that the next time it signs in.
+            </span>
+          </span>
+        </label>
+      </fieldset>
+
+      {#if $settings.onedriveFolderMode === 'custom'}
+        <label class="field">
+          <span class="label">Folder path</span>
+          <input
+            class="input"
+            value={$settings.onedriveCustomPath}
+            onchange={(event) =>
+              void updateSettings({ onedriveCustomPath: event.currentTarget.value })}
+            placeholder="Documents/Music Ratings"
+            spellcheck="false"
+          />
+          <span class="note note--small">
+            From the root of your OneDrive. Leave blank for the root itself. Created for you if it
+            is not there, and recreated if you delete it.
+          </span>
+        </label>
+      {/if}
 
       <label class="field">
         <span class="label">File name</span>
@@ -1344,10 +1408,10 @@
         <button
           type="button"
           class="btn"
-          disabled={!$settings.syncEnabled || !$settings.onedriveClientId}
+          disabled={!$settings.syncEnabled || !oneDriveReady}
           onclick={() => void connectOneDrive()}
         >
-          <Icon name="cloud" size={14} /> Connect OneDrive
+          <Icon name="cloud" size={14} /> Sign in with Microsoft
         </button>
         <button type="button" class="btn btn--quiet" onclick={() => void syncNow()}>Sync now</button
         >
@@ -1355,6 +1419,30 @@
           Disconnect
         </button>
       </div>
+
+      <details class="advanced">
+        <summary class="note note--small">
+          {HAS_BUILT_IN_ONEDRIVE ? 'Use my own Microsoft app instead' : 'Microsoft application'}
+        </summary>
+        <label class="field">
+          <span class="label">Microsoft client ID</span>
+          <input
+            class="input"
+            value={$settings.onedriveClientId}
+            onchange={(event) =>
+              void updateSettings({ onedriveClientId: event.currentTarget.value.trim() })}
+            placeholder={HAS_BUILT_IN_ONEDRIVE
+              ? "Leave blank to use this app's"
+              : 'From your Azure app registration'}
+            spellcheck="false"
+          />
+          <span class="note note--small">
+            A single-page-application registration with
+            <code class="mono">{oneDriveRedirectUri}</code>
+            as its redirect URI. Changing this signs you out of the current one.
+          </span>
+        </label>
+      </details>
     </section>
 
     <!-- ---------------------------------------------------------------- -->
@@ -1440,6 +1528,29 @@
   .opts {
     display: flex;
     flex-direction: column;
+  }
+  /* A fieldset carrying .opts still has the browser's default chrome. */
+  fieldset.opts {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    gap: var(--s2);
+  }
+  fieldset.opts legend {
+    padding: 0;
+    margin-bottom: var(--s2);
+  }
+
+  .advanced {
+    border-top: var(--rule-weight) solid var(--border-faint);
+    padding-top: var(--s3);
+    margin-top: var(--s2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+  }
+  .advanced summary {
+    cursor: pointer;
   }
   .opts li {
     border-bottom: var(--rule-weight) solid var(--border-faint);

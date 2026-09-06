@@ -1,7 +1,8 @@
 import { get } from 'svelte/store';
 
 import { notify } from './notices';
-import { settings } from './state';
+import { loadAll, settings, world } from './state';
+import { resolveOneDriveClientId } from '../config';
 import {
   catchUp,
   startAutoSync,
@@ -30,8 +31,11 @@ import {
 export function oneDriveConfig(): OneDriveConfig {
   const current = get(settings);
   return {
-    clientId: current.onedriveClientId,
+    // The user's own registration if they gave one, otherwise this build's.
+    clientId: resolveOneDriveClientId(current.onedriveClientId),
     fileName: current.syncFileName,
+    folderMode: current.onedriveFolderMode,
+    customPath: current.onedriveCustomPath,
   };
 }
 
@@ -39,7 +43,7 @@ let started = false;
 
 export async function startSyncIfEnabled(): Promise<void> {
   const current = get(settings);
-  if (!current.syncEnabled || !current.onedriveClientId) {
+  if (!current.syncEnabled || !resolveOneDriveClientId(current.onedriveClientId)) {
     stopAutoSync();
     started = false;
     return;
@@ -81,6 +85,27 @@ export function startSyncController(): () => void {
 
 export async function connectOneDrive(returnTo = '/settings'): Promise<void> {
   await signIn(oneDriveConfig(), returnTo);
+}
+
+/**
+ * Pull whatever is in OneDrive down to this device, and say whether anything
+ * was actually there.
+ *
+ * This is the "I have used this before, give me my ratings back" path, so it
+ * waits for the first reconcile instead of letting it happen in the background:
+ * the answer decides whether the person in front of us is a returning user or a
+ * new one, and that question cannot be answered optimistically.
+ *
+ * An empty result is not a failure. It means this account has no backup yet —
+ * a first device, or a wrong account — and the caller should carry on with
+ * setup rather than drop someone into an empty library that looks like loss.
+ */
+export async function restoreFromOneDrive(): Promise<boolean> {
+  await startSyncIfEnabled();
+  await catchUp('restore');
+  await loadAll();
+  const restored = get(world);
+  return restored.ratings.length > 0 || restored.entities.length > 0;
 }
 
 export async function disconnectOneDrive(): Promise<void> {

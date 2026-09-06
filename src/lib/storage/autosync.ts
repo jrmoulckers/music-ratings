@@ -217,7 +217,7 @@ function describeOutcome(status: string, detail: MergeResult['detail']): string 
   const changed = detail.reduce((acc, d) => acc + d.added + d.updated, 0);
   switch (status) {
     case 'created':
-      return 'Backup created in your OneDrive app folder.';
+      return 'Backup created in your OneDrive.';
     case 'up-to-date':
       return 'Up to date.';
     case 'pulled':

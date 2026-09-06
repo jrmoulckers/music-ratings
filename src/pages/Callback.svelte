@@ -13,7 +13,7 @@
   import { completeSignIn, describeAuthError } from '../lib/spotify/auth';
   import { refreshSpotifySession, runImport, spotifyConfig } from '../lib/spotify/session';
   import { completeRedirect } from '../lib/storage/onedrive';
-  import { oneDriveConfig, startSyncIfEnabled } from '../lib/app/sync';
+  import { oneDriveConfig, restoreFromOneDrive, startSyncIfEnabled } from '../lib/app/sync';
 
   /**
    * The landing strip after an OAuth round trip.
@@ -34,6 +34,9 @@
   // Whether the trip that failed was started by setup, which changes what the
   // useful way out of the failure is.
   let fromOnboarding = $state(readOnboardingDraft()?.connecting === true);
+  // …and whether it was the restore door rather than the Spotify one, so the
+  // way out does not offer to retry the wrong provider.
+  let wasRestore = $state(readOnboardingDraft()?.restoring === true);
 
   onMount(() => {
     void (async () => {
@@ -63,6 +66,33 @@
         const onedrive = await completeRedirect(oneDriveConfig());
         if (onedrive) {
           await updateSettings({ syncEnabled: true });
+          const draft = readOnboardingDraft();
+          const restoring = draft?.restoring === true && !$settings.onboarded;
+
+          if (restoring) {
+            // A returning user, so wait for the file to actually be read before
+            // deciding where they belong. Finding ratings means setup has
+            // already been done once, on another device, and its answers came
+            // back with them — so it is not asked again.
+            message = 'Looking for your backup…';
+            const restored = await restoreFromOneDrive();
+            if (restored) {
+              await updateSettings({ onboarded: true });
+              clearOnboardingDraft();
+              message = 'Your ratings are back.';
+              navigate('/', { replace: true });
+              return;
+            }
+            // Nothing there: a first device, or the wrong account. Sync is on
+            // and will keep this device backed up, but setup still has to
+            // happen, so it resumes rather than dropping them into an empty
+            // library that looks like something went missing.
+            patchOnboardingDraft({ connecting: false, restoring: false });
+            message = 'No backup in that account yet. Carrying on with setup…';
+            navigate(onboardingResumePath(0), { replace: true });
+            return;
+          }
+
           await startSyncIfEnabled();
           message = 'OneDrive connected.';
           navigate(safeInAppPath(onedrive.returnTo, '/settings'), { replace: true });
@@ -83,14 +113,15 @@
         // The return target was already consumed by the failed exchange, so the
         // draft is the only thing left that knows setup started this.
         fromOnboarding = readOnboardingDraft()?.connecting === true || fromOnboarding;
-        if (fromOnboarding) patchOnboardingDraft({ connecting: false });
+        wasRestore = readOnboardingDraft()?.restoring === true || wasRestore;
+        if (fromOnboarding) patchOnboardingDraft({ connecting: false, restoring: false });
         message = describeAuthError(error);
       }
     })();
   });
 
   function resumeSetup(step: number) {
-    patchOnboardingDraft({ connecting: false });
+    patchOnboardingDraft({ connecting: false, restoring: false });
     navigate(onboardingResumePath(step), { replace: true });
   }
 </script>
@@ -100,11 +131,15 @@
   {#if failed}
     <div class="row">
       {#if fromOnboarding}
-        <button type="button" class="btn btn--primary" onclick={() => resumeSetup(1)}>
-          Carry on without Spotify
+        <button
+          type="button"
+          class="btn btn--primary"
+          onclick={() => resumeSetup(wasRestore ? 0 : 1)}
+        >
+          {wasRestore ? 'Set up this device instead' : 'Carry on without Spotify'}
         </button>
         <button type="button" class="btn btn--quiet" onclick={() => resumeSetup(0)}>
-          Try Spotify again
+          {wasRestore ? 'Try OneDrive again' : 'Try Spotify again'}
         </button>
       {:else}
         <button type="button" class="btn btn--primary" onclick={() => navigate('/settings')}>

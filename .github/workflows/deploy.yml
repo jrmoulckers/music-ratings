@@ -38,8 +38,16 @@ jobs:
       - name: Build
         # The custom domain serves this site from its origin root. public/CNAME
         # is copied into dist by Vite so each Pages artifact retains the domain.
+        #
+        # The client IDs are optional here: the build already ships working ones
+        # (see src/lib/config.ts), and these repository variables exist only so a
+        # fork can point at its own applications without editing code. Variables,
+        # not secrets — an OAuth public client ID is not one, and a secret would
+        # be masked to `***` and silently break the build.
         env:
           VITE_BASE_PATH: /
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.VITE_SPOTIFY_CLIENT_ID }}
+          VITE_ONEDRIVE_CLIENT_ID: ${{ vars.VITE_ONEDRIVE_CLIENT_ID }}
         run: npm run build
 
       - uses: actions/configure-pages@v5

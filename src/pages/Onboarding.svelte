@@ -15,6 +15,8 @@
   import type { EntityType } from '../lib/domain/types';
   import { ENTITY_SUPPORT } from '../lib/spotify/capabilities';
   import { connectSpotify, spotifySession } from '../lib/spotify/session';
+  import { connectOneDrive } from '../lib/app/sync';
+  import { HAS_BUILT_IN_SPOTIFY, resolveOneDriveClientId } from '../lib/config';
   import Icon from '../lib/ui/Icon.svelte';
 
   /**
@@ -40,6 +42,10 @@
   let clientId = $state(resumed?.clientId || $settings.spotifyClientId);
   let working = $state(false);
 
+  // Restoring needs a Microsoft application to sign in as: this build's, or one
+  // the user configured before resetting setup.
+  const canRestore = $derived(!!resolveOneDriveClientId($settings.onedriveClientId));
+
   // Spotify has just come back if the draft says this run of setup connected it.
   let justConnected = $state(resumed?.spotifyConnected === true && $spotifySession.connected);
 
@@ -62,6 +68,7 @@
       clientId,
       connecting: false,
       spotifyConnected: justConnected,
+      restoring: false,
     });
   });
 
@@ -76,30 +83,64 @@
   }
 
   async function chooseSpotify() {
-    if (!clientId.trim()) {
+    const own = clientId.trim();
+    if (!own && !HAS_BUILT_IN_SPOTIFY) {
       notify('Spotify needs a client ID from your developer dashboard first.', { tone: 'warn' });
       return;
     }
     working = true;
     try {
-      // The client ID is real configuration and the callback needs it to
-      // exchange the code, so it is saved. What you rate and on what scale are
-      // still questions, so they go in the draft — and `onboarded` stays false,
-      // because connecting an account is not finishing setup.
-      await updateSettings({ spotifyClientId: clientId.trim() });
+      // An empty client ID is not a missing answer — it means "ask as this
+      // build", which is the path almost everyone takes. Either way the value
+      // is saved before leaving, because the callback needs it to exchange the
+      // code. What you rate and on what scale are still questions, so they go in
+      // the draft — and `onboarded` stays false, because connecting an account
+      // is not finishing setup.
+      await updateSettings({ spotifyClientId: own });
       patchOnboardingDraft({
         step: 1,
         types: chosenTypes,
         scaleId,
-        clientId: clientId.trim(),
+        clientId: own,
         connecting: true,
         spotifyConnected: false,
+        restoring: false,
       });
       await connectSpotify(onboardingResumePath(1));
     } catch (error) {
       working = false;
       patchOnboardingDraft({ connecting: false });
       notify(error instanceof Error ? error.message : 'Could not start the Spotify sign-in.', {
+        tone: 'warn',
+      });
+    }
+  }
+
+  /**
+   * The returning-user door: sign in to OneDrive and take the backup back.
+   *
+   * Setup is skipped entirely if a backup turns up, because someone who already
+   * has ratings has already answered these questions — the answers travel in the
+   * backup. That decision is made in the callback, once the file has actually
+   * been read; all this does is leave a note saying which door was used.
+   */
+  async function chooseRestore() {
+    working = true;
+    try {
+      patchOnboardingDraft({
+        step: 0,
+        types: chosenTypes,
+        scaleId,
+        clientId,
+        connecting: true,
+        spotifyConnected: justConnected,
+        restoring: true,
+      });
+      await connectOneDrive(onboardingResumePath(0));
+    } catch (error) {
+      working = false;
+      patchOnboardingDraft({ connecting: false, restoring: false });
+      notify(error instanceof Error ? error.message : 'Could not start the OneDrive sign-in.', {
         tone: 'warn',
       });
     }
@@ -152,22 +193,6 @@
             Reads your library, top items and recent plays so the queue knows what to put in front
             of you. Ratings are yours and never leave this device.
           </span>
-          <label class="field">
-            <span class="label">Spotify client ID</span>
-            <input
-              class="input"
-              bind:value={clientId}
-              placeholder="From your Spotify developer dashboard"
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </label>
-          <p class="note note--small">
-            The app in your dashboard must list
-            <code class="mono">{$settings.spotifyRedirectUri}</code>
-            as a redirect URI, and your account must be added to it. Spotify allows five accounts per
-            app in development mode.
-          </p>
           <button
             type="button"
             class="btn btn--primary"
@@ -175,8 +200,46 @@
             onclick={() => void chooseSpotify()}
           >
             <Icon name="link" size={14} />
-            {$spotifySession.connected ? 'Reconnect Spotify' : 'Connect and authorise'}
+            {$spotifySession.connected ? 'Reconnect Spotify' : 'Sign in with Spotify'}
           </button>
+
+          {#if HAS_BUILT_IN_SPOTIFY}
+            <details class="advanced">
+              <summary class="note note--small">Use my own Spotify app instead</summary>
+              <label class="field">
+                <span class="label">Spotify client ID</span>
+                <input
+                  class="input"
+                  bind:value={clientId}
+                  placeholder="Leave blank to use this app's"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <p class="note note--small">
+                Only needed if this app's Spotify sign-in turns you away. Register an app in the
+                Spotify developer dashboard, list
+                <code class="mono">{$settings.spotifyRedirectUri}</code>
+                as a redirect URI, and add your account to it.
+              </p>
+            </details>
+          {:else}
+            <label class="field">
+              <span class="label">Spotify client ID</span>
+              <input
+                class="input"
+                bind:value={clientId}
+                placeholder="From your Spotify developer dashboard"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+            <p class="note note--small">
+              The app in your dashboard must list
+              <code class="mono">{$settings.spotifyRedirectUri}</code>
+              as a redirect URI, and your account must be added to it.
+            </p>
+          {/if}
         </div>
 
         <button
@@ -192,12 +255,30 @@
             {#if $spotifySession.connected}
               Spotify is connected. Next, choose what you want to rate.
             {:else}
-              Start with nothing and add music by hand, or restore a backup from Settings. You can
-              connect Spotify later.
+              Start with nothing and add music by hand. You can connect Spotify later.
             {/if}
           </span>
         </button>
       </div>
+
+      {#if canRestore}
+        <div class="returning">
+          <p class="note note--small">Used this before?</p>
+          <button
+            type="button"
+            class="btn btn--quiet"
+            disabled={working}
+            onclick={() => void chooseRestore()}
+          >
+            <Icon name="cloud" size={14} />
+            Restore my ratings from OneDrive
+          </button>
+          <p class="note note--small">
+            Signs in to your Microsoft account and brings back the backup this app saved there.
+            Nothing on this device is overwritten if no backup is found.
+          </p>
+        </div>
+      {/if}
     </section>
   {:else if step === 1}
     <section class="door__panel">
@@ -409,5 +490,30 @@
 
   code.mono {
     word-break: break-all;
+  }
+
+  .advanced {
+    width: 100%;
+    margin-top: var(--s2);
+    border-top: var(--rule-weight) solid var(--border-faint);
+    padding-top: var(--s3);
+  }
+  .advanced summary {
+    cursor: pointer;
+  }
+  .advanced .field {
+    margin-top: var(--s3);
+  }
+
+  /* The way back in, for someone who has been here before. Quiet on purpose:
+     it is the rarer door, and it must not compete with connecting Spotify. */
+  .returning {
+    margin-top: var(--s4);
+    padding-top: var(--s4);
+    border-top: var(--rule-weight) solid var(--border-faint);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s2);
   }
 </style>

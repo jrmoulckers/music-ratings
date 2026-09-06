@@ -89,6 +89,12 @@ Music Ratings uses the **Authorization Code with PKCE** flow entirely in the bro
 There is no client secret, and one must never be added — a secret in a static site
 is a published secret.
 
+**Most people can skip this whole section.** The deployed app ships a Spotify
+application ID, so the front door is a single **Sign in with Spotify** button and
+nothing needs registering. Read on only if that sign-in turns you away — Spotify's
+development mode authorises a small fixed number of accounts — or if you would
+rather ask as your own application.
+
 ### 1. Create a Spotify app
 
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
@@ -105,15 +111,18 @@ is a published secret.
 
 ### 2. Give the ID to the app
 
-Either put it in `.env.local`:
+Either paste it into **Settings → Spotify → Use my own Spotify app instead**, which
+takes effect immediately and overrides whatever the build ships…
+
+…or bake it into a build of your own via `.env.local`:
 
 ```
 VITE_SPOTIFY_CLIENT_ID=your_client_id
 VITE_SPOTIFY_REDIRECT_URI=http://127.0.0.1:5173/callback
 ```
 
-…or paste it into **Settings → Spotify** at runtime. The runtime value wins, which
-makes it easy to hand a build to a tester who has their own app.
+The runtime value always wins over the build's, which makes it easy to hand a
+deployed build to someone who has their own app.
 
 ### 3. Add your testers
 
@@ -246,8 +255,42 @@ audio, and makes no claims on Spotify's behalf.
 
 ## Connecting OneDrive (optional)
 
-Sync is opt-in and uses a **sandboxed application folder** in your own OneDrive —
-Music Ratings can read and write only its own folder, never the rest of your drive.
+Sync is opt-in. Turn it on in **Settings → Your copy in OneDrive** and press
+**Sign in with Microsoft** — the deployed app ships a Microsoft application ID, so
+there is nothing to register. You sign in with your own Microsoft account and the
+backup goes to your own drive.
+
+### Getting your ratings back on a new device
+
+Setup's first page offers **Restore my ratings from OneDrive**. Sign in with the
+same Microsoft account and the backup comes down; if it holds anything, the rest of
+setup is skipped, because what you rate and on what scale were answered on the
+other device and travel in the file.
+
+If that account has no backup yet — a first device, or the wrong account — nothing
+is overwritten. Sync stays on so this device starts backing itself up, and setup
+carries on normally.
+
+### Where the backup lives
+
+Two choices, and the choice decides what permission is asked for at sign-in:
+
+| Mode                                         | Where                                             | Permission requested                     |
+| -------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
+| **A folder only this app can see** (default) | `Apps/Music Ratings/`                             | `Files.ReadWrite.AppFolder`, `User.Read` |
+| **A folder I choose**                        | Any path you name, e.g. `Documents/Music Ratings` | `Files.ReadWrite`, `User.Read`           |
+
+The sandboxed app folder is the default because it is the one arrangement where
+this app genuinely cannot read the rest of your drive. Choosing your own folder is
+a real trade: Microsoft Graph has no way to scope a delegated grant to a single
+folder, so naming your own folder necessarily asks for read and write across the
+drive. Microsoft's consent screen says so plainly when it asks, and switching modes
+asks again rather than inheriting the older, narrower grant. A folder you name is
+created for you, and recreated if you delete it.
+
+### Using your own app registration
+
+Only needed if you would rather not use the shipped one.
 
 1. Register an application in the
    [Microsoft Entra admin centre](https://entra.microsoft.com) →
@@ -259,14 +302,13 @@ Music Ratings can read and write only its own folder, never the rest of your dri
    providers return to the same route: `http://127.0.0.1:5173/callback` locally,
    or `https://rank.jrmoulckers.com/callback` when deployed.
    Do not use the Web platform — it requires a secret.
-4. Under **API permissions**, add the delegated Microsoft Graph permissions
-   `Files.ReadWrite.AppFolder` and `User.Read`.
-5. Copy the **Application (client) ID** into `VITE_ONEDRIVE_CLIENT_ID` or into
-   **Settings → Sync**.
+4. No **API permissions** need configuring. Scopes are requested at sign-in, so the
+   registration does not need to know in advance which folder mode you will pick.
+5. Copy the **Application (client) ID** into
+   **Settings → Your copy in OneDrive → Use my own Microsoft app instead**, or into
+   `VITE_ONEDRIVE_CLIENT_ID` for a build of your own. The runtime value wins.
 
-Use your own registration. Do not reuse a client ID from another project.
-
-**How sync behaves.** Music Ratings writes a single JSON snapshot into the app folder.
+**How sync behaves.** Music Ratings writes a single JSON snapshot into the chosen folder.
 Writes are guarded by the file's ETag, so two devices cannot silently overwrite
 each other. When both have changed since they last agreed, Music Ratings stops, tells you,
 and asks which side wins — it never merges by guessing. Per-record merging uses
@@ -311,9 +353,18 @@ Pages itself has to be switched on once by a person — the workflow's token is
 not allowed to create the site. In **Settings → Pages**, set the source to
 **GitHub Actions**. Every push after that deploys on its own.
 
-Nothing secret is involved. There is no client ID in the build — both are
-entered at runtime in **Settings**, which also lets a tester point the app at
-their own Spotify app.
+Nothing secret is involved. The build carries a Spotify and a Microsoft client ID
+so that signing in needs no setup, and neither is a secret: both are OAuth public
+clients guarded by PKCE and a redirect-URI allowlist, which is why they are safe to
+commit. See `src/lib/config.ts`.
+
+A fork can point at its own applications without editing code by setting the
+repository **variables** `VITE_SPOTIFY_CLIENT_ID` and `VITE_ONEDRIVE_CLIENT_ID`
+(Settings → Secrets and variables → Actions → Variables); the deploy workflow
+passes them to the build. Use variables rather than secrets — Actions masks a
+secret as `***`, which would be baked into the bundle as a broken ID. Leaving them
+unset is fine and keeps the committed IDs. Either can also be overridden per user
+in **Settings**, which lets a tester point the app at their own registration.
 
 ### Register the two redirect URIs by hand
 
@@ -364,7 +415,7 @@ redirect.
   your browser**, on your device.
 - Data leaves your device in exactly two circumstances, both of which you choose:
   a request to Spotify's API for catalogue and library data, and a snapshot written
-  to your own OneDrive app folder.
+  to a folder in your own OneDrive — by default one sandboxed to this app.
 - Spotify tokens are held in browser storage on your device only. They are never
   transmitted anywhere except to Spotify.
 - Album artwork is loaded directly from Spotify's CDN and cached by the service

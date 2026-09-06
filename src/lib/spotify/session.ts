@@ -3,6 +3,7 @@ import { get, writable } from 'svelte/store';
 import { announce, notify } from '../app/notices';
 import { settings } from '../app/state';
 import { refreshWorld } from '../app/state';
+import { resolveSpotifyClientId } from '../config';
 import {
   beginSignIn,
   forgetTokens,
@@ -123,7 +124,7 @@ export function spotifyConfig(): SpotifyConfig {
     ...(current.browserPlayer ? [STREAMING_SCOPE] : []),
   ];
   return {
-    clientId: current.spotifyClientId,
+    clientId: resolveSpotifyClientId(current.spotifyClientId),
     redirectUri: current.spotifyRedirectUri,
     ...(extra.length ? { extraScopes: extra } : {}),
   };

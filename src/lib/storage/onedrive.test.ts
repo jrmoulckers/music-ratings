@@ -145,3 +145,85 @@ describe('coming back from Microsoft', () => {
     expect(await completeRedirect(CONFIG)).toEqual({ account: 'a@b.c', returnTo: null });
   });
 });
+
+/**
+ * Where the backup lives, and what that costs in permission.
+ *
+ * The sandboxed app folder is the default precisely because it is the one
+ * arrangement where this app cannot read anything else. Choosing your own folder
+ * is a real trade — Graph has no way to scope a delegated grant to one folder,
+ * so it necessarily means read and write over the drive — and these fence the
+ * rule that the wider grant is asked for only by the mode that needs it.
+ */
+describe('the folder the backup lives in', () => {
+  it('asks only for the sandbox when using the app folder', async () => {
+    const { scopesFor } = await load('/');
+    expect(scopesFor(CONFIG)).toEqual(['Files.ReadWrite.AppFolder', 'User.Read']);
+    expect(scopesFor({ ...CONFIG, folderMode: 'app' })).toEqual([
+      'Files.ReadWrite.AppFolder',
+      'User.Read',
+    ]);
+  });
+
+  it('asks for the drive only when the user named their own folder', async () => {
+    const { scopesFor } = await load('/');
+    expect(scopesFor({ ...CONFIG, folderMode: 'custom', customPath: 'Documents' })).toEqual([
+      'Files.ReadWrite',
+      'User.Read',
+    ]);
+  });
+
+  it('signs in with the scopes the chosen mode needs', async () => {
+    const { signIn } = await load('/');
+    handleRedirectPromise.mockResolvedValue(null);
+
+    await signIn({ ...CONFIG, folderMode: 'custom', customPath: 'Music' }, '/settings');
+    expect(loginRedirect).toHaveBeenCalledWith({
+      scopes: ['Files.ReadWrite', 'User.Read'],
+    });
+  });
+
+  it('addresses the sandboxed app folder by default', async () => {
+    const { oneDrivePaths } = await load('/');
+    expect(oneDrivePaths(CONFIG)).toEqual({
+      content: '/me/drive/special/approot:/music-ratings.json:/content',
+      meta: '/me/drive/special/approot:/music-ratings.json',
+      children: '/me/drive/special/approot/children',
+    });
+  });
+
+  it('addresses a nested folder from the drive root', async () => {
+    const { oneDrivePaths } = await load('/');
+    expect(
+      oneDrivePaths({ ...CONFIG, folderMode: 'custom', customPath: 'Documents/Music Ratings' }),
+    ).toEqual({
+      content: '/me/drive/root:/Documents/Music%20Ratings/music-ratings.json:/content',
+      meta: '/me/drive/root:/Documents/Music%20Ratings/music-ratings.json',
+      children: '/me/drive/root:/Documents/Music%20Ratings:/children',
+    });
+  });
+
+  it('treats an empty custom path as the drive root', async () => {
+    const { oneDrivePaths } = await load('/');
+    expect(oneDrivePaths({ ...CONFIG, folderMode: 'custom', customPath: '  ' })).toEqual({
+      content: '/me/drive/root:/music-ratings.json:/content',
+      meta: '/me/drive/root:/music-ratings.json',
+      children: '/me/drive/root/children',
+    });
+  });
+
+  /**
+   * A path is a destination, never a way to climb out of one. `..` is dropped
+   * rather than resolved, so no amount of typing reaches a parent the user did
+   * not name.
+   */
+  it('refuses to let a path climb out of the folder it names', async () => {
+    const { oneDrivePaths } = await load('/');
+    const paths = oneDrivePaths({
+      ...CONFIG,
+      folderMode: 'custom',
+      customPath: '/../../Documents//./Music/',
+    });
+    expect(paths.children).toBe('/me/drive/root:/Documents/Music:/children');
+  });
+});
