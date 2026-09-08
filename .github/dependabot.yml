@@ -1,0 +1,16 @@
+version: 2
+
+# Without this, workflow actions only get looked at when something breaks —
+# which is how they reached one to three majors behind and surfaced as a
+# runtime deprecation warning rather than as an upgrade anyone chose.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # One pull request for the lot. These versions move together and reviewing
+    # six separate bumps a week is the surest way to start ignoring them.
+    groups:
+      actions:
+        patterns:
+          - '*'
