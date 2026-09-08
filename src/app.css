@@ -374,7 +374,7 @@ table {
   padding-bottom: var(--player-h, 0px);
 }
 
-@media (max-width: 60rem) {
+@media (max-width: 60rem), (hover: none) and (pointer: coarse) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
     padding-bottom: calc(4.25rem + var(--player-h, 0px));
