@@ -283,10 +283,7 @@ export function createOneDriveAdapter(config: OneDriveConfig): RemoteAdapter {
       // cannot follow that redirect after the Authorization header triggers a
       // CORS preflight, so ask Graph for its short-lived, preauthenticated URL
       // first and download from there without credentials.
-      const metadata = await graph(
-        config,
-        `${metaPath}?$select=eTag,@microsoft.graph.downloadUrl`,
-      );
+      const metadata = await graph(config, `${metaPath}?$select=eTag,@microsoft.graph.downloadUrl`);
       if (metadata.status === 404) throw new RemoteMissingError();
       if (!metadata.ok) throw new Error(await describe(metadata, 'find the backup'));
       const item = (await metadata.json()) as GraphItem;
