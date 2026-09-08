@@ -175,6 +175,7 @@ interface GraphItem {
   size?: number;
   eTag?: string;
   lastModifiedDateTime?: string;
+  '@microsoft.graph.downloadUrl'?: string;
 }
 
 async function graph(
@@ -278,10 +279,23 @@ export function createOneDriveAdapter(config: OneDriveConfig): RemoteAdapter {
 
   return {
     async read(): Promise<RemoteFile | null> {
-      const response = await graph(config, contentPath);
-      if (response.status === 404) throw new RemoteMissingError();
+      // Graph's /content endpoint redirects to a different origin. Browsers
+      // cannot follow that redirect after the Authorization header triggers a
+      // CORS preflight, so ask Graph for its short-lived, preauthenticated URL
+      // first and download from there without credentials.
+      const metadata = await graph(
+        config,
+        `${metaPath}?$select=eTag,@microsoft.graph.downloadUrl`,
+      );
+      if (metadata.status === 404) throw new RemoteMissingError();
+      if (!metadata.ok) throw new Error(await describe(metadata, 'find the backup'));
+      const item = (await metadata.json()) as GraphItem;
+      const downloadUrl = item['@microsoft.graph.downloadUrl'];
+      if (!downloadUrl) {
+        throw new Error('OneDrive did not provide a download address for the backup.');
+      }
+      const response = await fetch(downloadUrl);
       if (!response.ok) throw new Error(await describe(response, 'read the backup'));
-      const etag = response.headers.get('ETag');
       const text = await response.text();
       if (!text.trim()) throw new RemoteMissingError();
       let snapshot: Snapshot;
@@ -292,7 +306,7 @@ export function createOneDriveAdapter(config: OneDriveConfig): RemoteAdapter {
           `The file in OneDrive is not a ${SNAPSHOT_KIND} backup. Rename it or choose a different file name in Settings.`,
         );
       }
-      return { snapshot, etag: etag ?? (await peekEtag(config, metaPath)) };
+      return { snapshot, etag: item.eTag ?? null };
     },
 
     async write(snapshot: Snapshot, etag: string | null): Promise<string | null> {
