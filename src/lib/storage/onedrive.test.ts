@@ -17,6 +17,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 const handleRedirectPromise = vi.fn();
 const setActiveAccount = vi.fn();
 const loginRedirect = vi.fn();
+const acquireTokenSilent = vi.fn();
 let captured: { auth: Record<string, unknown> } | null = null;
 
 vi.mock('@azure/msal-browser', () => ({
@@ -27,9 +28,10 @@ vi.mock('@azure/msal-browser', () => ({
     initialize = vi.fn(async () => {});
     handleRedirectPromise = handleRedirectPromise;
     setActiveAccount = setActiveAccount;
-    getActiveAccount = vi.fn(() => null);
+    getActiveAccount = vi.fn(() => ({ username: 'someone@example.com' }));
     getAllAccounts = vi.fn(() => []);
     loginRedirect = loginRedirect;
+    acquireTokenSilent = acquireTokenSilent;
   },
 }));
 
@@ -53,11 +55,14 @@ beforeEach(() => {
   handleRedirectPromise.mockReset();
   setActiveAccount.mockReset();
   loginRedirect.mockReset();
+  acquireTokenSilent.mockReset();
+  acquireTokenSilent.mockResolvedValue({ accessToken: 'access-token' });
   sessionStorage.clear();
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('the address Microsoft comes back to', () => {
@@ -180,6 +185,73 @@ describe('the folder the backup lives in', () => {
     await signIn({ ...CONFIG, folderMode: 'custom', customPath: 'Music' }, '/settings');
     expect(loginRedirect).toHaveBeenCalledWith({
       scopes: ['Files.ReadWrite', 'User.Read'],
+    });
+  });
+
+  describe('reading a backup in the browser', () => {
+    it('uses the preauthenticated download URL instead of Graph content redirect', async () => {
+      const { createOneDriveAdapter } = await load('/');
+      const snapshot = {
+        kind: 'music-ratings/snapshot',
+        version: 3,
+        savedAt: 1,
+        deviceId: 'device-a',
+        settings: {},
+        entities: [],
+        memberships: [],
+        ratings: [],
+        comparisons: [],
+        queueStates: [],
+        annotations: [],
+        collections: [],
+        scales: [],
+        plays: [],
+        completions: [],
+        canonicalGroups: [],
+      };
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              eTag: '"etag-1"',
+              '@microsoft.graph.downloadUrl': 'https://download.example/backup',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(snapshot), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(createOneDriveAdapter(CONFIG).read()).resolves.toEqual({
+        snapshot,
+        etag: '"etag-1"',
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://graph.microsoft.com/v1.0/me/drive/special/approot:/music-ratings.json?$select=eTag,@microsoft.graph.downloadUrl',
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+        }),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://download.example/backup');
+    });
+
+    it('reports a missing backup from the metadata request', async () => {
+      const { createOneDriveAdapter } = await load('/');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 })),
+      );
+
+      await expect(createOneDriveAdapter(CONFIG).read()).rejects.toMatchObject({
+        name: 'RemoteMissingError',
+      });
     });
   });
 
