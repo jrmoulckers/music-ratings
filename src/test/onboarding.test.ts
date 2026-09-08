@@ -104,6 +104,45 @@ async function settle(): Promise<void> {
   }
 }
 
+/**
+ * How long a Back may take to be heard before the test calls it broken.
+ *
+ * This is not how the test waits — it is the difference between a Back that
+ * never arrives being reported here, with a reason, and stalling silently
+ * until the runner gives up somewhere far less informative.
+ */
+const BACK_DEADLINE_MS = 5_000;
+
+/**
+ * Press the browser's own Back, and wait for it to land.
+ *
+ * jsdom dispatches `popstate` from a queued task, so `history.back()` has
+ * returned long before the router has heard anything. Sleeping a fixed number
+ * of milliseconds and hoping is a race that a loaded machine loses; waiting for
+ * the event itself cannot be. The router registered its listener when it
+ * started, ahead of this one, so the route store is already updated by the time
+ * this resolves and only the render is left to flush.
+ */
+async function goBack(): Promise<void> {
+  const landed = new Promise<void>((resolve, reject) => {
+    const deadline = setTimeout(
+      () => reject(new Error(`no popstate within ${BACK_DEADLINE_MS}ms of history.back()`)),
+      BACK_DEADLINE_MS,
+    );
+    window.addEventListener(
+      'popstate',
+      () => {
+        clearTimeout(deadline);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  history.back();
+  await landed;
+  flushSync();
+}
+
 beforeEach(async () => {
   connectCalls.length = 0;
   oneDriveConnectCalls.length = 0;
@@ -586,20 +625,24 @@ describe('walking the three pages', () => {
     expect(location.pathname).toBe('/');
   });
 
-  it('walks backwards through the browser, not just the buttons', async () => {
-    navigate('/start', { replace: true });
-    render(Onboarding);
+  it(
+    'walks backwards through the browser, not just the buttons',
+    async () => {
+      navigate('/start', { replace: true });
+      render(Onboarding);
 
-    click(/Set up without Spotify/);
-    expect(text()).toContain('What do you want to rate?');
-    click(/Continue/);
-    expect(text()).toContain('Pick a scale');
+      click(/Set up without Spotify/);
+      expect(text()).toContain('What do you want to rate?');
+      click(/Continue/);
+      expect(text()).toContain('Pick a scale');
 
-    history.back();
-    await new Promise((r) => setTimeout(r, 50));
-    flushSync();
-    expect(text()).toContain('What do you want to rate?');
-  });
+      await goBack();
+      expect(text()).toContain('What do you want to rate?');
+    },
+    // Comfortably past the deadline above, so a Back that never arrives is
+    // reported by goBack's own message rather than by the runner's timeout.
+    BACK_DEADLINE_MS * 3,
+  );
 
   it('clamps a step someone typed into the address bar', () => {
     navigate('/start?step=98', { replace: true });
