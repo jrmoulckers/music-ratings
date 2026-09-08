@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import { href, isActive, type Route } from '../lib/app/router';
   import { settings, suggestions } from '../lib/app/state';
   import { syncState } from '../lib/storage/autosync';
@@ -44,6 +46,8 @@
    * into a sheet. Nothing becomes unreachable; it just takes one more tap.
    */
   let moreOpen = $state(false);
+  let moreButton = $state<HTMLButtonElement | null>(null);
+  let moreSheet = $state<HTMLDivElement | null>(null);
   const secondary = stops.filter((stop) => !stop.primary);
   const inSecondary = $derived(secondary.some((stop) => isActive(route, stop.path)));
 
@@ -51,6 +55,43 @@
     void route;
     moreOpen = false;
   });
+
+  async function toggleMore() {
+    if (moreOpen) {
+      moreOpen = false;
+      return;
+    }
+    moreOpen = true;
+    await tick();
+    moreSheet?.querySelector<HTMLElement>('a')?.focus();
+  }
+
+  function closeMore() {
+    moreOpen = false;
+    moreButton?.focus();
+  }
+
+  function onWindowKey(event: KeyboardEvent) {
+    if (!moreOpen || event.key !== 'Escape') return;
+    event.preventDefault();
+    closeMore();
+  }
+
+  function onSheetKey(event: KeyboardEvent) {
+    if (event.key !== 'Tab' || !moreSheet) return;
+    const links = [...moreSheet.querySelectorAll<HTMLElement>('a')];
+    const first = links.at(0);
+    const last = links.at(-1);
+    if (!first || !last) return;
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   const waiting = $derived($suggestions.length);
 
@@ -75,7 +116,9 @@
   });
 </script>
 
-<nav class="rail" aria-label="Sections">
+<svelte:window onkeydown={onWindowKey} />
+
+<nav class="rail" class:is-menu-open={moreOpen} aria-label="Sections">
   <a class="rail__mast" href={href('/')}>
     <span class="rail__wordmark">Music Ratings</span>
   </a>
@@ -110,8 +153,11 @@
     type="button"
     class="stop rail__more"
     class:is-current={inSecondary}
+    bind:this={moreButton}
+    aria-controls="more-sections"
     aria-expanded={moreOpen}
-    onclick={() => (moreOpen = !moreOpen)}
+    aria-haspopup="dialog"
+    onclick={toggleMore}
   >
     <Icon name="menu" size={17} />
     <span class="stop__label">More</span>
@@ -124,13 +170,18 @@
 </nav>
 
 {#if moreOpen}
-  <button
-    type="button"
-    class="rail__scrim"
-    aria-label="Close menu"
-    onclick={() => (moreOpen = false)}
-  ></button>
-  <div class="rail__sheet">
+  <button type="button" class="rail__scrim" aria-label="Close menu" onclick={closeMore}></button>
+  <div
+    id="more-sections"
+    class="rail__sheet"
+    bind:this={moreSheet}
+    role="dialog"
+    tabindex="-1"
+    aria-modal="true"
+    aria-labelledby="more-sections-title"
+    onkeydown={onSheetKey}
+  >
+    <h2 id="more-sections-title" class="sr-only">More sections</h2>
     <ul>
       {#each secondary as stop (stop.path)}
         <li>
@@ -264,7 +315,7 @@
     display: none;
   }
 
-  @media (max-width: 60rem) {
+  @media (max-width: 60rem), (hover: none) and (pointer: coarse) {
     .rail {
       position: fixed;
       inset: auto 0 0 0;
@@ -277,6 +328,9 @@
       border-top: var(--rule-weight) solid var(--border);
       padding-bottom: env(safe-area-inset-bottom);
     }
+    .rail.is-menu-open {
+      z-index: var(--z-overlay);
+    }
     .rail__mast,
     .rail__state,
     .rail__stops li.is-secondary {
@@ -284,6 +338,8 @@
     }
     .rail__stops {
       flex-direction: row;
+      flex: 5 1 0;
+      min-width: 0;
       width: auto;
       gap: 0;
     }
@@ -293,7 +349,9 @@
     /* Search is the way into anything not already queued, so it earns a tab of
        its own rather than hiding behind the overflow sheet. */
     .rail__search {
-      flex: 1;
+      display: flex;
+      flex: 1 1 0;
+      min-width: 0;
       flex-direction: column;
       align-items: center;
       gap: 2px;
@@ -321,7 +379,8 @@
     }
     .rail__more {
       display: flex;
-      flex: 1;
+      flex: 1 1 0;
+      min-width: 0;
       background: none;
       border: 0;
       border-top: 2px solid transparent;
@@ -369,7 +428,7 @@
       inset: 0;
       border: 0;
       background: var(--scrim);
-      z-index: calc(var(--z-rail) - 1);
+      z-index: calc(var(--z-overlay) - 2);
     }
     .rail__sheet {
       display: block;
@@ -377,7 +436,10 @@
       inset: auto 0 calc(3.5rem + env(safe-area-inset-bottom)) 0;
       background: var(--surface);
       border-top: var(--rule-weight) solid var(--border);
-      z-index: var(--z-rail);
+      max-height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      z-index: calc(var(--z-overlay) - 1);
     }
     .sheet-stop {
       display: flex;
