@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -16,11 +16,13 @@ const SRC = join(process.cwd(), 'src');
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) {
+  // The directory entry already knows whether it is a directory, so asking the
+  // filesystem again per name is a syscall the scan does not need.
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
       out.push(...sourceFiles(path));
-    } else if (/\.(ts|svelte)$/.test(name) && !name.endsWith('.test.ts')) {
+    } else if (/\.(ts|svelte)$/.test(entry.name) && !entry.name.endsWith('.test.ts')) {
       out.push(path);
     }
   }
@@ -75,8 +77,11 @@ function resolves(path: string): boolean {
   return routeNameFor(stem || '/') !== 'notfound';
 }
 
-/** Every `navigate('/…')` and `href('/…')` target written across the app. */
-function navigationTargets(): { file: string; path: string }[] {
+/**
+ * Every `navigate('/…')` and `href('/…')` target written across the app, read
+ * at import so the scan is not charged against one test's timeout.
+ */
+const TARGETS = ((): { file: string; path: string }[] => {
   const found: { file: string; path: string }[] = [];
   for (const file of sourceFiles(SRC)) {
     const text = readFileSync(file, 'utf8');
@@ -86,7 +91,7 @@ function navigationTargets(): { file: string; path: string }[] {
     }
   }
   return found;
-}
+})();
 
 describe('router', () => {
   it('resolves each page path', () => {
@@ -106,10 +111,9 @@ describe('router', () => {
   });
 
   it('has no unknown navigation target anywhere in the app', () => {
-    const targets = navigationTargets();
     // If this ever finds nothing, the scan itself broke.
-    expect(targets.length).toBeGreaterThan(5);
-    const broken = targets.filter((t) => !resolves(t.path));
+    expect(TARGETS.length).toBeGreaterThan(5);
+    const broken = TARGETS.filter((t) => !resolves(t.path));
     expect(broken).toEqual([]);
   });
 
