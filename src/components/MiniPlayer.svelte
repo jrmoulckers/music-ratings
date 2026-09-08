@@ -199,7 +199,7 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  @media (max-width: 60rem) {
+  @media (max-width: 60rem), (hover: none) and (pointer: coarse) {
     .mini {
       inset: auto 0 calc(3.5rem + env(safe-area-inset-bottom)) 0;
       padding-bottom: 0;
@@ -295,7 +295,7 @@
   /* Phones keep what is playing, one control and the rating; the volume, the
      device and the second and third transport buttons are a tap away on the
      page. The rail stays: it is the only one in the app. */
-  @media (max-width: 48rem) {
+  @media (max-width: 48rem), (hover: none) and (pointer: coarse) {
     .mini__scrub {
       padding-inline: var(--s4);
     }
