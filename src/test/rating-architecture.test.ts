@@ -38,14 +38,32 @@ function key(file: string): string {
   return relative(SRC, file).replaceAll('\\', '/');
 }
 
+/**
+ * The fences below sweep the tree half a dozen times over, and a file's
+ * contents cannot change mid-run, so the whole set is read once at import.
+ * Doing it here rather than lazily matters: a sweep charged to the first test
+ * that happened to need it was slow enough, under a fully loaded suite, to
+ * trip that test's timeout for reasons that had nothing to do with the fence.
+ */
 const files = sourceFiles(SRC)
   .map(key)
   // Tests unit-test the primitives directly and are meant to.
   .filter((f) => !f.startsWith('test/') && !f.includes('.test.'));
 
+const sources = new Map(files.map((file) => [file, readFileSync(join(SRC, file), 'utf8')]));
+
+/** Falls back to disk for a file named directly below but filtered out above. */
+function read(file: string): string {
+  let text = sources.get(file);
+  if (text === undefined) {
+    text = readFileSync(join(SRC, file), 'utf8');
+    sources.set(file, text);
+  }
+  return text;
+}
+
 function importsOf(file: string): string[] {
-  const text = readFileSync(join(SRC, file), 'utf8');
-  return [...text.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]!);
+  return [...read(file).matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]!);
 }
 
 describe('the rating boundary', () => {
@@ -98,8 +116,7 @@ describe('the rating boundary', () => {
   ];
 
   it.each(SURFACES)('%s rates through %s', (file, mounts) => {
-    const text = readFileSync(join(SRC, file), 'utf8');
-    expect(text).toContain(`<${mounts}`);
+    expect(read(file)).toContain(`<${mounts}`);
   });
 
   it('names every ratable surface it knows about', () => {
@@ -108,8 +125,7 @@ describe('the rating boundary', () => {
     const listed = new Set(SURFACES.map(([file]) => file));
     const mounting = files.filter((file) => {
       if (file.startsWith('components/rating/') || ALLOWED.includes(file)) return false;
-      const text = readFileSync(join(SRC, file), 'utf8');
-      return /<(InlineRating|RatableRow|RatePanel)\b/.test(text);
+      return /<(InlineRating|RatableRow|RatePanel)\b/.test(read(file));
     });
 
     expect(mounting.filter((file) => !listed.has(file))).toEqual([]);
@@ -128,16 +144,12 @@ describe('the transport boundary', () => {
   const surfaces = files.filter((f) => f.startsWith('components/') || f.startsWith('pages/'));
 
   it('draws the position rail in exactly one component', () => {
-    const rails = surfaces.filter((file) =>
-      readFileSync(join(SRC, file), 'utf8').includes('aria-label="Position in track'),
-    );
+    const rails = surfaces.filter((file) => read(file).includes('aria-label="Position in track'));
     expect(rails).toEqual(['components/PlaybackScrubber.svelte']);
   });
 
   it('puts the scrubber in the bar and nowhere else', () => {
-    const mounts = surfaces.filter((file) =>
-      /<PlaybackScrubber\b/.test(readFileSync(join(SRC, file), 'utf8')),
-    );
+    const mounts = surfaces.filter((file) => /<PlaybackScrubber\b/.test(read(file)));
     expect(mounts).toEqual(['components/MiniPlayer.svelte']);
   });
 
@@ -145,14 +157,15 @@ describe('the transport boundary', () => {
     const bar = ['components/MiniPlayer.svelte', 'components/PlaybackScrubber.svelte'];
     const commanding = surfaces.filter((file) => {
       if (bar.includes(file)) return false;
-      const text = readFileSync(join(SRC, file), 'utf8');
-      return /\bplaybackToggle\b|\bplaybackNext\b|\bplaybackPrevious\b|\bplaybackSeek\b/.test(text);
+      return /\bplaybackToggle\b|\bplaybackNext\b|\bplaybackPrevious\b|\bplaybackSeek\b/.test(
+        read(file),
+      );
     });
     expect(commanding).toEqual([]);
   });
 
   it('keeps the bar on every route, Now Playing included', () => {
-    const app = readFileSync(join(SRC, 'App.svelte'), 'utf8');
+    const app = read('App.svelte');
     const mount = app.match(/\{#if[^}]*\}\s*\n\s*<MiniPlayer \/>/);
     expect(mount, 'MiniPlayer is mounted behind a guard').not.toBeNull();
     expect(mount?.[0]).not.toMatch(/now-playing/);
