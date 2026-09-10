@@ -1,7 +1,8 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import CombinePanel from '../components/CombinePanel.svelte';
+import { notices } from '../lib/app/notices';
 import { world } from '../lib/app/state';
 import { DB_NAME, closeDatabase, putRecords } from '../lib/storage/db';
 import {
@@ -144,6 +145,60 @@ function press(text: RegExp): void {
 
 function text(): string {
   return host?.textContent ?? '';
+}
+
+/**
+ * How long a confirmed combine may take to reach the database before the test
+ * calls it broken.
+ *
+ * This is not how the test waits — it is the difference between a write that
+ * never arrives being reported here, with whatever the panel said went wrong,
+ * and a bare "expected [] to have a length of 1" that reads like the app forgot
+ * to write when in fact the test looked too early.
+ */
+const WRITE_DEADLINE_MS = 5_000;
+
+/**
+ * Wait for a confirmed combine to be on disk, and hand back what it wrote.
+ *
+ * The confirm button is `onclick={() => void confirm()}`: the click returns
+ * immediately and the write carries on inside a promise nobody holds. Sleeping
+ * a fixed few milliseconds and hoping is a race that a slower or busier machine
+ * loses; polling the store the assertions then read cannot be.
+ *
+ * One row is enough to wait on. `combineEntities` puts the group, any groups it
+ * swallowed and the averaged rating into a single IndexedDB transaction — on
+ * purpose, because a group without its averaged rating is a state no reader
+ * could make sense of. So the group becoming visible means the whole write
+ * landed, not part of it.
+ */
+async function combineLanded(): Promise<CanonicalGroup[]> {
+  // Collected as they arrive, not read at the end: a notice withdraws itself
+  // after a few seconds, so by the time a deadline expires the explanation for
+  // it may already be gone.
+  const said = new Set<string>();
+  const stopWatching = notices.subscribe((list) => {
+    for (const notice of list) said.add(notice.message);
+  });
+  try {
+    return await vi.waitFor(
+      async () => {
+        const groups = await listCanonicalGroups();
+        if (groups.length === 0) throw new Error('nothing written yet');
+        return groups;
+      },
+      { timeout: WRITE_DEADLINE_MS, interval: 10 },
+    );
+  } catch (cause) {
+    // A combine that throws is caught by the panel and reported as a notice, so
+    // say what it reported rather than leaving a timeout to be guessed at.
+    throw new Error(
+      `no combine written within ${WRITE_DEADLINE_MS}ms of confirming — the panel said: ${[...said].join(' | ') || 'nothing'}`,
+      { cause },
+    );
+  } finally {
+    stopWatching();
+  }
 }
 
 describe('the combine workflow', async () => {
@@ -304,43 +359,48 @@ describe('the combine workflow', async () => {
     expect(text()).toMatch(/Kid A \(2016 Remaster\)/);
   });
 
-  it('states the exact rating consequence, and writes nothing until confirmed', async () => {
-    await seed([rate(original, 70, { at: T0 }), rate(remaster, 90, { at: T0 + 1 })]);
-    render(original);
-    press(/Combine with a duplicate/i);
+  it(
+    'states the exact rating consequence, and writes nothing until confirmed',
+    async () => {
+      await seed([rate(original, 70, { at: T0 }), rate(remaster, 90, { at: T0 + 1 })]);
+      render(original);
+      press(/Combine with a duplicate/i);
 
-    const pick = buttons().find((b) => /2016 Remaster/.test(b.textContent ?? ''));
-    pick?.click();
-    flushSync();
-    expect(pick?.getAttribute('aria-pressed')).toBe('true');
+      const pick = buttons().find((b) => /2016 Remaster/.test(b.textContent ?? ''));
+      pick?.click();
+      flushSync();
+      expect(pick?.getAttribute('aria-pressed')).toBe('true');
 
-    press(/Preview combining 2 items/i);
-    expect(text()).toMatch(/Which one represents them/i);
-    // 70 and 90 average to 80, which on the ten-point scale reads as 8.
-    expect(text()).toMatch(/the average of 7 and 9/i);
-    expect(text()).toMatch(/recorded as 8/);
-    expect(text()).toMatch(/stays in your history/i);
+      press(/Preview combining 2 items/i);
+      expect(text()).toMatch(/Which one represents them/i);
+      // 70 and 90 average to 80, which on the ten-point scale reads as 8.
+      expect(text()).toMatch(/the average of 7 and 9/i);
+      expect(text()).toMatch(/recorded as 8/);
+      expect(text()).toMatch(/stays in your history/i);
 
-    // Still nothing written.
-    expect(await listCanonicalGroups()).toHaveLength(0);
+      // Still nothing written.
+      expect(await listCanonicalGroups()).toHaveLength(0);
 
-    press(/^\s*Combine 2 items/i);
-    await Promise.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+      press(/^\s*Combine 2 items/i);
 
-    const groups = await listCanonicalGroups();
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.memberIds.sort()).toEqual([original.id, remaster.id].sort());
-    expect(groups[0]!.primaryId).toBe(original.id);
-    const written = await listRatings();
-    // The two originals are untouched; the average is a third entry beside them.
-    expect(written).toHaveLength(3);
-    const averaged = written.find((event) => event.origin?.kind === 'combine-average');
-    expect(averaged?.normalized).toBe(80);
-    expect(averaged?.value).toBe(8);
-    expect(averaged?.entityId).toBe(original.id);
-    expect(written.filter((event) => event.retracted)).toHaveLength(0);
-  });
+      const groups = await combineLanded();
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.memberIds.sort()).toEqual([original.id, remaster.id].sort());
+      expect(groups[0]!.primaryId).toBe(original.id);
+      const written = await listRatings();
+      // The two originals are untouched; the average is a third entry beside them.
+      expect(written).toHaveLength(3);
+      const averaged = written.find((event) => event.origin?.kind === 'combine-average');
+      expect(averaged?.normalized).toBe(80);
+      expect(averaged?.value).toBe(8);
+      expect(averaged?.entityId).toBe(original.id);
+      expect(written.filter((event) => event.retracted)).toHaveLength(0);
+    },
+    // Comfortably past the deadline above, so a write that never arrives is
+    // reported by combineLanded's own message rather than by the runner's
+    // timeout, which would say nothing about what went wrong.
+    WRITE_DEADLINE_MS * 3,
+  );
 
   it('lets another source be made primary in the preview', async () => {
     await seed();
