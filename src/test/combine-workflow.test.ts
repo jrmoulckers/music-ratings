@@ -192,8 +192,14 @@ async function combineLanded(): Promise<CanonicalGroup[]> {
   } catch (cause) {
     // A combine that throws is caught by the panel and reported as a notice, so
     // say what it reported rather than leaving a timeout to be guessed at.
+    // A set with nothing in it and a notice carrying an empty message are
+    // different failures, and reporting "nothing" for both reads as the first
+    // while hiding the second — which is how this diagnostic once looked like
+    // dead code when it had in fact worked correctly.
+    const summary =
+      said.size === 0 ? 'nothing' : [...said].map((m) => m || '(an empty message)').join(' | ');
     throw new Error(
-      `no combine written within ${WRITE_DEADLINE_MS}ms of confirming — the panel said: ${[...said].join(' | ') || 'nothing'}`,
+      `no combine written within ${WRITE_DEADLINE_MS}ms of confirming — the panel said: ${summary}`,
       { cause },
     );
   } finally {
