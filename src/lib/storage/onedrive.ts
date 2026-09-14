@@ -176,6 +176,7 @@ interface GraphItem {
   eTag?: string;
   lastModifiedDateTime?: string;
   '@microsoft.graph.downloadUrl'?: string;
+  '@content.downloadUrl'?: string;
 }
 
 async function graph(
@@ -283,11 +284,24 @@ export function createOneDriveAdapter(config: OneDriveConfig): RemoteAdapter {
       // cannot follow that redirect after the Authorization header triggers a
       // CORS preflight, so ask Graph for its short-lived, preauthenticated URL
       // first and download from there without credentials.
-      const metadata = await graph(config, `${metaPath}?$select=eTag,@microsoft.graph.downloadUrl`);
+      const selection = 'id,eTag,@microsoft.graph.downloadUrl';
+      const metadata = await graph(config, `${metaPath}?select=${selection}`);
       if (metadata.status === 404) throw new RemoteMissingError();
       if (!metadata.ok) throw new Error(await describe(metadata, 'find the backup'));
-      const item = (await metadata.json()) as GraphItem;
-      const downloadUrl = item['@microsoft.graph.downloadUrl'];
+      let item = (await metadata.json()) as GraphItem;
+      let downloadUrl = downloadUrlFor(item);
+      // Personal OneDrive can omit the annotation when an item is addressed
+      // through special/approot. Microsoft documents the browser download flow
+      // against the stable item-ID endpoint, so retry there before giving up.
+      if (!downloadUrl && item.id) {
+        const byId = await graph(
+          config,
+          `/me/drive/items/${encodeURIComponent(item.id)}?select=${selection}`,
+        );
+        if (!byId.ok) throw new Error(await describe(byId, 'get a download address'));
+        item = { ...item, ...((await byId.json()) as GraphItem) };
+        downloadUrl = downloadUrlFor(item);
+      }
       if (!downloadUrl) {
         throw new Error('OneDrive did not provide a download address for the backup.');
       }
@@ -348,6 +362,10 @@ export function createOneDriveAdapter(config: OneDriveConfig): RemoteAdapter {
       return peekEtag(config, metaPath);
     },
   };
+}
+
+function downloadUrlFor(item: GraphItem): string | undefined {
+  return item['@microsoft.graph.downloadUrl'] ?? item['@content.downloadUrl'];
 }
 
 async function peekEtag(config: OneDriveConfig, metaPath: string): Promise<string | null> {
