@@ -214,6 +214,7 @@ describe('the folder the backup lives in', () => {
         .mockResolvedValueOnce(
           new Response(
             JSON.stringify({
+              id: 'backup-id',
               eTag: '"etag-1"',
               '@microsoft.graph.downloadUrl': 'https://download.example/backup',
             }),
@@ -234,12 +235,54 @@ describe('the folder the backup lives in', () => {
       });
       expect(fetchMock).toHaveBeenNthCalledWith(
         1,
-        'https://graph.microsoft.com/v1.0/me/drive/special/approot:/music-ratings.json?$select=eTag,@microsoft.graph.downloadUrl',
+        'https://graph.microsoft.com/v1.0/me/drive/special/approot:/music-ratings.json?select=id,eTag,@microsoft.graph.downloadUrl',
         expect.objectContaining({
           headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
         }),
       );
       expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://download.example/backup');
+    });
+
+    it('retries by item ID when personal OneDrive omits the path download address', async () => {
+      const { createOneDriveAdapter } = await load('/');
+      const snapshot = {
+        kind: 'music-ratings/snapshot',
+        version: 3,
+        savedAt: 1,
+        deviceId: 'device-a',
+        settings: {},
+        entities: [],
+        memberships: [],
+        ratings: [],
+        comparisons: [],
+        queueStates: [],
+        annotations: [],
+        collections: [],
+        scales: [],
+        plays: [],
+        completions: [],
+        canonicalGroups: [],
+      };
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ id: 'personal!backup', eTag: '"etag-1"' }))
+        .mockResolvedValueOnce(
+          Response.json({
+            id: 'personal!backup',
+            '@content.downloadUrl': 'https://download.example/personal-backup',
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(snapshot));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(createOneDriveAdapter(CONFIG).read()).resolves.toEqual({
+        snapshot,
+        etag: '"etag-1"',
+      });
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        'https://graph.microsoft.com/v1.0/me/drive/items/personal!backup?select=id,eTag,@microsoft.graph.downloadUrl',
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(3, 'https://download.example/personal-backup');
     });
 
     it('reports a missing backup from the metadata request', async () => {
