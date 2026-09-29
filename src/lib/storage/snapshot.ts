@@ -1,6 +1,7 @@
 import { markDataChanged } from './changes';
 import { SYNCED_STORES, db, raw, readMeta, writeMeta, META_SETTINGS, type SyncedStore } from './db';
 import { hydrateSettings, portableSettings, type AppSettings } from './settings';
+import { LIBRARY_ACCOUNT_KEY } from './library-session';
 import type {
   CanonicalGroup,
   Collection,
@@ -123,11 +124,17 @@ export async function buildSnapshot(settings?: AppSettings): Promise<Snapshot> {
  */
 export async function restoreSnapshot(
   snapshot: Snapshot,
-  options: { markChanged?: boolean; keepLocalSettings?: boolean } = {},
+  options: { markChanged?: boolean; keepLocalSettings?: boolean; expectedAccountId?: string } = {},
 ): Promise<void> {
   const parsed = validateSnapshot(snapshot);
   const database = await db();
-  const tx = database.transaction([...SYNCED_STORES], 'readwrite');
+  const tx = database.transaction([...SYNCED_STORES, 'meta'], 'readwrite');
+  if (options.expectedAccountId) {
+    const bound = await tx.objectStore('meta').get(LIBRARY_ACCOUNT_KEY);
+    if (bound !== options.expectedAccountId) {
+      throw new SnapshotError('The OneDrive library changed while restoring its data.');
+    }
+  }
   const writes: Promise<unknown>[] = [];
   for (const store of SYNCED_STORES) {
     const objectStore = tx.objectStore(store);
@@ -136,12 +143,17 @@ export async function restoreSnapshot(
       writes.push(objectStore.put(raw(row) as never));
     }
   }
-  await Promise.all([...writes, tx.done]);
-
   if (!options.keepLocalSettings && parsed.settings) {
-    const current = hydrateSettings(await readMeta<Partial<AppSettings>>(META_SETTINGS));
-    await writeMeta(META_SETTINGS, hydrateSettings({ ...current, ...parsed.settings }));
+    const current = hydrateSettings(
+      (await tx.objectStore('meta').get(META_SETTINGS)) as Partial<AppSettings> | undefined,
+    );
+    writes.push(
+      tx
+        .objectStore('meta')
+        .put(raw(hydrateSettings({ ...current, ...parsed.settings })), META_SETTINGS),
+    );
   }
+  await Promise.all([...writes, tx.done]);
   if (options.markChanged) markDataChanged();
 }
 

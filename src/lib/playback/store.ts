@@ -160,6 +160,7 @@ function transport(): PlaybackService {
 export function resetPlayback(): void {
   service = null;
   serviceKind = null;
+  ingested = null;
   playback.set({ ...blank(), watching: get(playback).watching });
 }
 

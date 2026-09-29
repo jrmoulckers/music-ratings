@@ -316,6 +316,18 @@ last-write-wins on `updatedAt`, and deletions are tombstoned so a delete on one
 device is not resurrected by another. MSAL is loaded only when you first connect,
 so the 245 kB auth library costs nothing to anyone who does not use sync.
 
+The signed-in OneDrive account identifies your ratings library. To switch to a
+different account, export a JSON backup if you want to carry anything over, then
+use **Disconnect and clear this device** in Settings. After confirmation, this
+clears local ratings and listening history without deleting the old OneDrive
+backup. Sign in to the new account to start its own library; use **Restore from
+a backup** to deliberately import data. Unsynced changes are discarded unless
+you export them first. Spotify is independent: plays confirmed under any
+connected Spotify account belong to the active ratings library when logging
+is enabled. Turning off the sync checkbox only pauses sync; it does not sign
+out or clear the library. If another tab is open when you disconnect, it stops
+using the old library and reloads after the local reset finishes.
+
 If you would rather not connect anything: **Settings → Data** exports the same
 JSON snapshot to a file and imports it back on any device.
 

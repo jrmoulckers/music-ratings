@@ -116,20 +116,26 @@ describe('coming back from Microsoft', () => {
     handleRedirectPromise.mockResolvedValue(null);
     await signIn(CONFIG, '/settings');
 
-    const account = { username: 'someone@example.com' };
+    const account = { username: 'someone@example.com', homeAccountId: 'account-a' };
     handleRedirectPromise.mockResolvedValue({ account });
     const result = await completeRedirect(CONFIG);
 
-    expect(result).toEqual({ account: 'someone@example.com', returnTo: '/settings' });
+    expect(result).toEqual({
+      account: 'someone@example.com',
+      accountId: 'account-a',
+      returnTo: '/settings',
+    });
     expect(setActiveAccount).toHaveBeenCalledWith(account);
   });
 
   it('still reports success when the return path did not survive', async () => {
     const { completeRedirect } = await load('/');
-    handleRedirectPromise.mockResolvedValue({ account: { username: 'someone@example.com' } });
+    handleRedirectPromise.mockResolvedValue({
+      account: { username: 'someone@example.com', homeAccountId: 'account-a' },
+    });
 
     const result = await completeRedirect(CONFIG);
-    expect(result?.account).toBe('someone@example.com');
+    expect(result?.accountId).toBe('account-a');
     expect(result?.returnTo).toBe(null);
   });
 
@@ -144,10 +150,16 @@ describe('coming back from Microsoft', () => {
     const { completeRedirect, signIn } = await load('/');
     handleRedirectPromise.mockResolvedValue(null);
     await signIn(CONFIG, '/settings');
-    handleRedirectPromise.mockResolvedValue({ account: { username: 'a@b.c' } });
+    handleRedirectPromise.mockResolvedValue({
+      account: { username: 'a@b.c', homeAccountId: 'account-a' },
+    });
 
     await completeRedirect(CONFIG);
-    expect(await completeRedirect(CONFIG)).toEqual({ account: 'a@b.c', returnTo: null });
+    expect(await completeRedirect(CONFIG)).toEqual({
+      account: 'a@b.c',
+      accountId: 'account-a',
+      returnTo: null,
+    });
   });
 });
 

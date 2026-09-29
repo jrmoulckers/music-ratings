@@ -11,9 +11,10 @@
   import { navigate, safeInAppPath } from '../lib/app/router';
   import { loadAll, settings, updateSettings } from '../lib/app/state';
   import { completeSignIn, describeAuthError } from '../lib/spotify/auth';
-  import { refreshSpotifySession, runImport, spotifyConfig } from '../lib/spotify/session';
+  import { prepareSpotifyAccount, runImport, spotifyConfig } from '../lib/spotify/session';
   import { completeRedirect } from '../lib/storage/onedrive';
   import { oneDriveConfig, restoreFromOneDrive, startSyncIfEnabled } from '../lib/app/sync';
+  import { libraryAccountId } from '../lib/storage/library-session';
 
   /**
    * The landing strip after an OAuth round trip.
@@ -43,7 +44,7 @@
       try {
         const spotify = await completeSignIn(spotifyConfig());
         if (spotify) {
-          refreshSpotifySession();
+          await prepareSpotifyAccount();
           const onboarding = isOnboardingReturn(spotify.returnTo);
           fromOnboarding = onboarding;
           const fallback = onboarding ? onboardingResumePath(1) : '/settings';
@@ -65,6 +66,12 @@
 
         const onedrive = await completeRedirect(oneDriveConfig());
         if (onedrive) {
+          const bound = await libraryAccountId();
+          if (bound && bound !== onedrive.accountId) {
+            throw new Error(
+              'This is a different OneDrive account. Sign back into the original account, or disconnect it in Settings before connecting a new library.',
+            );
+          }
           await updateSettings({ syncEnabled: true });
           const draft = readOnboardingDraft();
           const restoring = draft?.restoring === true && !$settings.onboarded;

@@ -207,6 +207,23 @@
     notify('Backup downloaded. It is plain JSON you can read yourself.');
   }
 
+  async function disconnectLibrary() {
+    const confirmed = confirm(
+      'Disconnect OneDrive and clear this browser’s entire ratings library, including unsynced ratings and listening history? Your OneDrive backup will not be deleted. Export a backup first if you want to keep anything that has not synced.',
+    );
+    if (!confirmed) return;
+    busy = true;
+    try {
+      await disconnectOneDrive();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Could not disconnect OneDrive.', {
+        tone: 'warn',
+      });
+    } finally {
+      busy = false;
+    }
+  }
+
   async function importBackup(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -975,7 +992,7 @@
           <button type="button" class="btn btn--quiet" onclick={() => void connectSpotify()}>
             Reconnect
           </button>
-          <button type="button" class="btn btn--quiet" onclick={disconnectSpotify}>
+          <button type="button" class="btn btn--quiet" onclick={() => void disconnectSpotify()}>
             Disconnect
           </button>
         </div>
@@ -1327,7 +1344,8 @@
           <span class="opts__name">Keep a synced copy in my OneDrive</span>
           <span class="note note--small">
             Nothing is stored on any server of ours, because there isn't one. Signing in is enough —
-            no setup, no application to register.
+            no setup, no application to register. Turning this off pauses sync; use Disconnect below
+            to sign out and clear this device.
           </span>
         </span>
       </label>
@@ -1400,6 +1418,9 @@
       </label>
 
       <p class="note">{$syncState.message}</p>
+      {#if $syncState.account}
+        <p class="note note--small">Library account: {$syncState.account}.</p>
+      {/if}
       {#if $syncState.lastSyncedAt}
         <p class="note note--small">Last synced {dateAndTime($syncState.lastSyncedAt)}.</p>
       {/if}
@@ -1415,10 +1436,20 @@
         </button>
         <button type="button" class="btn btn--quiet" onclick={() => void syncNow()}>Sync now</button
         >
-        <button type="button" class="btn btn--quiet" onclick={() => void disconnectOneDrive()}>
-          Disconnect
+        <button
+          type="button"
+          class="btn btn--quiet"
+          disabled={busy}
+          onclick={() => void disconnectLibrary()}
+        >
+          Disconnect and clear this device
         </button>
       </div>
+      <p class="note note--small">
+        This OneDrive account is your ratings library. Disconnecting starts a fresh local library;
+        switching accounts never merges their ratings. Export a backup below before disconnecting if
+        you want to carry data into another library.
+      </p>
 
       <details class="advanced">
         <summary class="note note--small">

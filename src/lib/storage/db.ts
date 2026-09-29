@@ -22,6 +22,7 @@ import type {
 } from '../domain/types';
 import type { AlbumCompletion, PlayEvent } from '../domain/listening';
 import type { AppSettings } from './settings';
+import { assertLibraryRevision } from './library-revision';
 
 export const DB_NAME = 'music-ratings';
 export const DB_VERSION = 5;
@@ -132,14 +133,17 @@ export function onDatabaseBlocked(handler: (message: string) => void): void {
   blockedNotice = handler;
 }
 
-export function db(): Promise<IDBPDatabase<AppDB>> {
+export async function db(): Promise<IDBPDatabase<AppDB>> {
+  assertLibraryRevision();
   dbp ??= open().catch((error: unknown) => {
     // Never cache a failure. Closing the other tab, or reloading, has to be
     // enough to recover; a remembered rejection would outlive the cause.
     dbp = null;
     throw error;
   });
-  return dbp;
+  const instance = await dbp;
+  assertLibraryRevision();
+  return instance;
 }
 
 /**

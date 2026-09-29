@@ -47,6 +47,10 @@ let queued = false;
 let lastPushedVersion = 0;
 let unsubscribe: (() => void) | null = null;
 let listenersBound = false;
+let idle: Promise<void> | null = null;
+let finishRun: (() => void) | null = null;
+let verifyLibrary: (() => Promise<boolean>) | null = null;
+let libraryId: string | null = null;
 
 const PUSH_DEBOUNCE_MS = 2500;
 const POLL_MS = 30_000;
@@ -59,10 +63,14 @@ export function startAutoSync(
   next: RemoteAdapter,
   settings: () => AppSettings,
   account: string | null,
+  verify?: () => Promise<boolean>,
+  accountId?: string,
 ): void {
   stopAutoSync();
   adapter = next;
   settingsRef = settings;
+  verifyLibrary = verify ?? null;
+  libraryId = accountId ?? null;
   lastPushedVersion = currentDataVersion();
   patch({ status: 'idle', message: 'Connected.', account, conflict: null });
 
@@ -80,7 +88,10 @@ export function startAutoSync(
 export function stopAutoSync(): void {
   adapter = null;
   settingsRef = null;
+  verifyLibrary = null;
+  libraryId = null;
   etag = null;
+  queued = false;
   if (pushTimer) clearTimeout(pushTimer);
   if (pollTimer) clearInterval(pollTimer);
   pushTimer = null;
@@ -93,6 +104,11 @@ export function stopAutoSync(): void {
     account: null,
     conflict: null,
   });
+}
+
+/** Let a sign-out finish any in-flight sync before wiping the local library. */
+export async function waitForAutoSync(): Promise<void> {
+  if (idle) await idle;
 }
 
 function bindListeners(): void {
@@ -159,17 +175,47 @@ async function run(reason: string): Promise<void> {
     return;
   }
   running = true;
+  idle = new Promise<void>((resolve) => (finishRun = resolve));
+  const currentAdapter = adapter;
+  const expectedAccountId = libraryId;
+  const currentVerify = verifyLibrary;
+  const check = async () => {
+    if (adapter !== currentAdapter || (currentVerify && !(await currentVerify()))) {
+      throw new Error('The OneDrive library changed during sync.');
+    }
+  };
   const versionAtStart = currentDataVersion();
   patch({ status: 'syncing', message: reason === 'manual' ? 'Syncing now…' : 'Syncing…' });
 
   try {
+    await check();
     const outcome = await reconcile({
-      adapter,
+      adapter: {
+        read: async () => {
+          await check();
+          return currentAdapter.read();
+        },
+        write: async (snapshot, tag) => {
+          await check();
+          return currentAdapter.write(snapshot, tag);
+        },
+        peek: async () => {
+          await check();
+          return currentAdapter.peek();
+        },
+      },
       local: () => buildSnapshot(settingsRef?.()),
-      apply: (snapshot) =>
-        restoreSnapshot(snapshot, { markChanged: false, keepLocalSettings: false }),
+      apply: async (snapshot) => {
+        await check();
+        await restoreSnapshot(snapshot, {
+          markChanged: false,
+          keepLocalSettings: false,
+          ...(expectedAccountId ? { expectedAccountId } : {}),
+        });
+      },
       ...(settingsRef ? { settings: settingsRef() } : {}),
     });
+    await check();
     etag = outcome.etag;
     lastPushedVersion = versionAtStart;
     patch({
@@ -180,6 +226,7 @@ async function run(reason: string): Promise<void> {
       conflict: null,
     });
   } catch (error) {
+    if (adapter !== currentAdapter) return;
     if (error instanceof InteractionRequiredError) reportAuth();
     else if (error instanceof ConflictError) {
       patch({
@@ -199,6 +246,9 @@ async function run(reason: string): Promise<void> {
     }
   } finally {
     running = false;
+    finishRun?.();
+    finishRun = null;
+    idle = null;
     if (queued) {
       queued = false;
       void run('queued');

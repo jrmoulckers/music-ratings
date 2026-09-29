@@ -1,8 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { announce, notify } from '../app/notices';
-import { settings } from '../app/state';
-import { refreshWorld } from '../app/state';
+import { refreshWorld, settings, updateSettings } from '../app/state';
 import { resolveSpotifyClientId } from '../config';
 import {
   beginSignIn,
@@ -16,8 +15,15 @@ import {
   type SpotifyConfig,
 } from './auth';
 import { SpotifyApiError, SpotifyClient } from './client';
-import { importLibrary, importListening, readSignals, type ImportStep } from './library';
+import {
+  clearSignals,
+  importLibrary,
+  importListening,
+  readSignals,
+  type ImportStep,
+} from './library';
 import { recordListening } from '../listening/record';
+import { resetPlayback } from '../playback/store';
 
 /**
  * The connection to Spotify, as the screens see it.
@@ -50,6 +56,7 @@ export interface ImportProgress {
 }
 
 const PROFILE_KEY = 'music-ratings.spotify.profile';
+const PROFILE_ID_KEY = 'music-ratings.spotify.profile-id';
 
 function storedProfileName(): string | null {
   try {
@@ -139,17 +146,54 @@ export async function connectSpotify(returnTo = '/settings'): Promise<void> {
   await beginSignIn(spotifyConfig(), returnTo);
 }
 
-export function disconnectSpotify(): void {
+/** Keep the ratings and play log, but stop presenting another account's signals. */
+export async function prepareSpotifyAccount(): Promise<void> {
+  let me;
+  try {
+    me = await new SpotifyClient({ config: spotifyConfig() }).profile();
+  } catch (error) {
+    await disconnectSpotify();
+    throw error;
+  }
+  const previous = localStorage.getItem(PROFILE_ID_KEY);
+  if (previous !== me.id) {
+    cancelImport();
+    await waitForSpotifyActivity();
+    await clearSignals();
+    await refreshWorld();
+    await updateSettings({ preferredDeviceId: '' });
+    resetPlayback();
+  }
+  localStorage.setItem(PROFILE_ID_KEY, me.id);
+  rememberProfileName(me.display_name ?? me.id);
+  refreshSpotifySession();
+}
+
+export async function disconnectSpotify(): Promise<void> {
   forgetTokens();
   rememberProfileName(null);
+  localStorage.removeItem(PROFILE_ID_KEY);
   refreshSpotifySession();
+  cancelImport();
+  await waitForSpotifyActivity();
+  await clearSignals();
+  await refreshWorld();
+  resetPlayback();
   announce('Spotify disconnected.');
 }
 
 let running: AbortController | null = null;
+let importTask: Promise<void> | null = null;
 
-export async function runImport(): Promise<void> {
-  if (running) return;
+export function runImport(): Promise<void> {
+  if (importTask) return importTask;
+  importTask = performImport().finally(() => {
+    importTask = null;
+  });
+  return importTask;
+}
+
+async function performImport(): Promise<void> {
   const controller = new AbortController();
   running = controller;
   importProgress.set({
@@ -207,8 +251,10 @@ export async function runImport(): Promise<void> {
 
 export function cancelImport(): void {
   running?.abort();
-  running = null;
-  importProgress.update((p) => ({ ...p, running: false }));
+}
+
+export async function waitForSpotifyActivity(): Promise<void> {
+  await Promise.all([importTask, listeningRun]);
 }
 
 /* -------------------------------------------------------------------------- */
