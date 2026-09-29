@@ -9,6 +9,7 @@
   import { bootFailure, ready, settings, startStateSync } from './lib/app/state';
   import { startSyncController } from './lib/app/sync';
   import { watchListening } from './lib/listening/watch';
+  import { watchLibraryReset } from './lib/storage/library-revision';
   import NavRail from './components/NavRail.svelte';
   import MiniPlayer from './components/MiniPlayer.svelte';
   import Notices from './components/Notices.svelte';
@@ -30,12 +31,17 @@
   import Settings from './pages/Settings.svelte';
 
   let online = $state(typeof navigator === 'undefined' ? true : navigator.onLine);
+  let libraryChanging = $state(false);
 
   onMount(() => {
     const stopRouter = startRouter();
     const stopState = startStateSync();
     const stopSync = startSyncController();
     const stopListening = watchListening();
+    const stopLibraryReset = watchLibraryReset((pending) => {
+      if (pending) libraryChanging = true;
+      else location.reload();
+    });
 
     const up = () => (online = true);
     const down = () => (online = false);
@@ -47,6 +53,7 @@
       stopState();
       stopSync();
       stopListening();
+      stopLibraryReset();
       removeEventListener('online', up);
       removeEventListener('offline', down);
     };
@@ -162,10 +169,28 @@
 
 <Notices />
 
+{#if libraryChanging}
+  <div class="library-reset" role="alert">
+    This ratings library changed in another tab. Reloading when it is ready…
+  </div>
+{/if}
+
 <!-- One polite region for the whole app; every screen speaks through it. -->
 <div class="sr-only" aria-live="polite" aria-atomic="true">{$announcement}</div>
 
 <style>
+  .library-reset {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: var(--s5);
+    background: var(--surface);
+    color: var(--ink);
+    text-align: center;
+  }
+
   .shell--bare {
     grid-template-columns: minmax(0, 1fr);
     padding-bottom: 0;

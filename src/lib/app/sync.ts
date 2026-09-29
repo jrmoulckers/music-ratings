@@ -1,12 +1,20 @@
 import { get } from 'svelte/store';
 
 import { notify } from './notices';
+import { clearRecentSearches } from './recent-searches';
 import { loadAll, settings, world } from './state';
+import { cancelImport, waitForSpotifyActivity } from '../spotify/session';
+import {
+  clearLocalLibrary,
+  bindLibraryAccount,
+  libraryAccountId,
+} from '../storage/library-session';
 import { resolveOneDriveClientId } from '../config';
 import {
   catchUp,
   startAutoSync,
   stopAutoSync,
+  waitForAutoSync,
   syncState,
   resolveConflict as resolveAutoConflict,
   syncNow as pushNow,
@@ -39,19 +47,41 @@ export function oneDriveConfig(): OneDriveConfig {
   };
 }
 
-let started = false;
+let startedFor: string | null = null;
+let starting: Promise<void> | null = null;
+let generation = 0;
+let restartRequested = false;
 
-export async function startSyncIfEnabled(): Promise<void> {
+export function startSyncIfEnabled(): Promise<void> {
+  if (starting) {
+    restartRequested = true;
+    return starting;
+  }
+  starting = (async () => {
+    do {
+      restartRequested = false;
+      await startSync();
+    } while (restartRequested);
+  })().finally(() => {
+    starting = null;
+  });
+  return starting;
+}
+
+async function startSync(): Promise<void> {
+  const initiatedAt = generation;
   const current = get(settings);
   if (!current.syncEnabled || !resolveOneDriveClientId(current.onedriveClientId)) {
+    generation += 1;
     stopAutoSync();
-    started = false;
+    startedFor = null;
+    restartRequested = false;
     return;
   }
-  if (started) return;
   try {
     const config = oneDriveConfig();
     const account = await signedInAccount(config);
+    if (initiatedAt !== generation || !get(settings).syncEnabled) return;
     if (!account) {
       syncState.update((state) => ({
         ...state,
@@ -60,8 +90,39 @@ export async function startSyncIfEnabled(): Promise<void> {
       }));
       return;
     }
-    startAutoSync(createOneDriveAdapter(config), () => get(settings), account);
-    started = true;
+    const bound = await libraryAccountId();
+    if (initiatedAt !== generation || !get(settings).syncEnabled) return;
+    if (bound && bound !== account.id) {
+      stopAutoSync();
+      startedFor = null;
+      syncState.update((state) => ({
+        ...state,
+        status: 'error',
+        message:
+          'This is a different OneDrive account. Disconnect to start a fresh library, or sign back into the original account.',
+      }));
+      return;
+    }
+    const destination = JSON.stringify([
+      account.id,
+      config.clientId,
+      config.folderMode,
+      config.customPath,
+      config.fileName,
+    ]);
+    if (startedFor === destination) return;
+    stopAutoSync();
+    await waitForAutoSync();
+    if (initiatedAt !== generation || !get(settings).syncEnabled) return;
+    await bindLibraryAccount(account.id);
+    startAutoSync(
+      createOneDriveAdapter({ ...config, accountId: account.id }),
+      () => get(settings),
+      account.name,
+      async () => (await libraryAccountId()) === account.id,
+      account.id,
+    );
+    startedFor = destination;
   } catch (error) {
     if (error instanceof OneDriveNotConfiguredError) {
       syncState.update((state) => ({ ...state, status: 'error', message: error.message }));
@@ -78,8 +139,9 @@ export function startSyncController(): () => void {
   });
   return () => {
     stop();
+    generation += 1;
     stopAutoSync();
-    started = false;
+    startedFor = null;
   };
 }
 
@@ -103,16 +165,28 @@ export async function connectOneDrive(returnTo = '/settings'): Promise<void> {
 export async function restoreFromOneDrive(): Promise<boolean> {
   await startSyncIfEnabled();
   await catchUp('restore');
+  await waitForAutoSync();
+  if (get(syncState).status !== 'synced') throw new Error(get(syncState).message);
   await loadAll();
   const restored = get(world);
   return restored.ratings.length > 0 || restored.entities.length > 0;
 }
 
 export async function disconnectOneDrive(): Promise<void> {
+  generation += 1;
   stopAutoSync();
-  started = false;
+  startedFor = null;
+  cancelImport();
+  await waitForSpotifyActivity();
+  if (starting) await starting;
+  await waitForAutoSync();
   await signOut(oneDriveConfig());
-  notify('OneDrive disconnected. Your ratings stay on this device.');
+  await clearLocalLibrary(get(settings));
+  clearRecentSearches();
+  await loadAll();
+  notify(
+    'OneDrive disconnected. This device now has a fresh, empty library; the backup in OneDrive was not deleted.',
+  );
 }
 
 export async function syncNow(): Promise<void> {

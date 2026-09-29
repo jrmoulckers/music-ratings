@@ -1,6 +1,7 @@
 import type { AuthenticationResult, PublicClientApplication } from '@azure/msal-browser';
 
 import { appUrl } from '../app/router';
+import { libraryAccountId } from './library-session';
 import { normalizeFolderPath, type OneDriveFolderMode } from './settings';
 import {
   ConflictError,
@@ -45,6 +46,8 @@ let initialisedFor = '';
 export interface OneDriveConfig {
   clientId: string;
   fileName: string;
+  /** The library selected on this device; Graph calls must not change accounts mid-sync. */
+  accountId?: string;
   /** Sandboxed app folder, or a folder the user named. Defaults to the sandbox. */
   folderMode?: OneDriveFolderMode;
   /** Slash-separated path from the drive root. Only read in `custom` mode. */
@@ -96,6 +99,7 @@ async function msal(config: OneDriveConfig): Promise<PublicClientApplication> {
 /** What a completed round trip left behind: the account, and where to go back to. */
 export interface OneDriveReturn {
   account: string | null;
+  accountId: string;
   returnTo: string | null;
 }
 
@@ -116,16 +120,28 @@ export async function completeRedirect(config: OneDriveConfig): Promise<OneDrive
   const back = sessionStorage.getItem(RETURN_KEY);
   if (back !== null) sessionStorage.removeItem(RETURN_KEY);
   if (!result) return null;
-  if (result.account) app.setActiveAccount(result.account);
-  return { account: result.account?.username ?? null, returnTo: back };
+  if (!result.account?.homeAccountId) {
+    throw new Error('Microsoft did not identify the signed-in account. Try connecting again.');
+  }
+  app.setActiveAccount(result.account);
+  return {
+    account: result.account?.username ?? null,
+    accountId: result.account.homeAccountId,
+    returnTo: back,
+  };
 }
 
-export async function signedInAccount(config: OneDriveConfig): Promise<string | null> {
+export async function signedInAccount(
+  config: OneDriveConfig,
+): Promise<{ id: string; name: string } | null> {
   const app = await msal(config);
   const active = app.getActiveAccount() ?? app.getAllAccounts()[0];
   if (!active) return null;
+  if (!active.homeAccountId) {
+    throw new Error('Microsoft did not identify the signed-in account. Try connecting again.');
+  }
   app.setActiveAccount(active);
-  return active.username ?? null;
+  return { id: active.homeAccountId, name: active.username ?? '' };
 }
 
 export async function signIn(config: OneDriveConfig, returnTo: string): Promise<void> {
@@ -137,8 +153,7 @@ export async function signIn(config: OneDriveConfig, returnTo: string): Promise<
 
 export async function signOut(config: OneDriveConfig): Promise<void> {
   const app = await msal(config);
-  const account = app.getActiveAccount();
-  await app.clearCache(account ? { account } : {});
+  await app.clearCache();
 }
 
 /**
@@ -155,11 +170,22 @@ async function token(config: OneDriveConfig, interactive = false): Promise<strin
   const scopes = scopesFor(config);
   const account = app.getActiveAccount() ?? app.getAllAccounts()[0];
   if (!account) throw new InteractionRequiredError('Connect OneDrive to sync.');
+  if (config.accountId && account.homeAccountId !== config.accountId) {
+    throw new InteractionRequiredError(
+      'This OneDrive account is not the library on this device. Disconnect before switching libraries.',
+    );
+  }
   app.setActiveAccount(account);
   try {
     const result: AuthenticationResult = await app.acquireTokenSilent({ scopes, account });
+    if (config.accountId && (await libraryAccountId()) !== config.accountId) {
+      throw new InteractionRequiredError(
+        'This device is no longer connected to that OneDrive library.',
+      );
+    }
     return result.accessToken;
-  } catch {
+  } catch (error) {
+    if (error instanceof InteractionRequiredError) throw error;
     if (!interactive) throw new InteractionRequiredError();
     sessionStorage.setItem(RETURN_KEY, location.pathname + location.search);
     await app.acquireTokenRedirect({ scopes, account });

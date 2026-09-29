@@ -36,7 +36,7 @@ vi.mock('../lib/spotify/session', () => ({
     return spotifySession;
   },
   connectSpotify: async (returnTo: string) => void connectCalls.push(returnTo),
-  refreshSpotifySession: () => undefined,
+  prepareSpotifyAccount: async () => undefined,
   runImport: async () => void 0,
   spotifyConfig: () => ({ clientId: 'cid', redirectUri: 'http://localhost/callback' }),
 }));

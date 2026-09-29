@@ -158,15 +158,14 @@ export async function refreshWorld(): Promise<void> {
 }
 
 function applySignals(stored: Awaited<ReturnType<typeof readSignals>>): void {
-  if (!stored) return;
-  signals.set({
-    recentlyPlayed: stored.recentlyPlayed,
-    top: stored.top,
-    saved: stored.saved,
-  });
+  signals.set(
+    stored
+      ? { recentlyPlayed: stored.recentlyPlayed, top: stored.top, saved: stored.saved }
+      : EMPTY_SIGNALS,
+  );
   signalsReadAt.set({
-    library: stored.fetchedAt ?? null,
-    listening: stored.listeningFetchedAt ?? stored.fetchedAt ?? null,
+    library: stored?.fetchedAt ?? null,
+    listening: stored?.listeningFetchedAt ?? stored?.fetchedAt ?? null,
   });
 }
 
