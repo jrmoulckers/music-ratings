@@ -53,7 +53,7 @@
   // job rather than something this component has to reimplement.
   const step = $derived(clampStep($route.query.get('step') ?? resumed?.step ?? 0));
 
-  const steps = ['Source', 'What you rate', 'Rating scale'];
+  const steps = ['Source', 'Types', 'Scale'];
 
   // Every answer is written down as it is given, because the next thing the
   // user does might be to leave for Spotify. Once setup has actually finished
@@ -167,15 +167,16 @@
 <div class="door">
   <header class="door__mast">
     <h1 class="door__wordmark">Music Ratings</h1>
-    <p class="door__strap note">
-      A private record of what you actually think of the music you listen to. Your ratings stay on
-      this device unless you tell them otherwise.
-    </p>
+    <p class="door__strap note">Your music, your ratings. Stored here; sync only if you choose.</p>
   </header>
 
   <ol class="door__steps" aria-label="Setup progress">
     {#each steps as label, index (label)}
-      <li class:is-done={index < step} class:is-here={index === step}>
+      <li
+        class:is-done={index < step}
+        class:is-here={index === step}
+        aria-current={index === step ? 'step' : undefined}
+      >
         <span class="figure">{index + 1}</span>
         <span class="label">{label}</span>
       </li>
@@ -190,8 +191,8 @@
         <div class="choice choice--form">
           <span class="choice__name">Connect Spotify</span>
           <span class="note">
-            Reads your library, top items and recent plays so the queue knows what to put in front
-            of you. Ratings are yours and never leave this device.
+            Use your library and listening to choose what to rate. Your ratings stay local unless
+            you enable sync.
           </span>
           <button
             type="button"
@@ -253,9 +254,9 @@
           </span>
           <span class="note">
             {#if $spotifySession.connected}
-              Spotify is connected. Next, choose what you want to rate.
+              Connected. Choose what to rate next.
             {:else}
-              Start with nothing and add music by hand. You can connect Spotify later.
+              Add music by hand. Connect later if you want.
             {/if}
           </span>
         </button>
@@ -274,8 +275,8 @@
             Restore my ratings from OneDrive
           </button>
           <p class="note note--small">
-            Signs in to your Microsoft account and brings back the backup this app saved there.
-            Nothing on this device is overwritten if no backup is found.
+            Restore your existing backup. If none is found, setup continues without overwriting
+            data.
           </p>
         </div>
       {/if}
@@ -290,8 +291,7 @@
         </p>
       {/if}
       <p class="note">
-        Only these appear in the rating queue, the rankings and the library. You can change this
-        whenever you like; turning a type off hides it without deleting anything.
+        Choose what appears in Library, Rate and Rankings. Hiding a type never deletes its data.
       </p>
 
       <ul class="types">
@@ -317,15 +317,19 @@
 
       <div class="row">
         <button type="button" class="btn btn--quiet" onclick={() => goTo(0)}>Back</button>
-        <button type="button" class="btn btn--primary" onclick={() => goTo(2)}>Continue</button>
+        <button
+          type="button"
+          class="btn btn--primary"
+          disabled={chosenTypes.length === 0}
+          onclick={() => goTo(2)}>Continue</button
+        >
       </div>
     </section>
   {:else}
     <section class="door__panel">
-      <h2 class="title">Pick a scale you will actually use</h2>
+      <h2 class="title">Pick a scale</h2>
       <p class="note">
-        Every rating is stored on a common 0–100 basis underneath, so changing your mind about the
-        scale later re-labels your history rather than rewriting it.
+        Change it anytime. Ratings keep their original value on a shared 0–100 basis.
       </p>
 
       <ul class="scales">
@@ -335,7 +339,9 @@
               <input type="radio" name="scale" value={scale.id} bind:group={scaleId} />
               <span>
                 <span class="types__name">{scale.label}</span>
-                <span class="note note--small">{describeScale(scale)}</span>
+                {#if scale.id === scaleId}
+                  <span class="note note--small">{describeScale(scale)}</span>
+                {/if}
               </span>
             </label>
           </li>
@@ -373,7 +379,7 @@
     gap: var(--s2);
     align-items: flex-start;
     padding-bottom: var(--s5);
-    border-bottom: var(--rule-weight) solid var(--ink);
+    border-bottom: var(--rule-weight) solid var(--border);
   }
   .door__wordmark {
     font-family: var(--display);
@@ -395,7 +401,7 @@
     display: flex;
     align-items: baseline;
     gap: var(--s2);
-    color: var(--ink-faint);
+    color: var(--ink-quiet);
   }
   .door__steps li.is-here {
     color: var(--ink);
@@ -425,9 +431,10 @@
     gap: var(--s2);
     align-items: flex-start;
     text-align: left;
-    padding: var(--s4);
-    background: var(--surface-raised);
-    border: var(--rule-weight) solid var(--border);
+    padding: var(--s4) 0;
+    background: transparent;
+    border: 0;
+    border-bottom: var(--rule-weight) solid var(--border);
     color: inherit;
     font: inherit;
     cursor: pointer;
@@ -438,7 +445,7 @@
   }
   .choice--form {
     cursor: default;
-    border-color: var(--ink);
+    border-color: var(--border);
   }
   .choice--form:hover {
     border-color: var(--ink);
@@ -466,7 +473,7 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    color: var(--accent);
+    color: var(--accent-ink);
   }
 
   .types,
@@ -487,6 +494,23 @@
     display: block;
     font-size: 0.9375rem;
   }
+  .scales {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+    gap: 0 var(--s4);
+  }
+  .scales li:first-child {
+    border-top: 0;
+  }
+  @media (max-width: 40rem) {
+    .door {
+      padding: var(--s5) var(--s4) var(--s7);
+    }
+    .door__steps {
+      gap: var(--s3);
+      justify-content: space-between;
+    }
+  }
 
   code.mono {
     word-break: break-all;
@@ -500,6 +524,8 @@
   }
   .advanced summary {
     cursor: pointer;
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
   }
   .advanced .field {
     margin-top: var(--s3);

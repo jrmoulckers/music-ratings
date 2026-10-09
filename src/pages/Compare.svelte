@@ -103,10 +103,10 @@
   {:else}
     <Empty
       title="Not enough to compare"
-      body="A comparison needs two items of the same kind that already have some standing — either a rating of their own or a score computed from their contents. Rate a few things first and pairs will appear here."
+      body="Rate two items of the same type to start. Items with computed scores can also be compared."
     >
       {#snippet action()}
-        <a class="btn btn--primary" href={href('/rate')}>Go to the queue</a>
+        <a class="btn btn--primary" href={href('/rate')}>Rate music</a>
       {/snippet}
     </Empty>
   {/if}
@@ -114,7 +114,7 @@
   {#if history.length > 0}
     <section class="record" aria-labelledby="record-head">
       <div class="head">
-        <h2 id="record-head" class="title">What you decided</h2>
+        <h2 id="record-head" class="title">Recent decisions</h2>
         <span class="label">last {history.length}</span>
       </div>
       <ul class="record__rows">
@@ -132,7 +132,9 @@
                       ? 'over'
                       : entry.outcome === 'b'
                         ? 'under'
-                        : '/'}</span
+                        : entry.outcome === 'unfamiliar'
+                          ? 'unfamiliar /'
+                          : 'skipped /'}</span
                 >
                 <a href={entityHref(entry.bId)}>{b.name}</a>
               {:else}
@@ -183,5 +185,21 @@
     text-transform: uppercase;
     letter-spacing: 0.09em;
     padding: 0 0.25rem;
+  }
+  @media (max-width: 40rem) {
+    .record__rows li {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .record__line {
+      white-space: normal;
+    }
+    .record__rows li > .label {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .record__rows li > button {
+      grid-column: 2;
+      grid-row: 1 / 3;
+    }
   }
 </style>

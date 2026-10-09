@@ -35,6 +35,7 @@
   let coverage = $state<ListeningCoverage | null>(null);
   let seeding = $state(false);
   let seeded = $state('');
+  let readError = $state('');
 
   /** Store keys are code. These are what the reader is actually looking at. */
   const STORE_LABEL: Record<string, string> = {
@@ -55,14 +56,25 @@
 
   const storeLabel = (key: string) => STORE_LABEL[key] ?? key;
 
-  onMount(() => {
-    void (async () => {
-      counts = await countAll();
-      estimate = await storageEstimate();
-      persisted = (await navigator.storage?.persisted?.()) ?? null;
-      coverage = await readCoverage();
-    })();
-  });
+  async function readHealth() {
+    readError = '';
+    try {
+      const [stored, space, persistent, listening] = await Promise.all([
+        countAll(),
+        storageEstimate(),
+        navigator.storage?.persisted?.(),
+        readCoverage(),
+      ]);
+      counts = stored;
+      estimate = space;
+      persisted = persistent ?? null;
+      coverage = listening;
+    } catch (error) {
+      readError = error instanceof Error ? error.message : 'Could not read local data health.';
+    }
+  }
+
+  onMount(() => void readHealth());
 
   /**
    * Development only. The Listening surface cannot be judged empty, and a real
@@ -153,13 +165,19 @@
   </header>
 
   <div class="groups">
+    {#if readError}
+      <div class="group group--alert" role="alert">
+        <p class="note">{readError}</p>
+        <button type="button" class="btn btn--small" onclick={() => void readHealth()}>Retry</button
+        >
+      </div>
+    {/if}
     {#if $syncState.conflict}
       <section class="group group--alert" aria-labelledby="d-conflict">
-        <h2 id="d-conflict" class="group__head title">Two versions of the truth</h2>
+        <h2 id="d-conflict" class="group__head title">Sync conflict</h2>
         <p class="note">
-          This device and the copy in OneDrive have both changed since they last agreed. Nothing has
-          been overwritten. Choose which one wins; the other is still in your OneDrive version
-          history.
+          Both copies changed. Nothing was overwritten. Choose which to keep; the other remains in
+          OneDrive version history.
         </p>
         <dl class="pair">
           <div>
@@ -193,19 +211,22 @@
     {/if}
 
     <section class="group" aria-labelledby="d-store">
-      <h2 id="d-store" class="group__head title">What is stored here</h2>
-      {#if counts}
-        <ul class="rows">
-          {#each Object.entries(counts) as [name, count] (name)}
-            <li>
-              <span class="rows__label">{storeLabel(name)}</span>
-              <span class="figure">{count.toLocaleString()}</span>
-            </li>
-          {/each}
-        </ul>
-      {:else}
-        <p class="note">Counting…</p>
-      {/if}
+      <h2 id="d-store" class="group__head title">Local storage</h2>
+      <details open={$settings.showExplanations}>
+        <summary class="note note--small">Record counts</summary>
+        {#if counts}
+          <ul class="rows">
+            {#each Object.entries(counts) as [name, count] (name)}
+              <li>
+                <span class="rows__label">{storeLabel(name)}</span>
+                <span class="figure">{count.toLocaleString()}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="note">Counting…</p>
+        {/if}
+      </details>
 
       {#if estimate}
         <p class="note">
@@ -254,13 +275,12 @@
             <span class="figure">{coverage.gaps.length}</span>
           </li>
         </ul>
-        {#each coverageNotes(coverage) as line (line)}
-          <p class="note note--small note--warn">{line}</p>
+        {#each coverageNotes(coverage) as line (line.text)}
+          <p class="note note--small" class:note--warn={line.tone === 'warn'}>{line.text}</p>
         {/each}
       {:else}
         <p class="note">
-          No listening has been observed yet. Connect Spotify and refresh, and plays it confirms
-          will be recorded from that moment on.
+          No observed listening yet. Enable history in Settings, then refresh listening in Library.
         </p>
       {/if}
       <p class="note note--small">
@@ -273,32 +293,34 @@
       </div>
 
       {#if import.meta.env.DEV}
-        <div class="row">
-          <button
-            type="button"
-            class="btn btn--small"
-            disabled={seeding}
-            onclick={() => void seedDemo()}
-          >
-            {seeding ? 'Writing…' : 'Seed demonstration history'}
-          </button>
-          <button
-            type="button"
-            class="btn btn--small btn--quiet"
-            disabled={seeding}
-            onclick={() => void removeDemo()}
-          >
-            Remove it
-          </button>
-        </div>
-        <p class="note note--small">
-          Development only. Writes a few months of invented listening under locally-added items,
-          including a record finished minutes ago. Running it again replaces what it wrote last time
-          rather than layering a second history on top.
-        </p>
-        {#if seeded}
-          <p class="note note--small" role="status">{seeded}</p>
-        {/if}
+        <details class="demo-tools">
+          <summary class="note note--small">Development demo tools</summary>
+          <p class="note note--small">
+            Invented listening under explicitly demo items, not Spotify-confirmed plays. Re-seeding
+            replaces the same fixture.
+          </p>
+          <div class="row">
+            <button
+              type="button"
+              class="btn btn--small"
+              disabled={seeding}
+              onclick={() => void seedDemo()}
+            >
+              {seeding ? 'Writing…' : 'Seed demonstration history'}
+            </button>
+            <button
+              type="button"
+              class="btn btn--small btn--quiet"
+              disabled={seeding}
+              onclick={() => void removeDemo()}
+            >
+              Remove demo history
+            </button>
+          </div>
+          {#if seeded}
+            <p class="note note--small" role="status">{seeded}</p>
+          {/if}
+        </details>
       {/if}
     </section>
 
@@ -335,15 +357,14 @@
 
     {#if orphans.length > 0 || duplicates.length > 0}
       <section class="group" aria-labelledby="d-anomalies">
-        <h2 id="d-anomalies" class="group__head title">Worth a look</h2>
+        <h2 id="d-anomalies" class="group__head title">Needs review</h2>
 
         {#if orphans.length > 0}
           <div>
-            <p class="label">Records pointing at items that are gone ({orphans.length})</p>
+            <p class="label">Missing items ({orphans.length})</p>
             <p class="note note--small">
-              Usually a catalogue item removed from Spotify, or one you deleted while a rating
-              survived. Ratings are never deleted automatically — your ratings outlive the
-              catalogue.
+              An item was removed, but its rating or links remain. Ratings are never deleted
+              automatically.
             </p>
             <ul class="rows">
               {#each orphans.slice(0, 10) as row (row.kind + row.id)}
@@ -360,9 +381,8 @@
           <div>
             <p class="label">Possible alternate releases ({duplicates.length})</p>
             <p class="note note--small">
-              Same title and credit, different Spotify identifier — reissues, remasters, regional
-              editions. They are listed rather than merged: combining averages ratings you made
-              separately, so it waits for you to say so. Open either one to combine them.
+              Similar titles and credits, distinct IDs. Open an item to review and combine; ratings
+              are never merged automatically.
             </p>
             <ul class="rows">
               {#each duplicates as cluster (cluster.entityIds.join('|'))}
@@ -380,8 +400,8 @@
       </section>
     {/if}
 
-    <section class="group" aria-labelledby="d-limits">
-      <h2 id="d-limits" class="group__head title">What this app cannot do</h2>
+    <details class="group" open={$settings.showExplanations}>
+      <summary class="note">Spotify and offline capabilities</summary>
       <p class="note">
         Spotify withdrew several endpoints from new applications in November 2024. Rather than
         approximate them, this app does without and says so.
@@ -399,7 +419,7 @@
         worker:
         {$pwa.offlineReady ? 'offline shell ready' : 'not yet cached'}.
       </p>
-    </section>
+    </details>
   </div>
 </div>
 
@@ -407,10 +427,11 @@
   .groups {
     display: flex;
     flex-direction: column;
-    gap: var(--s7);
-    max-width: 46rem;
+    gap: var(--s6);
+    max-width: var(--measure);
   }
-  .group {
+  section.group,
+  div.group {
     display: flex;
     flex-direction: column;
     gap: var(--s3);
@@ -421,7 +442,18 @@
   }
   .group__head {
     padding-bottom: var(--s2);
-    border-bottom: var(--rule-weight) solid var(--ink);
+    border-bottom: var(--rule-weight) solid var(--border);
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  details summary {
+    cursor: pointer;
+    color: var(--ink-quiet);
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
+  }
+  details > :not(summary) {
+    margin-top: var(--s3);
   }
 
   .rows {
@@ -433,6 +465,7 @@
     justify-content: space-between;
     gap: var(--s4);
     align-items: baseline;
+    flex-wrap: wrap;
     padding: var(--s1) 0;
     border-bottom: var(--rule-weight) solid var(--border-faint);
   }

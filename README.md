@@ -2,8 +2,8 @@
 
 A private record of what you actually think of music.
 
-**Live:** <https://rank.jrmoulckers.com/> — try it without connecting
-anything; the demo mode is the whole app on seeded fictional data.
+**Live:** <https://rank.jrmoulckers.com/> — use it without accounts by adding
+your own music or restoring a backup. No sample catalogue is bundled.
 
 Music Ratings is a local-first, installable web app for rating the music in your Spotify
 library — and, more importantly, for turning a pile of disconnected scores into an
@@ -76,6 +76,25 @@ fill by hand, or by restoring a backup from Settings.
 
 There is no sample catalogue. Everything you see in the app is either your own
 data or something you fetched from Spotify yourself.
+
+### Preferences and review
+
+Settings saves changes automatically. Open the task you need: Rating, Scores,
+Deeper rating, Queue, Appearance, Spotify, Playback, Listening history,
+OneDrive sync, or Data. All existing controls remain available; question editors,
+scale equivalence and completion rules expand when needed.
+
+**Appearance → Open explanations by default** keeps score rules and supporting
+details expanded on review screens. It is off by default and stays on this device:
+it is not included in backups or OneDrive sync, and never changes rating values.
+You can always open a specific explanation without changing this preference.
+History keeps original values, notes, confidence, context and entry actions under
+Details; Rate again still adds a new event. Insights exposes the rule behind each
+finding. Listening keeps its observation period and coverage warnings visible.
+
+Development builds have an explicit **Data health → Development demo tools**
+disclosure for the existing fictional listening fixture. This is not a real music
+catalogue or Spotify-confirmed history; production builds do not offer these tools.
 
 > Use `127.0.0.1`, not `localhost`. Spotify rejects `localhost` as a redirect
 > host. The dev server and preview server are both bound to `127.0.0.1` for this
@@ -255,7 +274,7 @@ audio, and makes no claims on Spotify's behalf.
 
 ## Connecting OneDrive (optional)
 
-Sync is opt-in. Turn it on in **Settings → Your copy in OneDrive** and press
+Sync is opt-in. Turn it on in **Settings → OneDrive sync** and press
 **Sign in with Microsoft** — the deployed app ships a Microsoft application ID, so
 there is nothing to register. You sign in with your own Microsoft account and the
 backup goes to your own drive.
@@ -305,7 +324,7 @@ Only needed if you would rather not use the shipped one.
 4. No **API permissions** need configuring. Scopes are requested at sign-in, so the
    registration does not need to know in advance which folder mode you will pick.
 5. Copy the **Application (client) ID** into
-   **Settings → Your copy in OneDrive → Use my own Microsoft app instead**, or into
+   **Settings → OneDrive sync → Use my own Microsoft app instead**, or into
    `VITE_ONEDRIVE_CLIENT_ID` for a build of your own. The runtime value wins.
 
 **How sync behaves.** Music Ratings writes a single JSON snapshot into the chosen folder.
