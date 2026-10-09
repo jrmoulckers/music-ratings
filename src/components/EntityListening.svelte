@@ -53,14 +53,14 @@
 {#if $settings.listeningEnabled && (isRelease || isArtist)}
   <section class="listened" aria-labelledby="listened-head">
     <div class="head">
-      <h2 id="listened-head" class="title">What you have heard</h2>
+      <h2 id="listened-head" class="title">Listening</h2>
       <a class="label" href={href('/listening')}>All listening</a>
     </div>
 
     {#if !anything}
       <p class="note listened__none">
-        No confirmed play of this yet. A play is recorded once Spotify lists it in your recently
-        played, so anything heard before this app started watching is not counted.
+        No confirmed plays yet. Only Spotify's recently played counts; earlier listening is not
+        included.
       </p>
     {:else if album}
       <TrackRail
@@ -140,10 +140,8 @@
     {/if}
 
     {#if mine.length > 0}
-      <div class="listened__done">
-        <h3 class="label">
-          {mine.length === 1 ? 'Heard end to end' : `Heard end to end ${mine.length} times`}
-        </h3>
+      <details class="listened__done">
+        <summary class="note">Completion history · {plural(mine.length, 'time')}</summary>
         {#each mine.slice(0, 3) as completion (completion.id)}
           <AlbumComplete {completion} quiet />
         {/each}
@@ -152,7 +150,7 @@
             Earliest of {mine.length} was {dateAndTime(mine[mine.length - 1]?.endAt ?? 0)}.
           </p>
         {/if}
-      </div>
+      </details>
     {/if}
 
     <p class="note note--small listened__source">
@@ -205,6 +203,10 @@
     gap: var(--s2);
     padding-top: var(--s2);
     border-top: var(--rule-weight) solid var(--border-faint);
+  }
+  .listened__done summary {
+    cursor: pointer;
+    padding-block: var(--s2);
   }
 
   .listened__source {

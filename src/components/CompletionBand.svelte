@@ -23,7 +23,7 @@
     heading?: string;
   }
 
-  let { limit = 1, heading = 'Heard all the way through' }: Props = $props();
+  let { limit = 1, heading = 'Albums completed' }: Props = $props();
 
   const shown = $derived($openCompletions.slice(0, limit));
   const rest = $derived(Math.max(0, $openCompletions.length - shown.length));
@@ -45,8 +45,7 @@
 
     {#if rest > 0}
       <p class="note note--small band__rest">
-        {rest === 1 ? 'One more record' : `${rest} more records`} finished and not yet answered.
-        <a href={href('/listening')}>See them</a>
+        <a href={href('/listening')}>{rest} more completed · awaiting your rating</a>
       </p>
     {/if}
   </section>

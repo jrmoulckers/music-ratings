@@ -204,6 +204,7 @@
       class:quick__marks--tiers={tiers !== null}
       style:--tier-ink={TIER_INK}
       style:--tier-edge={TIER_EDGE}
+      style:--mark-columns={detents.length > 5 ? Math.ceil(detents.length / 2) : detents.length}
       role="group"
       aria-label={label}
     >
@@ -236,6 +237,7 @@
     align-items: center;
     gap: var(--s1);
     min-width: 0;
+    max-width: 100%;
   }
 
   /* Coarse scales: the detents themselves, set on one rule so a row of them
@@ -248,8 +250,8 @@
     overflow: hidden;
   }
   .quick__mark {
-    min-width: 2rem;
-    min-height: 1.9rem;
+    min-width: 2.875rem;
+    min-height: 2.875rem;
     padding: 0 var(--s2);
     display: flex;
     align-items: center;
@@ -318,8 +320,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.9rem;
-    height: 1.9rem;
+    width: 2.875rem;
+    height: 2.875rem;
     border: var(--rule-weight) solid var(--border);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -340,7 +342,7 @@
   }
   .quick__field {
     width: 3.25rem;
-    height: 1.9rem;
+    height: 2.875rem;
     padding: 0 var(--s2);
     text-align: center;
     border: var(--rule-weight) solid var(--border);
@@ -359,6 +361,12 @@
   .quick__field:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
+  }
+  @media (max-width: 24rem) {
+    .quick__marks {
+      display: grid;
+      grid-template-columns: repeat(var(--mark-columns), minmax(2.875rem, 1fr));
+    }
   }
   /* An unsaved number is plainly unsaved: it borrows the accent edge, and the
      tick beside it is the only thing that writes it down. */

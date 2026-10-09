@@ -27,8 +27,8 @@
   const CHANNEL_NAME: Record<string, string> = {
     explicit: 'Your own rating',
     directChildren: 'Direct contents',
-    descendants: 'Everything further down',
-    comparison: 'Head-to-head record',
+    descendants: 'Descendants',
+    comparison: 'Comparisons',
   };
 
   const METHOD_NAME: Record<string, string> = {
@@ -77,9 +77,8 @@
   </ol>
 
   <p class="note">
-    Aggregated with the {METHOD_NAME[breakdown.method]}. Weights are renormalised over the evidence
-    that actually exists, so a missing channel raises the others rather than dragging the score
-    down.
+    Uses the {METHOD_NAME[breakdown.method]}. Missing evidence is excluded and the remaining weights
+    are renormalised.
   </p>
 
   {#if context}
@@ -183,7 +182,7 @@
 
   {#if breakdown.exclusions.length > 0}
     <div class="why__excluded">
-      <h3 class="label">Left out on purpose</h3>
+      <h3 class="label">Exclusions</h3>
       <ul class="why__list">
         {#each breakdown.exclusions as exclusion (exclusion.code)}
           <li><span class="note">{exclusion.detail}</span></li>

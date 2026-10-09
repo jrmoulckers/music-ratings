@@ -120,7 +120,7 @@
   }
 </script>
 
-<div class="sheet setting">
+<div class="sheet setting rankings-page">
   <div class="stack">
     <header class="head">
       <h1 class="display">Rankings</h1>
@@ -158,7 +158,7 @@
     {:else}
       <Empty
         title="Nothing to show"
-        body="Every candidate was filtered out. The counts below say why, so you can relax the filter that is doing it."
+        body="No scores match these filters. The exclusions below explain why."
         reasons={list.dropped}
       />
     {/if}
@@ -166,7 +166,7 @@
 
   <aside class="margin">
     <div class="stack stack--tight">
-      <h2 class="label">What to show</h2>
+      <h2 class="label">View</h2>
 
       <label class="field">
         <span class="label">Kind</span>
@@ -204,8 +204,12 @@
       </label>
     </div>
 
-    <div class="stack stack--tight">
-      <h2 class="label">Requirements</h2>
+    <details class="stack stack--tight">
+      <summary class="label">
+        More filters{minCoverage > 0 || minComparisons > 0 || requireExplicit || tag
+          ? ' · active'
+          : ''}
+      </summary>
 
       <label class="field">
         <span class="label">Coverage at least {Math.round(minCoverage * 100)}%</span>
@@ -219,7 +223,7 @@
 
       <label class="check">
         <input type="checkbox" bind:checked={requireExplicit} />
-        <span>Only things you rated yourself</span>
+        <span>Direct ratings only</span>
       </label>
 
       {#if allTags.length > 0}
@@ -233,11 +237,11 @@
           </select>
         </label>
       {/if}
-    </div>
+    </details>
 
     {#if list.dropped.length > 0 && list.rows.length > 0}
-      <div class="stack stack--tight">
-        <h2 class="label">Not shown</h2>
+      <details class="stack stack--tight">
+        <summary class="label">Excluded items</summary>
         <dl class="dropped">
           {#each list.dropped as entry (entry.reason)}
             <div>
@@ -246,18 +250,64 @@
             </div>
           {/each}
         </dl>
-      </div>
+      </details>
     {/if}
 
-    <p class="note note--small">
-      Positions use the full score, so two rows can show the same rounded number without being tied.
-      A real tie is marked as one. Scores use the {scale.label} scale, and computed scores keep a decimal
-      so a close order stays readable.
-    </p>
+    <details>
+      <summary class="note note--small">About rankings</summary>
+      <p class="note note--small">
+        Ranked by the full score, not its rounded display. Equal scores share a position. Scores use {scale.label};
+        computed scores retain decimals.
+      </p>
+    </details>
   </aside>
 </div>
 
 <style>
+  .rankings-page > .stack {
+    grid-area: content;
+    min-width: 0;
+  }
+  .rankings-page > .margin {
+    grid-area: filters;
+  }
+  .rankings-page {
+    grid-template-areas: 'content filters';
+  }
+  .margin summary {
+    cursor: pointer;
+    padding-block: var(--s2);
+  }
+  @media (max-width: 68rem) {
+    .rankings-page {
+      grid-template-areas: 'heading' 'filters';
+    }
+    .rankings-page > .stack {
+      display: contents;
+    }
+    .rankings-page > .stack > .head {
+      grid-area: heading;
+    }
+    .rankings-page > .margin {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--s3) var(--s5);
+    }
+    .margin > .stack:first-child {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: var(--s3);
+      width: 100%;
+    }
+    .margin > .stack:first-child > h2 {
+      width: 100%;
+    }
+    .margin .field {
+      flex: 1 1 8rem;
+      min-width: 0;
+    }
+  }
   /* The page is always "Rankings"; which slice you are looking at is filter
      state, so it reads as a quiet second line rather than a second title. */
   .head__meta {

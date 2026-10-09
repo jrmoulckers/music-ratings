@@ -201,7 +201,7 @@
       >
         {#snippet aside()}
           {#if hasScore && breakdown}
-            <ScoreMark {breakdown} {scale} view={shownView} showKind={false} />
+            <ScoreMark {breakdown} {scale} view={shownView} />
           {/if}
         {/snippet}
       </InlineRating>
@@ -331,9 +331,8 @@
     min-width: 0;
   }
   .slip__why .note {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.4;
+    color: var(--ink-quiet);
   }
 
   .slip__acts {
@@ -395,7 +394,7 @@
       margin-top: var(--s2);
     }
     .slip__acts :global(.btn) {
-      min-height: 2.5rem;
+      min-height: 2.75rem;
     }
     .slip__cut {
       top: 1.6rem;
