@@ -227,7 +227,7 @@
       <a class="label" href={href('/diagnostics')}>Data health</a>
     </div>
 
-    <details class="stack stack--tight">
+    <details class="stack stack--tight" open={$settings.showExplanations}>
       <summary class="label">Library coverage</summary>
       {#each $coverageByType as row (row.type)}
         <div class="cover">

@@ -1,4 +1,4 @@
-import { flushSync, mount, unmount } from 'svelte';
+import { flushSync, mount, settled, unmount } from 'svelte';
 import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,10 @@ import SearchOverlay from '../components/SearchOverlay.svelte';
 import Library from '../pages/Library.svelte';
 import Home from '../pages/Home.svelte';
 import Rankings from '../pages/Rankings.svelte';
+import EntityPage from '../pages/Entity.svelte';
+import SearchNavigationHarness from './SearchNavigationHarness.svelte';
+import { navigate, route, startRouter } from '../lib/app/router';
+import { closeSearch, searchOpen } from '../lib/app/search-overlay';
 import { settings, world } from '../lib/app/state';
 import { makeEntity, rate } from './fixtures';
 
@@ -38,6 +42,7 @@ afterEach(async () => {
   app = null;
   settings.set(initialSettings);
   world.set(initialWorld);
+  closeSearch();
   vi.unstubAllGlobals();
 });
 
@@ -104,6 +109,69 @@ describe('concise core surfaces', () => {
     app = null;
     expect(document.activeElement).toBe(opener);
     opener.remove();
+  });
+
+  it('dismisses disconnected search and focuses Settings when connecting Spotify', async () => {
+    vi.stubGlobal('scrollTo', vi.fn());
+    navigate('/');
+    const stopRouter = startRouter();
+    try {
+      app = mount(SearchNavigationHarness, { target: host });
+      flushSync();
+      const opener = host.querySelector<HTMLButtonElement>('main button')!;
+      opener.focus();
+      opener.click();
+      flushSync();
+      await Promise.resolve();
+      const input = host.querySelector<HTMLInputElement>('#overlay-search')!;
+      input.value = 'a track';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      flushSync();
+      const connect = host.querySelector<HTMLAnchorElement>('.panel__group a')!;
+      connect.focus();
+      connect.click();
+      flushSync();
+      await settled();
+      flushSync();
+
+      expect(get(route).name).toBe('settings');
+      expect(get(searchOpen)).toBe(false);
+      expect(host.querySelector('[aria-modal="true"]')).toBeNull();
+      expect(host.querySelector('main h1')?.textContent).toBe('Settings');
+      await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector('main')));
+    } finally {
+      stopRouter();
+    }
+  });
+
+  it.each([false, true])(
+    'respects explanation defaults (%s) without opening editing controls',
+    (open) => {
+      settings.update((current) => ({ ...current, showExplanations: open }));
+      const track = makeEntity('track', 'explanation');
+      world.set({ ...get(world), entities: [track], ratings: [rate(track, 80)] });
+      app = mount(EntityPage, {
+        target: host,
+        props: { params: { type: 'track', provider: 'local', id: track.providerId } },
+      });
+      flushSync();
+      const disclosure = (label: string) =>
+        [...host.querySelectorAll('details')].find(
+          (details) => details.querySelector('summary')?.textContent?.trim() === label,
+        );
+      expect(disclosure('How this score was reached')?.open).toBe(open);
+      expect(disclosure('Details')?.open).toBe(open);
+      expect(disclosure('Note & confidence')?.open).toBe(false);
+      expect(disclosure('Notes & tags')?.open).toBe(false);
+      expect(disclosure('Rating history · 1 entries')?.open).toBe(false);
+    },
+  );
+
+  it.each([false, true])('respects explanation defaults (%s) in library score help', (open) => {
+    settings.update((current) => ({ ...current, showExplanations: open }));
+    app = mount(Library, { target: host, props: { query: new URLSearchParams() } });
+    flushSync();
+    expect(host.querySelector<HTMLDetailsElement>('.scale-note')?.open).toBe(open);
   });
 
   it('lets keyboard users load a list even without scrolling', () => {

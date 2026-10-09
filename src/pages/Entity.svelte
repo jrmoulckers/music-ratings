@@ -692,7 +692,7 @@
         <div class="stack stack--tight">
           <h2 class="label">Score</h2>
           {#if gist}<p class="note note--small">{gist}</p>{/if}
-          <details class="disclose">
+          <details class="disclose" open={$settings.showExplanations}>
             <summary class="disclose__head">How this score was reached</summary>
             <div class="disclose__body">
               <WhyThisScore {breakdown} {scale} heading={false} />
@@ -733,7 +733,7 @@
         </div>
       </details>
 
-      <details class="disclose">
+      <details class="disclose" open={$settings.showExplanations}>
         <summary class="disclose__head">Details</summary>
         <div class="disclose__body stack stack--tight">
           <p class="note note--small">

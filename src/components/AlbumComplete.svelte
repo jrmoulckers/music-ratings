@@ -1,6 +1,13 @@
 <script lang="ts">
   import { entityHref } from '../lib/app/router';
-  import { explicitRatings, graph, playIndex, scaleForType, scores } from '../lib/app/state';
+  import {
+    explicitRatings,
+    graph,
+    playIndex,
+    scaleForType,
+    scores,
+    settings,
+  } from '../lib/app/state';
   import { albumTrackSet } from '../lib/domain/completion';
   import type { AlbumCompletion } from '../lib/domain/listening';
   import { formatComputedOn } from '../lib/domain/scales';
@@ -140,7 +147,7 @@
       {/if}
     </p>
 
-    <details class="done__evidence">
+    <details class="done__evidence" open={$settings.showExplanations}>
       <summary class="note note--small">Listening evidence</summary>
       <dl class="done__facts">
         <div>

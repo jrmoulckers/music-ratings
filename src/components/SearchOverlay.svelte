@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { settled } from 'svelte';
+
   import { rate } from '../lib/app/actions';
   import { topUpArtistArtwork } from '../lib/app/artwork';
   import { notify } from '../lib/app/notices';
@@ -164,6 +166,12 @@
     if (picked) picked = null;
     else closeSearch();
   }
+
+  async function leaveSearch() {
+    closeSearch();
+    await settled();
+    document.getElementById('main')?.focus();
+  }
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -237,9 +245,7 @@
           where="detail"
         />
 
-        <a class="panel__more" href={entityHref(picked.id)} onclick={() => closeSearch()}>
-          Open details
-        </a>
+        <a class="panel__more" href={entityHref(picked.id)} onclick={leaveSearch}> Open details </a>
       </div>
     {:else}
       <div class="panel__body">
@@ -331,7 +337,7 @@
             </button>
           {:else}
             <p class="note panel__group">
-              <a href={href('/settings')}>Connect Spotify</a> to search its catalogue.
+              <a href={href('/settings')} onclick={leaveSearch}>Connect Spotify</a> to search its catalogue.
             </p>
           {/if}
         {/if}

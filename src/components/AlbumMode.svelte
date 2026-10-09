@@ -1,6 +1,13 @@
 <script lang="ts">
   import { entityHref } from '../lib/app/router';
-  import { explicitRatings, graph, playIndex, scaleForType, scores } from '../lib/app/state';
+  import {
+    explicitRatings,
+    graph,
+    playIndex,
+    scaleForType,
+    scores,
+    settings,
+  } from '../lib/app/state';
   import {
     albumProgress,
     albumRows,
@@ -240,7 +247,7 @@
           </li>
         {/each}
       </ol>
-      <details class="album__legend">
+      <details class="album__legend" open={$settings.showExplanations}>
         <summary class="note note--small">Listening status explained</summary>
         <p class="note note--small">
           <span class="mono">confirmed</span> means Spotify has recorded the play, which is the only

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { settings } from '../lib/app/state';
+
   import {
     contextRows,
     contributionFor,
@@ -89,7 +91,7 @@
       {@const held = values[facet.id]?.normalized ?? null}
       <li class="ctx__facet">
         <div class="ctx__ask">
-          <details class="ctx__question">
+          <details class="ctx__question" open={$settings.showExplanations}>
             <summary class="ctx__label">{facet.label}</summary>
             <p class="note note--small">{facet.description}</p>
           </details>
@@ -152,7 +154,7 @@
     </p>
 
     {#if score !== null}
-      <details class="ctx__how">
+      <details class="ctx__how" open={$settings.showExplanations}>
         <summary class="note note--small">How this is calculated</summary>
         <table class="ctx__table">
           <thead>
