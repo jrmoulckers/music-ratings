@@ -26,6 +26,7 @@
   import { connectSpotify } from '../lib/spotify/session';
   import Icon from '../lib/ui/Icon.svelte';
   import AlbumMode from '../components/AlbumMode.svelte';
+  import AutoLoad from '../components/AutoLoad.svelte';
   import Artwork from '../components/Artwork.svelte';
   import DevicePicker from '../components/DevicePicker.svelte';
   import InlineRating from '../components/InlineRating.svelte';
@@ -136,6 +137,7 @@
   let devicesOpen = $state(false);
   let secondaryOpen = $state<'release' | 'artist' | null>(null);
   let queueOpen = $state(true);
+  let queueLimit = $state(10);
 
   const repeatOrder: RepeatMode[] = ['off', 'context', 'track'];
   const repeatWord: Record<RepeatMode, string> = {
@@ -165,7 +167,7 @@
     <h1 class="display">Now Playing</h1>
     <p class="label">
       {#if player.source === 'demo'}
-        demo playback · nothing is sent to Spotify
+        Demo · not sent to Spotify
       {:else}
         read {freshness(player.fetchedAt, $playbackNow)}
       {/if}
@@ -175,19 +177,13 @@
   {#if player.status === 'needs-permission'}
     <section class="panel stack">
       <h2 class="head">Reconnect to control playback</h2>
-      <p class="note">
-        Your Spotify connection was made before this app could read and control playback. Reconnect
-        to grant those permissions. Nothing you have rated is affected.
-      </p>
+      <p class="note">Reconnect to grant playback permissions. Your ratings stay unchanged.</p>
       <button type="button" class="btn btn--primary" onclick={reconnect}>Reconnect Spotify</button>
     </section>
   {:else if player.status === 'needs-premium'}
     <section class="panel stack">
       <h2 class="head">Spotify Premium is required</h2>
-      <p class="note">
-        Spotify only lets applications control playback for Premium accounts. You can still rate
-        everything here; the transport will stay unavailable.
-      </p>
+      <p class="note">Playback control needs Premium. You can still rate music.</p>
     </section>
   {:else if player.status === 'offline'}
     <section class="panel stack">
@@ -200,7 +196,7 @@
   {/if}
 
   {#if item}
-    <section class="now panel" aria-label="What is playing">
+    <section class="now" aria-label="What is playing">
       <div class="now__art">
         <Artwork src={item.artwork} name={item.name} size="lg" priority />
       </div>
@@ -256,9 +252,8 @@
             aria-expanded={deepOpen}
             onclick={() => (deepOpen ? closeDeep() : openDeep())}
           >
-            {deepOpen ? 'Close rating details' : 'Rate in detail'}
+            {deepOpen ? 'Close details' : 'Rating details'}
           </button>
-          <p class="note note--small">Note, confidence and deeper rating.</p>
         {:else}
           <p class="note">
             {item.isLocal
@@ -294,7 +289,7 @@
     <!-- The transport is the bar along the bottom, on this page as on every
          other. What stays here is the shape of the session: where it is
          playing, and how it moves through a record. -->
-    <section class="options panel" aria-label="Playback options">
+    <section class="options" aria-label="Playback options">
       <div class="options__row">
         <button
           type="button"
@@ -349,8 +344,8 @@
     <!-- Rating the record and the performer is a second thought, not the first
          one, so both stay folded away until asked for. -->
     {#if release || artist}
-      <section class="stack" aria-label="Also rate">
-        <h2 class="head">Also rate</h2>
+      <details class="stack also-rate">
+        <summary class="note">Rate album & artist</summary>
         <ul class="also">
           {#if release}
             <RatableRow
@@ -369,14 +364,14 @@
             />
           {/if}
         </ul>
-      </section>
+      </details>
     {/if}
 
     {#if inAlbumSession}
       <AlbumMode />
     {:else if albumOffer}
-      <section class="panel row row--between">
-        <p class="note">You are listening to a record from start to finish.</p>
+      <section class="row row--between">
+        <p class="note">Album session</p>
         <button type="button" class="btn btn--small" onclick={() => void beginAlbumSession()}>
           Rate it track by track
         </button>
@@ -401,7 +396,7 @@
         </div>
         {#if queueOpen}
           <ol class="queue">
-            {#each player.queue.slice(0, 10) as next, i (next.uri ?? `${next.name}-${i}`)}
+            {#each player.queue.slice(0, queueLimit) as next, i (next.uri ?? `${next.name}-${i}`)}
               {@const queued = playingEntityIds(next)}
               {@const queuedEntity = queued.track ? $graph.entity(queued.track) : undefined}
               <li class="entry queue__row">
@@ -420,6 +415,12 @@
               </li>
             {/each}
           </ol>
+          <AutoLoad
+            hasMore={player.queue.length > queueLimit}
+            count={Math.min(queueLimit, player.queue.length)}
+            noun="queued tracks"
+            onload={() => (queueLimit += 10)}
+          />
         {/if}
       </section>
     {/if}
@@ -428,8 +429,7 @@
       <h2 class="head">Nothing is playing</h2>
       {#if player.source === 'demo'}
         <p class="note">
-          You are not connected to Spotify, so this is demo playback: your own saved tracks, on a
-          timer, so the whole Now Playing experience works before you connect anything.
+          Demo playback uses your saved tracks on a timer. It sends nothing to Spotify.
         </p>
         <button type="button" class="btn btn--primary" onclick={() => void startDemo()}>
           Start demo playback
@@ -467,6 +467,8 @@
     /* The sleeve sets the height; the words and the rating sit against its
        middle rather than stranding a column of empty panel beneath them. */
     align-items: center;
+    padding-block: var(--s5);
+    border-bottom: var(--rule-weight) solid var(--border-faint);
   }
 
   .now__art {
@@ -518,10 +520,16 @@
     justify-content: space-between;
     flex-wrap: wrap;
     gap: var(--s4);
+    padding-block: var(--s4);
   }
   .options__row {
     display: flex;
     gap: var(--s3);
+    flex-wrap: wrap;
+  }
+  .also-rate summary {
+    cursor: pointer;
+    padding-block: var(--s3);
   }
   .options__btn {
     /* Reached for by a thumb, standing up, in the dark. */
@@ -555,7 +563,7 @@
   }
 
   .error {
-    color: var(--danger);
+    color: var(--ink);
   }
 
   @media (max-width: 48rem) {
@@ -571,6 +579,16 @@
     .options {
       flex-direction: column;
       align-items: stretch;
+    }
+    .now__art :global(.art) {
+      width: 5rem;
+      height: 5rem;
+    }
+    .queue__row {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    .queue__row > :global(.inline) {
+      grid-column: 2;
     }
   }
 </style>

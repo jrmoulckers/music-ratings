@@ -4,13 +4,8 @@
   /**
    * The end of a list, watched.
    *
-   * A "show more" button asks you to confirm that you meant to keep reading,
-   * which is a strange thing to ask of someone who is already scrolling. This
-   * watches for the end of the list coming into view — well before it arrives —
-   * and asks for the next batch itself.
-   *
-   * It still announces what happened, because a list that grows silently is
-   * unusable without sight of it.
+   * Scrolling requests the next local batch automatically. The button keeps
+   * the same action reachable by keyboard, and the live region announces it.
    */
 
   interface Props {
@@ -67,7 +62,7 @@
     if (!node) return;
 
     // Without IntersectionObserver the same question is answered by measuring
-    // on scroll. Older browsers get the behaviour, not a button.
+    // on scroll. The button remains available in either case.
     if (typeof IntersectionObserver === 'undefined') {
       const check = () => {
         const box = node.getBoundingClientRect();
@@ -95,6 +90,12 @@
 
 <div bind:this={sentinel} class="sentinel" aria-hidden="true"></div>
 
+{#if hasMore}
+  <button type="button" class="btn btn--small load-more" disabled={pending} onclick={request}>
+    More {noun}
+  </button>
+{/if}
+
 {#if hasMore || endLabel}
   <p class="status note note--small" role="status" aria-live="polite">
     {#if hasMore}
@@ -117,5 +118,8 @@
     min-height: 1.25rem;
     padding-top: var(--s3);
     color: var(--ink-faint);
+  }
+  .load-more {
+    margin-top: var(--s3);
   }
 </style>

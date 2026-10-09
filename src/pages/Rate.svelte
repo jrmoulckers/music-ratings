@@ -73,12 +73,12 @@
   const listening = $derived($listeningStatus);
   const freshness = $derived(
     listening.running
-      ? 'Reading what you have been playing…'
+      ? 'Refreshing listening…'
       : listening.error
         ? listening.error
         : listening.fetchedAt
-          ? `Listening read ${relative(listening.fetchedAt)}. Spotify reports only your latest 50 plays.`
-          : 'Spotify reports only your latest 50 plays.',
+          ? `Updated ${relative(listening.fetchedAt)} · Spotify's latest 50 plays only.`
+          : 'Spotify reports your latest 50 plays only.',
   );
 
   // Opening the queue is the moment its answer has to be current. The stored
@@ -135,7 +135,7 @@
     </p>
   </header>
 
-  <CompletionBand heading="Finished records" />
+  <CompletionBand heading="Albums completed" />
 
   <div class="controls">
     <div class="controls__filters">
@@ -147,7 +147,7 @@
           aria-pressed={filter === 'all'}
           onclick={() => (filter = 'all')}
         >
-          Everything ({rows.length})
+          All ({rows.length})
         </button>
         <button
           type="button"
@@ -186,9 +186,11 @@
     {/if}
   </div>
 
-  <p class="freshness note" class:is-warn={Boolean(listening.error)} aria-live="polite">
-    {freshness}
-  </p>
+  {#if $spotifySession.connected || listening.error}
+    <p class="freshness note" class:is-warn={Boolean(listening.error)} aria-live="polite">
+      {freshness}
+    </p>
+  {/if}
 
   {#if filtered.length > 0}
     <ol class="queue">
@@ -210,15 +212,12 @@
       count={visible.length}
       noun="suggestions"
       onload={() => (shown += PAGE)}
-      endLabel="That is the whole queue."
+      endLabel="End of queue"
     />
   {:else if rows.length > 0}
     <Empty
       title="Nothing matches this filter"
-      body="The queue has {plural(
-        rows.length,
-        'item',
-      )} in it, but none of them are what you are looking at right now."
+      body="Change your filters to see the {plural(rows.length, 'item')} in your queue."
     >
       {#snippet action()}
         <button
@@ -229,33 +228,30 @@
             typeFilter = 'any';
           }}
         >
-          Show everything
+          Clear filters
         </button>
       {/snippet}
     </Empty>
   {:else}
     <Empty
-      title="Nothing waiting to be rated"
-      body="Either everything you have enabled was rated recently, or there is nothing in your library yet. You can always search for something specific, or compare two things you have already rated."
+      title="You're caught up"
+      body="Find music to rate, browse your library, or compare your ratings."
     >
       {#snippet action()}
         <div class="row">
           <button type="button" class="btn btn--primary" onclick={() => openSearch()}>
-            <Icon name="search" size={14} /> Search for something to rate
+            <Icon name="search" size={14} /> Find music
           </button>
           <a class="btn" href={href('/compare')}>Compare two</a>
-          <a class="btn" href={href('/library')}>Browse your library</a>
+          <a class="btn" href={href('/library')}>Library</a>
         </div>
       {/snippet}
     </Empty>
   {/if}
 
   {#if setAside.length > 0}
-    <section class="aside" aria-labelledby="aside-head">
-      <div class="head">
-        <h2 id="aside-head" class="title">Set aside</h2>
-        <span class="label">{setAside.length}</span>
-      </div>
+    <details class="aside">
+      <summary class="note">Set aside · {setAside.length}</summary>
       <ul class="aside__rows">
         {#each visibleAside as row (row.state.id)}
           <li>
@@ -266,7 +262,7 @@
               class="btn btn--small btn--quiet"
               onclick={() => void clearQueueState(row.state.id)}
             >
-              Put it back
+              Restore
             </button>
           </li>
         {/each}
@@ -278,7 +274,7 @@
         noun="set-aside items"
         onload={() => (asideShown += PAGE)}
       />
-    </section>
+    </details>
   {/if}
 </div>
 
@@ -300,6 +296,7 @@
   .seg {
     display: flex;
     gap: var(--s2);
+    flex-wrap: wrap;
   }
   .seg .btn.is-on {
     background: var(--accent);
@@ -314,7 +311,7 @@
 
   .freshness {
     margin-top: var(--s3);
-    color: var(--ink-faint);
+    color: var(--ink-quiet);
   }
   .freshness.is-warn {
     color: var(--ink);
@@ -352,6 +349,10 @@
   .aside {
     margin-top: var(--s7);
   }
+  .aside summary {
+    cursor: pointer;
+    padding-block: var(--s3);
+  }
   .aside__rows {
     display: flex;
     flex-direction: column;
@@ -377,6 +378,17 @@
     }
     .queue {
       --rail-inset: 1rem;
+    }
+    .aside__rows li {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .aside__rows li > .label {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .aside__rows li > button {
+      grid-column: 2;
+      grid-row: 1 / 3;
     }
   }
 </style>

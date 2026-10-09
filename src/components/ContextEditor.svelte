@@ -78,7 +78,7 @@
 
 <div class="ctx">
   <p class="ctx__lede note">
-    Consider craft, influence, and its time. Your judgements, not Spotify's.
+    Your judgements, not Spotify data.
     {#if showsEra}
       <span class="ctx__fact">Released in {releaseYear}.</span>
     {/if}
@@ -89,8 +89,10 @@
       {@const held = values[facet.id]?.normalized ?? null}
       <li class="ctx__facet">
         <div class="ctx__ask">
-          <span class="ctx__label">{facet.label}</span>
-          <span class="note note--small">{facet.description}</span>
+          <details class="ctx__question">
+            <summary class="ctx__label">{facet.label}</summary>
+            <p class="note note--small">{facet.description}</p>
+          </details>
         </div>
         <div class="ctx__set">
           <InlineRating
@@ -229,6 +231,8 @@
   }
   .ctx__label {
     font-weight: 600;
+    cursor: pointer;
+    padding-block: var(--s2);
   }
 
   .ctx__set {

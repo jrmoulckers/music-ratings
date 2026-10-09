@@ -60,6 +60,7 @@
   const shown = $derived(queued[0]?.suggestion);
   const shownEntity = $derived(shown ? $graph.entity(shown.entityId) : undefined);
   const shownIsPlayed = $derived(shown?.tier === TIER_JUST_PLAYED);
+  const otherPlayed = $derived(justPlayed.filter((row) => row.entity.id !== shownEntity?.id));
 
   const ratedTotal = $derived($explicitRatings.size);
   const comparisonTotal = $derived($world.comparisons.filter((c) => !c.deleted).length);
@@ -74,13 +75,16 @@
   });
 
   const syncLine = $derived.by(() => {
-    if (!online) return 'Offline. Everything you do is saved here and sent when you reconnect.';
-    if (!$settings.syncEnabled) return 'Saved on this device only. Sync is off.';
+    if (!online)
+      return $settings.syncEnabled
+        ? 'Offline · saved here. Sync resumes when online.'
+        : 'Offline · saved on this device. Sync is off.';
+    if (!$settings.syncEnabled) return 'Saved on this device · sync off.';
     switch ($syncState.status) {
       case 'syncing':
-        return 'Sending changes to your OneDrive…';
+        return 'Syncing to OneDrive…';
       case 'pending':
-        return 'Changes are waiting to go to OneDrive.';
+        return 'Waiting to sync to OneDrive.';
       case 'conflict':
         return 'Another device wrote to the same file. Open diagnostics to choose which version wins.';
       case 'error':
@@ -98,12 +102,12 @@
     <header class="home__head">
       <h1 class="display">Home</h1>
       <p class="note">
-        What to rate next, and what you have rated lately. {ratedTotal.toLocaleString()} ratings · {comparisonTotal.toLocaleString()}
+        {ratedTotal.toLocaleString()} ratings · {comparisonTotal.toLocaleString()}
         comparisons · {todayCount} today
       </p>
       <button type="button" class="home__find" onclick={() => openSearch()}>
         <Icon name="search" size={16} />
-        <span>Search for something to rate</span>
+        <span>Find music</span>
         <kbd class="home__key">/</kbd>
       </button>
     </header>
@@ -116,7 +120,7 @@
           <h2 id="next-head" class="title">
             {shownIsPlayed ? 'You just played this' : 'Next to rate'}
           </h2>
-          <a class="label" href={href('/rate')}>Open the queue</a>
+          <a class="label" href={href('/rate')}>View queue</a>
         </div>
 
         {#if shownEntity && shown}
@@ -136,7 +140,7 @@
               <p class="next__name display">{shownEntity.name}</p>
               {#if shownEntity.subtitle}<p class="note">{shownEntity.subtitle}</p>{/if}
               <ul class="next__reasons">
-                {#each shown.reasons.slice(0, 2) as reason (reason.source)}
+                {#each shown.reasons.slice(0, 1) as reason (reason.source)}
                   <li>
                     <span class="label label--accent">{suggestionSourceLabel(reason.source)}</span>
                     <span class="note">{reason.detail}</span>
@@ -146,20 +150,20 @@
             </div>
           </a>
 
-          <a class="btn btn--primary home__seat" href={href('/rate')}>
+          <a class="btn btn--primary home__seat" href={entityHref(shownEntity.id)}>
             <Icon name="queue" size={15} /> Rate this
           </a>
           <a class="btn home__alt" href={href('/compare')}>
-            <Icon name="versus" size={15} /> Compare two instead
+            <Icon name="versus" size={15} /> Compare
           </a>
         {:else}
           <Empty
             title="Nothing waiting"
-            body="Either everything you have enabled was rated recently, or there is nothing in your library yet. Connect Spotify, or search for something to rate."
+            body="Find music to rate, or connect Spotify to build your queue."
           >
             {#snippet action()}
               <button type="button" class="btn btn--primary" onclick={() => openSearch()}>
-                Search for something to rate
+                Find music
               </button>
             {/snippet}
           </Empty>
@@ -167,13 +171,13 @@
       </section>
 
       <section class="home__record" aria-labelledby="recent-head">
-        {#if justPlayed.length > 0}
+        {#if otherPlayed.length > 0}
           <div class="head">
-            <h2 class="title">Recently played, not yet rated</h2>
-            <span class="label">First in the queue</span>
+            <h2 class="title">Recently played</h2>
+            <span class="label">Unrated</span>
           </div>
           <ul class="played">
-            {#each justPlayed.slice(0, 5) as row (row.entity.id)}
+            {#each otherPlayed.slice(0, 4) as row (row.entity.id)}
               <RatableRow
                 entity={row.entity}
                 suggestion={row.suggestion}
@@ -188,13 +192,13 @@
           </ul>
         {/if}
 
-        <div class="head" class:head--spaced={justPlayed.length > 0}>
+        <div class="head" class:head--spaced={otherPlayed.length > 0}>
           <h2 id="recent-head" class="title">Recently rated</h2>
           <a class="label" href={href('/history')}>Full history</a>
         </div>
         {#if $recentActivity.length > 0}
           <ul class="lately">
-            {#each $recentActivity.slice(0, justPlayed.length > 0 ? 5 : 9) as event (event.id)}
+            {#each $recentActivity.slice(0, otherPlayed.length > 0 ? 5 : 9) as event (event.id)}
               {@const entity = $graph.entity(event.entityId)}
               <li>
                 <a class="lately__row" href={entityHref(event.entityId)}>
@@ -223,8 +227,8 @@
       <a class="label" href={href('/diagnostics')}>Data health</a>
     </div>
 
-    <div class="stack stack--tight">
-      <h2 class="label">Coverage</h2>
+    <details class="stack stack--tight">
+      <summary class="label">Library coverage</summary>
       {#each $coverageByType as row (row.type)}
         <div class="cover">
           <span class="cover__label">{entityLabelCap(row.type, true)}</span>
@@ -237,15 +241,13 @@
       {#if $coverageByType.every((row) => row.total === 0)}
         <p class="note">Nothing in your library yet.</p>
       {/if}
-    </div>
+    </details>
 
     {#if $settings.goalsEnabled}
       <div class="stack stack--tight">
         <h2 class="label">Today</h2>
         <p class="figure figure--large">{todayCount} / {$settings.dailyGoal}</p>
-        <p class="note">
-          A target you set yourself. Turn it off in Settings if it starts feeling like homework.
-        </p>
+        <p class="note">Your daily goal. Change it in Settings.</p>
       </div>
     {/if}
 
@@ -264,7 +266,7 @@
 <style>
   .home__head {
     padding-bottom: var(--s3);
-    border-bottom: var(--rule-weight) solid var(--ink);
+    border-bottom: var(--rule-weight) solid var(--border);
   }
 
   .home__find {
@@ -376,8 +378,7 @@
   }
   .home__alt {
     margin-top: var(--s2);
-    width: 100%;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .next__kind {
@@ -450,9 +451,8 @@
 
   @media (max-width: 48rem) {
     .next {
-      flex-direction: column;
-      gap: var(--s4);
-      padding: var(--s4);
+      gap: var(--s3);
+      padding: var(--s3);
     }
   }
 </style>

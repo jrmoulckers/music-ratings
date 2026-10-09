@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { navigate } from '../lib/app/router';
+  import { href, navigate } from '../lib/app/router';
   import { topUpArtistArtwork } from '../lib/app/artwork';
-  import { entityLabelCap, graph, scaleForType, scores, settings } from '../lib/app/state';
+  import { entityLabelCap, graph, scores, settings } from '../lib/app/state';
   import { ENTITY_TYPES, type EntityType } from '../lib/domain/types';
   import { artistNeedsArtwork } from '../lib/spotify/artwork';
   import { autofocus } from '../lib/ui/actions';
@@ -54,7 +54,7 @@
 
     const matched = pool.filter((entity) => {
       if (!$settings.showExplicitContent && entity.explicitContent) return false;
-      if (ratedOnly && $scores.get(entity.id)?.explicit === null) return false;
+      if (ratedOnly && $scores.get(entity.id)?.explicit == null) return false;
       if (!needle) return true;
       return (
         entity.name.toLowerCase().includes(needle) ||
@@ -76,6 +76,13 @@
   // on screen and nothing else.
   $effect(() => {
     void topUpArtistArtwork(results.slice(0, limit).filter(artistNeedsArtwork));
+  });
+
+  $effect(() => {
+    void term;
+    void typeFilter;
+    void ratedOnly;
+    limit = 60;
   });
 
   // Keeps the address bar in step so a search can be shared or bookmarked.
@@ -118,7 +125,7 @@
     <label class="field field--inline">
       <span class="label">Kind</span>
       <select class="select" bind:value={typeFilter} onchange={syncUrl}>
-        <option value="all">Everything</option>
+        <option value="all">All kinds</option>
         {#each enabled as t (t)}
           <option value={t}>{entityLabelCap(t, true)}</option>
         {/each}
@@ -149,19 +156,22 @@
     />
   {:else}
     <Empty
-      title={term ? `Nothing here matches “${term}”` : 'Your library is empty'}
-      body={term
-        ? 'Nothing in your library matches. Searching Spotify below reaches the wider catalogue and adds what you pick.'
-        : 'Load the demo catalogue or connect Spotify from Settings, or search Spotify below to add something specific.'}
+      title={term || typeFilter !== 'all' || ratedOnly ? 'No matches' : 'Your library is empty'}
+      body={term || typeFilter !== 'all' || ratedOnly
+        ? 'Try another search or change your filters. Search Spotify below to add music.'
+        : 'Connect Spotify to add music, or add an item by hand in Settings.'}
     />
   {/if}
 
   <SpotifySearch initialTerm={term} />
 
-  <p class="scale-note note note--small">
-    Scores use the {$scaleForType('track').label} scale where a scale is shown. Blended, computed and
-    explicit views are switched in Settings.
-  </p>
+  <details class="scale-note">
+    <summary class="note note--small">About scores</summary>
+    <p class="note note--small">
+      Scores use each kind's configured scale. Choose explicit, computed or blended scores in
+      <a href={href('/settings')}>Settings</a>.
+    </p>
+  </details>
 </div>
 
 <style>
