@@ -1,4 +1,3 @@
-import '@fontsource-variable/libre-franklin';
 import './app.css';
 
 import { mount } from 'svelte';
