@@ -160,6 +160,10 @@
   bind:this={moreSheet}
   aria-labelledby="more-sections-title"
   onclose={() => (moreOpen = false)}
+  oncancel={(event) => {
+    event.preventDefault();
+    closeMore();
+  }}
 >
   <div class="rail__sheet-head">
     <h2 id="more-sections-title" class="subtitle">More</h2>

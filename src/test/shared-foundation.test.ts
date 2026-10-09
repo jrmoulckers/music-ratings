@@ -1,6 +1,6 @@
 import { flushSync, mount, unmount, type Component } from 'svelte';
 import { get } from 'svelte/store';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Route } from '../lib/app/router';
 import { notices } from '../lib/app/notices';
@@ -27,18 +27,6 @@ const Notices = (await import('../components/Notices.svelte')).default;
 
 let host: HTMLDivElement;
 let app: Record<string, unknown> | undefined;
-const dialogMethods = {
-  close: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close'),
-  showModal: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal'),
-};
-
-afterAll(() => {
-  for (const method of ['close', 'showModal'] as const) {
-    const original = dialogMethods[method];
-    if (original) Object.defineProperty(HTMLDialogElement.prototype, method, original);
-    else Reflect.deleteProperty(HTMLDialogElement.prototype, method);
-  }
-});
 
 function render<Props extends Record<string, unknown>>(component: Component<Props>, props: Props) {
   app = mount(component, { target: host, props });
@@ -52,20 +40,6 @@ beforeEach(() => {
   syncState.update((value) => ({ ...value, status: 'off' }));
   closeSearch();
   notices.set([]);
-  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
-    configurable: true,
-    value: vi.fn(function (this: HTMLDialogElement) {
-      if (!this.open) return;
-      this.removeAttribute('open');
-      this.dispatchEvent(new Event('close'));
-    }),
-  });
-  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
-    configurable: true,
-    value: vi.fn(function (this: HTMLDialogElement) {
-      this.setAttribute('open', '');
-    }),
-  });
 });
 
 afterEach(async () => {
@@ -239,7 +213,7 @@ describe('score provenance', () => {
         },
       },
       scale,
-      view: 'context',
+      view: 'context' as const,
     });
     expect(host.textContent).not.toContain('provisional');
   });

@@ -45,11 +45,12 @@ describe('responsive section navigation', () => {
     await Promise.resolve();
     flushSync();
 
-    const sheet = host?.querySelector<HTMLElement>('#more-sections');
+    const sheet = host?.querySelector<HTMLDialogElement>('#more-sections');
     expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(sheet?.getAttribute('role')).toBe('dialog');
-    expect(sheet?.getAttribute('aria-modal')).toBe('true');
-    expect(document.activeElement?.textContent).toContain('Now Playing');
+    expect(sheet?.tagName).toBe('DIALOG');
+    expect(sheet?.open).toBe(true);
+    expect(sheet?.getAttribute('aria-labelledby')).toBe('more-sections-title');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Close menu');
   });
 
   it('closes More with Escape and returns focus to its trigger', async () => {
@@ -59,11 +60,13 @@ describe('responsive section navigation', () => {
     await Promise.resolve();
     flushSync();
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    // Escape asks a native modal to cancel; jsdom cannot synthesize that browser step.
+    const sheet = host?.querySelector<HTMLDialogElement>('#more-sections');
+    sheet?.dispatchEvent(new Event('cancel', { cancelable: true }));
     await Promise.resolve();
     flushSync();
 
-    expect(host?.querySelector('#more-sections')).toBeNull();
+    expect(sheet?.open).toBe(false);
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(button);
   });
