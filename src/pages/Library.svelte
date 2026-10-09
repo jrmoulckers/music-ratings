@@ -165,7 +165,7 @@
 
   <SpotifySearch initialTerm={term} />
 
-  <details class="scale-note">
+  <details class="scale-note" open={$settings.showExplanations}>
     <summary class="note note--small">About scores</summary>
     <p class="note note--small">
       Scores use each kind's configured scale. Choose explicit, computed or blended scores in

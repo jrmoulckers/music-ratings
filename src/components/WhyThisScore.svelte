@@ -1,6 +1,6 @@
 <script lang="ts">
   import { entityHref } from '../lib/app/router';
-  import { graph } from '../lib/app/state';
+  import { graph, settings } from '../lib/app/state';
   import { formatComputedOn, formatNormalizedOn } from '../lib/domain/scales';
   import type { RatingScale, ScoreBreakdown } from '../lib/domain/types';
   import { percent, plural } from '../lib/ui/format';
@@ -154,7 +154,7 @@
 
   {#each breakdown.channels as channel (channel.channel)}
     {#if channel.contributors?.length}
-      <details class="why__more">
+      <details class="why__more" open={$settings.showExplanations}>
         <summary class="label"
           >Top contributions from {CHANNEL_NAME[channel.channel]?.toLowerCase()}</summary
         >

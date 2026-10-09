@@ -240,7 +240,7 @@
     </details>
 
     {#if list.dropped.length > 0 && list.rows.length > 0}
-      <details class="stack stack--tight">
+      <details class="stack stack--tight" open={$settings.showExplanations}>
         <summary class="label">Excluded items</summary>
         <dl class="dropped">
           {#each list.dropped as entry (entry.reason)}
@@ -253,7 +253,7 @@
       </details>
     {/if}
 
-    <details>
+    <details open={$settings.showExplanations}>
       <summary class="note note--small">About rankings</summary>
       <p class="note note--small">
         Ranked by the full score, not its rounded display. Equal scores share a position. Scores use {scale.label};
