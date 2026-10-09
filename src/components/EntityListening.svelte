@@ -4,7 +4,12 @@
   import { href } from '../lib/app/router';
   import { albumListening, artistListening } from '../lib/domain/listening-stats';
   import type { Entity } from '../lib/domain/types';
-  import { CONFIRMED_BY, breadth, observedSince } from '../lib/listening/phrasing';
+  import {
+    CONFIRMED_BY,
+    DEMO_LISTENING_NOTE,
+    breadth,
+    observedSince,
+  } from '../lib/listening/phrasing';
   import { dateAndTime, plural, relative } from '../lib/ui/format';
   import Icon from '../lib/ui/Icon.svelte';
   import AlbumComplete from './AlbumComplete.svelte';
@@ -47,6 +52,7 @@
   );
 
   const observed = $derived($settings.listeningObservedFrom);
+  const isDemo = $derived(entity.provenance.via === 'demo-listening');
   const anything = $derived((album?.plays ?? artist?.plays ?? 0) > 0);
 </script>
 
@@ -155,7 +161,11 @@
 
     <p class="note note--small listened__source">
       <Icon name="lens" size={12} />
-      {CONFIRMED_BY}. {observedSince(observed)}
+      {#if isDemo}
+        {DEMO_LISTENING_NOTE}
+      {:else}
+        {CONFIRMED_BY}. {observedSince(observed)}
+      {/if}
     </p>
   </section>
 {/if}

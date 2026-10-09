@@ -25,6 +25,7 @@ export function observedSince(from: number | null | undefined): string {
 }
 
 export const CONFIRMED_BY = 'Confirmed from Spotify recently played';
+export const DEMO_LISTENING_NOTE = 'Demo listening data, not Spotify-confirmed';
 
 /** Why these numbers cannot be a lifetime total, in one sentence. */
 export const WINDOW_CAVEAT = `Spotify returns only the latest ${RECENTLY_PLAYED_WINDOW} plays per refresh, so anything played while this app was closed for a while was never visible to it.`;
