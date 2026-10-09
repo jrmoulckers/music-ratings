@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 import { manifestForBase, navigationFallbackForBase } from '../../vite.config';
 
+const css = readFileSync(join(process.cwd(), 'src', 'app.css'), 'utf8');
+
 describe('custom-domain Pages deployment', () => {
   it('persists the domain in every uploaded artifact and builds for the origin root', () => {
     expect(readFileSync(join(process.cwd(), 'public', 'CNAME'), 'utf8').trim()).toBe(
@@ -31,5 +33,16 @@ describe('custom-domain Pages deployment', () => {
       { name: 'Compare', url: '/compare' },
     ]);
     expect(navigationFallbackForBase('/')).toBe('/index.html');
+  });
+
+  it('aligns installed-app and first-paint browser chrome with the shared surface tokens', () => {
+    const light = css.match(/--palette-light-ground:\s*(#[0-9a-f]{6})/)?.[1];
+    const dark = css.match(/--palette-dark-ground:\s*(#[0-9a-f]{6})/)?.[1];
+    const manifest = manifestForBase('/');
+    expect(manifest.theme_color).toBe(light);
+    expect(manifest.background_color).toBe(light);
+    const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
+    expect(html).toContain(`content="${light}" media="(prefers-color-scheme: light)"`);
+    expect(html).toContain(`content="${dark}" media="(prefers-color-scheme: dark)"`);
   });
 });

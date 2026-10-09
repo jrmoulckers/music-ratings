@@ -12,6 +12,7 @@ export const ICON_PATHS = {
   lens: 'M11 4a7 7 0 100 14 7 7 0 100-14M11 8v6M8 11h6',
   settings: 'M4 7h16M4 12h16M4 17h16M9 5v4M16 10v4M7 15v4',
   health: 'M3 12h4l2-5 3 10 2-5h7',
+  warning: 'M12 3 2 21h20zM12 9v5M12 17h.01',
   menu: 'M4 7h16M4 12h16M4 17h16',
   search: 'M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 100-13M15.5 15.5L21 21',
   'arrow-left': 'M20 12H4M10 6l-6 6 6 6',
