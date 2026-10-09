@@ -35,10 +35,10 @@
   );
 
   const GROUPS: { label: string; kinds: Insight['kind'][] }[] = [
-    { label: 'What you actually like', kinds: ['favourite', 'hidden-gem'] },
-    { label: 'What you actually avoid', kinds: ['avoid', 'deprioritise'] },
-    { label: 'Where you are undecided', kinds: ['polarizing', 'uncertain', 'drift'] },
-    { label: 'Where the record is thin', kinds: ['coverage', 'explore'] },
+    { label: 'Favourites', kinds: ['favourite', 'hidden-gem'] },
+    { label: 'Less favoured', kinds: ['avoid', 'deprioritise'] },
+    { label: 'Unsettled', kinds: ['polarizing', 'uncertain', 'drift'] },
+    { label: 'Worth exploring', kinds: ['coverage', 'explore'] },
     { label: 'Settled rankings', kinds: ['stable'] },
   ];
 
@@ -65,13 +65,13 @@
 <div class="sheet">
   <header class="head">
     <h1 class="display">Insights</h1>
-    <p class="label">computed here, from your ratings only</p>
+    <p class="note">From your ratings</p>
   </header>
 
   {#if grouped.length === 0}
     <Empty
-      title="Not enough to say anything honest"
-      body="Insights need a body of ratings to describe. Rate twenty or thirty things and patterns start to be worth stating; before that, anything shown here would be noise dressed up as insight."
+      title="No patterns yet"
+      body="Keep rating. Insights appear when your ratings provide enough evidence."
     />
   {:else}
     <div class="insights">
@@ -92,7 +92,10 @@
                   {/each}
                 </ul>
               {/if}
-              <p class="finding__evidence label">Rule: {finding.evidence}</p>
+              <details class="finding__evidence" open={$settings.showExplanations}>
+                <summary class="note note--small">Why this appears</summary>
+                <p class="note note--small">{finding.evidence}</p>
+              </details>
             </article>
           {/each}
         </section>
@@ -101,8 +104,7 @@
   {/if}
 
   <p class="disclaimer note note--small">
-    These are descriptions of your own ratings, worked out on this device. No model is trained, no
-    data is sent anywhere, and nothing here is a Spotify recommendation.
+    Calculated locally. No trained model or Spotify recommendations.
   </p>
 </div>
 
@@ -115,7 +117,7 @@
 
   .insights__group {
     padding-bottom: var(--s2);
-    border-bottom: var(--rule-weight) solid var(--ink);
+    border-bottom: var(--rule-weight) solid var(--border);
     margin-bottom: var(--s3);
   }
 
@@ -152,11 +154,20 @@
   }
 
   .finding__evidence {
-    color: var(--ink-faint);
+    color: var(--ink-quiet);
     max-width: 68ch;
     line-height: 1.5;
     text-transform: none;
     letter-spacing: 0.01em;
+  }
+  .finding__evidence summary {
+    cursor: pointer;
+    color: var(--ink-quiet);
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
+  }
+  .finding__evidence p {
+    margin-top: var(--s2);
   }
 
   .disclaimer {

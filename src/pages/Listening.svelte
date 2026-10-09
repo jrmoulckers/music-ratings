@@ -1,7 +1,8 @@
 <script lang="ts">
   import AlbumComplete from '../components/AlbumComplete.svelte';
   import Empty from '../components/Empty.svelte';
-  import { entityHref } from '../lib/app/router';
+  import { entityHref, href } from '../lib/app/router';
+  import { notify } from '../lib/app/notices';
   import {
     catalogue,
     clock,
@@ -10,6 +11,8 @@
     playIndex,
     scaleForType,
     settings,
+    updateSettings,
+    world,
   } from '../lib/app/state';
   import {
     computeListeningStats,
@@ -52,9 +55,15 @@
   let coverage = $state<ListeningCoverage>(emptyCoverage());
 
   $effect(() => {
-    void readCoverage().then((held) => {
-      coverage = held;
-    });
+    void readCoverage()
+      .then((held) => {
+        coverage = held;
+      })
+      .catch((error: unknown) => {
+        notify(error instanceof Error ? error.message : 'Could not read listening coverage.', {
+          tone: 'warn',
+        });
+      });
   });
 
   const stats = $derived(
@@ -74,6 +83,14 @@
   const caveat = $derived(rangeCaveat(range, observedFrom, stats.from));
   const notes = $derived(coverageNotes(coverage, $clock));
   const trackScale = $derived($scaleForType('track'));
+  const hasDemo = $derived.by(() => {
+    const demoIds = new Set(
+      $world.entities
+        .filter((entity) => entity.provenance.via === 'demo-listening')
+        .map((entity) => entity.id),
+    );
+    return $world.plays.some((play) => !play.deleted && demoIds.has(play.entityId));
+  });
 
   /*
    * RATING SURFACE: this page renders rating values as text only, via
@@ -92,8 +109,14 @@
 <div class="sheet">
   <header class="head">
     <h1 class="display">Listening</h1>
-    <p class="label">confirmed by spotify, counted here</p>
+    <p class="note">{hasDemo ? 'Includes demo data' : 'Spotify-confirmed plays'}</p>
   </header>
+  {#if hasDemo}
+    <p class="note note--warn demo-notice">
+      Demo listening is included below. These fictional plays were not confirmed by Spotify. Remove
+      demo history in Data health to review only your listening.
+    </p>
+  {/if}
 
   <!-- The range strip. Not tabs: the page does not change, only the window it
        is counting over, so it reads as a setting on the numbers below. -->
@@ -109,14 +132,35 @@
       </button>
     {/each}
   </div>
+  <label class="field field--inline listening-basis">
+    <span class="label">Show</span>
+    <select
+      class="select"
+      value={$settings.listeningBasis}
+      onchange={(event) =>
+        void updateSettings({ listeningBasis: event.currentTarget.value as 'plays' | 'minutes' })}
+    >
+      <option value="plays">Plays</option>
+      <option value="minutes">Estimated minutes</option>
+    </select>
+  </label>
 
   {#if $playIndex.length === 0}
     <Empty
       title="Nothing observed yet"
       body={$settings.listeningEnabled
-        ? 'This app records a play only once Spotify has it in your recently played list. Play something, then refresh your listening from the Library page and it will appear here.'
-        : 'Listening history is switched off, so nothing is being recorded. Turn it on in Settings to start counting plays from here on.'}
-    />
+        ? 'Play music, then refresh listening in Library. Only Spotify-confirmed plays are recorded.'
+        : 'Enable listening history in Settings to start recording Spotify-confirmed plays.'}
+    >
+      {#snippet action()}
+        <a
+          class="btn btn--primary"
+          href={href($settings.listeningEnabled ? '/library' : '/settings')}
+        >
+          {$settings.listeningEnabled ? 'Open library' : 'Open settings'}
+        </a>
+      {/snippet}
+    </Empty>
   {:else}
     <p class="provenance">
       {observedSince(observedFrom)}
@@ -152,23 +196,22 @@
           <dd class="mono">{stats.repeatPlays.toLocaleString()}</dd>
         </div>
       </dl>
-      <p class="note note--small band__foot">
-        {ESTIMATED_TIME_NOTE}
-        {#if stats.playsWithoutDuration > 0}
-          {plural(stats.playsWithoutDuration, 'play')} had no known length, so the estimate is low.
-        {/if}
-      </p>
+      <details class="band__foot" open={$settings.showExplanations}>
+        <summary class="note note--small">How time is estimated</summary>
+        <p class="note note--small">{ESTIMATED_TIME_NOTE}</p>
+      </details>
+      {#if stats.playsWithoutDuration > 0}
+        <p class="note note--small">
+          {plural(stats.playsWithoutDuration, 'play')} had no known length; the estimate is low.
+        </p>
+      {/if}
     </section>
 
     <!-- Albums completed: the same object as the prompt, read back quietly. -->
     <section class="band" aria-labelledby="done">
       <h2 class="title band__title" id="done">Albums completed</h2>
       {#if stats.completions.length === 0}
-        <p class="note band__none">
-          No record was heard all the way through in this period. A completion is recorded when
-          every available track on one album edition has a confirmed play inside the completion
-          window.
-        </p>
+        <p class="note band__none">No albums completed in this period.</p>
       {:else}
         <p class="band__lead">
           {plural(stats.completions.length, 'record')} heard end to end.
@@ -193,6 +236,13 @@
           </p>
         {/if}
       {/if}
+      <details class="band__foot" open={$settings.showExplanations}>
+        <summary class="note note--small">What counts as a completion</summary>
+        <p class="note note--small">
+          Every available track on one album edition must have a confirmed play within your
+          completion window.
+        </p>
+      </details>
     </section>
 
     {#snippet ranked(title: string, items: RankedItem[], denominatorNote: string)}
@@ -205,12 +255,19 @@
             {#each items as item (item.entityId)}
               <li class="ranked__row">
                 <a class="ranked__name" href={entityHref(item.entityId)}>{item.name}</a>
-                <span class="ranked__bar" style="--w: {Math.max(2, item.playShare * 100)}%"></span>
+                <span
+                  class="ranked__bar"
+                  aria-hidden="true"
+                  style="--w: {Math.max(2, (byTime ? item.timeShare : item.playShare) * 100)}%"
+                ></span>
                 <span class="note note--small ranked__metric">{metric(item)}</span>
               </li>
             {/each}
           </ol>
-          <p class="note note--small band__foot">{denominatorNote}</p>
+          <details class="band__foot" open={$settings.showExplanations}>
+            <summary class="note note--small">How this is counted</summary>
+            <p class="note note--small">{denominatorNote}</p>
+          </details>
         {/if}
       </section>
     {/snippet}
@@ -218,7 +275,9 @@
     {@render ranked(
       'Most played tracks',
       stats.topTracks,
-      `Share is of the ${stats.plays.toLocaleString()} plays observed in this period.`,
+      byTime
+        ? 'Share is of estimated track-length time in this period, not actual listening time.'
+        : `Share is of the ${stats.plays.toLocaleString()} plays observed in this period.`,
     )}
     {@render ranked(
       'Most played releases',
@@ -234,11 +293,14 @@
     {#if stats.artistCredits.length > 0}
       <section class="band" aria-labelledby="credits">
         <h2 class="title band__title" id="credits">Artists by any credit</h2>
-        <p class="band__lead">
-          The same plays counted for every credited artist. A track by two artists counts once for
-          each, so this is breadth of who you heard — not a share of anything, and it deliberately
-          adds up past the total.
-        </p>
+        <details class="band__foot" open={$settings.showExplanations}>
+          <summary class="note note--small">Why credits exceed total plays</summary>
+          <p class="note note--small">
+            The same plays counted for every credited artist. A track by two artists counts once for
+            each, so this is breadth of who you heard — not a share of anything, and it deliberately
+            adds up past the total.
+          </p>
+        </details>
         <ul class="credits">
           {#each stats.artistCredits as credit (credit.entityId)}
             <li>
@@ -340,8 +402,11 @@
 
   <!-- What this page cannot tell you. Kept at the foot, stated plainly, and
        never softened: the alternative is a number nobody can check. -->
-  <section class="limits" aria-labelledby="limits">
-    <h2 class="label" id="limits">What this does not know</h2>
+  {#each notes.filter((note) => note.tone === 'warn') as note, i (i)}
+    <p class="note note--small coverage-warning"><Icon name="flag" size={12} /> {note.text}</p>
+  {/each}
+  <details class="limits" open={$settings.showExplanations}>
+    <summary class="note">Data coverage and limits</summary>
     <ul class="limits__list">
       <li>{WINDOW_CAVEAT}</li>
       <li>{NO_PERCENTILE}</li>
@@ -349,9 +414,8 @@
         A play is counted when Spotify lists it in your recently played. How much of the track was
         actually heard is not something Spotify says, so it is not something this app claims.
       </li>
-      {#each notes as note, i (i)}
-        <li class:limits__warn={note.tone === 'warn'}>
-          {#if note.tone === 'warn'}<Icon name="flag" size={12} />{/if}
+      {#each notes.filter((note) => note.tone !== 'warn') as note, i (i)}
+        <li>
           {note.text}
         </li>
       {/each}
@@ -359,7 +423,7 @@
         <li>Newest play on record: {dateAndTime(coverage.newestSeenAt)}.</li>
       {/if}
     </ul>
-  </section>
+  </details>
 </div>
 
 <style>
@@ -367,6 +431,25 @@
      There is no room for both on a phone, so let them stack here. */
   .head {
     flex-wrap: wrap;
+  }
+  .listening-basis {
+    margin-bottom: var(--s5);
+  }
+  .demo-notice {
+    margin-bottom: var(--s4);
+    max-width: var(--measure);
+  }
+  details summary {
+    cursor: pointer;
+    color: var(--ink-quiet);
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
+  }
+  details p {
+    margin-top: var(--s2);
+  }
+  .coverage-warning {
+    margin-bottom: var(--s3);
   }
 
   .range {
@@ -379,6 +462,7 @@
     max-width: 100%;
   }
   .range__opt {
+    min-height: var(--target-min, 2.875rem);
     padding: var(--s2) var(--s3);
     border: 0;
     border-right: var(--rule-weight) solid var(--border);
@@ -551,8 +635,5 @@
     font-size: 0.8125rem;
     line-height: 1.5;
     color: var(--ink-quiet);
-  }
-  .limits__warn {
-    color: var(--ink);
   }
 </style>

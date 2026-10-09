@@ -144,7 +144,7 @@ function press(text: RegExp): void {
 }
 
 function text(): string {
-  return host?.textContent ?? '';
+  return (host?.textContent ?? '').replace(/\s+/g, ' ');
 }
 
 /**

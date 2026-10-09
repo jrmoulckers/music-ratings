@@ -52,6 +52,7 @@
   let openId = $state<string | null>(null);
   /** Deleting asks first, in place, rather than throwing up a dialog. */
   let confirmId = $state<string | null>(null);
+  const uid = $props.id();
 
   const events = $derived.by(() => {
     const needle = search.trim().toLowerCase();
@@ -165,6 +166,7 @@
     } else if (openId === id) {
       event.stopPropagation();
       openId = null;
+      document.getElementById(`${uid}-${id}-toggle`)?.focus();
     }
   }
 
@@ -231,9 +233,6 @@
                       <span class="label entry__kind">
                         <EntityTypeIcon type={event.entityType} size={13} />
                         {entityLabelCap(event.entityType)} · {dateAndTime(event.at)}
-                        {#if event.confidence && event.confidence !== 'medium'}
-                          · {event.confidence} confidence
-                        {/if}
                         ·
                         <span class="entry__state" class:entry__state--odd={stands === 'earlier'}>
                           {#if stands === 'withdrawn'}
@@ -241,106 +240,123 @@
                           {:else if stands === 'current'}
                             Your rating
                           {:else}
-                            Replaced by a later rating
+                            Earlier rating
                           {/if}
                         </span>
-                        {#if said.moved}
-                          · <span class="entry__was">{said.words.text} at the time</span>
-                        {/if}
                       </span>
-                      {#if event.note}<span class="note">“{event.note}”</span>{/if}
-                      {#if ctx}
-                        <span class="note note--small entry__context">
-                          Context {formatScore(ctx.score ?? 0, scaleFor(event.entityType))}
-                          {#if ctx.adjusted !== null}
-                            · adjusted to {formatScore(ctx.adjusted, scaleFor(event.entityType))}
-                          {/if}
-                          · {ctx.coverage.rated} of {ctx.coverage.total} answered
-                        </span>
-                      {/if}
-                      {#if event.tags?.length}
-                        <span class="label">{event.tags.join(' · ')}</span>
-                      {/if}
                     </span>
 
                     <span class="entry__acts">
                       {#if entity}
-                        <InlineRating {entity} value={event.normalized} />
                         <button
                           type="button"
                           class="btn btn--small entry__open"
+                          id={`${uid}-${event.id}-toggle`}
                           aria-expanded={openId === event.id}
+                          aria-controls={openId === event.id
+                            ? `${uid}-${event.id}-editor`
+                            : undefined}
                           onclick={() => toggle(event)}
                         >
                           {openId === event.id ? 'Close' : 'Rate again'}
                           <span class="sr-only">{entity.name}</span>
                         </button>
                       {:else}
-                        <span class="note entry__unratable">
-                          Nothing left to rate — this one is out of your library.
-                        </span>
+                        <span class="note entry__unratable"> Item removed </span>
                       {/if}
-
-                      {#if entryAction(event) === 'delete'}
-                        {#if confirmId === event.id}
-                          <span class="entry__confirm">
-                            <button
-                              type="button"
-                              class="btn btn--small btn--danger"
-                              onclick={() => void remove(event)}
-                            >
-                              Delete for good
-                            </button>
+                    </span>
+                  </div>
+                  <details class="entry__details" open={$settings.showExplanations}>
+                    <summary class="note note--small"
+                      >Details<span class="sr-only">
+                        for {entity?.name ?? event.entityId}, {dateAndTime(event.at)}</span
+                      ></summary
+                    >
+                    <div class="entry__detail-body">
+                      {#if event.confidence}<p class="note note--small">
+                          {event.confidence} confidence
+                        </p>{/if}
+                      {#if said.moved}<p class="note note--small">
+                          {said.words.text} on the original scale
+                        </p>{/if}
+                      {#if event.note}<p class="note">“{event.note}”</p>{/if}
+                      {#if ctx}
+                        <p class="note note--small entry__context">
+                          Context {formatScore(ctx.score ?? 0, scaleFor(event.entityType))}
+                          {#if ctx.adjusted !== null}
+                            · adjusted to {formatScore(ctx.adjusted, scaleFor(event.entityType))}
+                          {/if}
+                          · {ctx.coverage.rated} of {ctx.coverage.total} answered
+                        </p>
+                      {/if}
+                      {#if event.tags?.length}<p class="note note--small">
+                          {event.tags.join(' · ')}
+                        </p>{/if}
+                      <div class="row">
+                        {#if entity}<InlineRating {entity} value={event.normalized} />{/if}
+                        {#if entryAction(event) === 'delete'}
+                          {#if confirmId === event.id}
+                            <span class="entry__confirm">
+                              <button
+                                type="button"
+                                class="btn btn--small btn--danger"
+                                onclick={() => void remove(event)}
+                              >
+                                Delete for good
+                              </button>
+                              <button
+                                type="button"
+                                class="btn btn--small btn--quiet"
+                                onclick={() => (confirmId = null)}
+                              >
+                                Keep it
+                              </button>
+                            </span>
+                          {:else}
                             <button
                               type="button"
                               class="btn btn--small btn--quiet"
-                              onclick={() => (confirmId = null)}
+                              onclick={() => (confirmId = event.id)}
                             >
-                              Keep it
+                              Delete permanently
+                              <span class="sr-only">this withdrawn entry</span>
                             </button>
-                          </span>
+                          {/if}
                         {:else}
                           <button
                             type="button"
                             class="btn btn--small btn--quiet"
-                            onclick={() => (confirmId = event.id)}
+                            onclick={() => void withdraw(event)}
                           >
-                            Delete permanently
-                            <span class="sr-only">this withdrawn entry</span>
+                            Withdraw
+                            <span class="sr-only">this entry</span>
                           </button>
                         {/if}
-                      {:else}
-                        <button
-                          type="button"
-                          class="btn btn--small btn--quiet"
-                          onclick={() => void withdraw(event)}
-                        >
-                          Withdraw
-                          <span class="sr-only">this entry</span>
-                        </button>
-                      {/if}
-                    </span>
-                  </div>
+                      </div>
+                    </div>
+                  </details>
 
                   {#if confirmId === event.id}
                     <p class="entry__warn note" role="alert">
-                      Deleting removes this entry from your history here and, once they sync, on
-                      your other devices. Withdrawing already stopped it counting — this only
-                      removes the record of it, and it cannot be undone.
+                      Permanently removes this withdrawn entry here and on synced devices. Cannot be
+                      undone.
                     </p>
                   {/if}
 
                   {#if openId === event.id && entity}
-                    <div class="entry__editor">
+                    <div class="entry__editor" id={`${uid}-${event.id}-editor`}>
                       <RatePanel
                         {entity}
                         inline
                         shortcuts={false}
                         seed={seedFrom(event)}
-                        aboutSaving="Filled in from this entry, made {dateAndTime(
+                        aboutSaving="From {dateAndTime(
                           event.at,
-                        )}. Saving writes a new entry at today's date and makes it your rating; this one stays in the record as it is."
-                        onafter={() => (openId = null)}
+                        )}. Saving adds a new rating; this entry stays unchanged."
+                        onafter={() => {
+                          openId = null;
+                          document.getElementById(`${uid}-${event.id}-toggle`)?.focus();
+                        }}
                       />
                     </div>
                   {/if}
@@ -356,12 +372,14 @@
         count={Math.min(limit, events.length)}
         noun="entries"
         onload={() => (limit += 120)}
-        endLabel="That is the whole record."
+        endLabel="All entries shown"
       />
     {:else}
       <Empty
-        title="Nothing recorded yet"
-        body="Ratings appear here the moment you make them, with the note and the context they were made in. Nothing is ever overwritten."
+        title={search || typeFilter !== 'all' ? 'No matching ratings' : 'No ratings yet'}
+        body={search || typeFilter !== 'all'
+          ? 'Change the search or type filter to see more entries.'
+          : 'Each rating adds an entry. Earlier ratings stay unchanged.'}
       />
     {/if}
   </div>
@@ -388,8 +406,8 @@
       </label>
     </div>
 
-    <div class="stack stack--tight">
-      <h2 class="label">Withdraw or delete</h2>
+    <details class="history-help" open={$settings.showExplanations}>
+      <summary class="note note--small">How history works</summary>
       <p class="note note--small">
         Withdraw keeps the entry in History but stops it counting as your rating. Delete permanently
         removes a withdrawn entry from synced history.
@@ -397,7 +415,7 @@
       <p class="note note--small">
         Rating something again never changes an old entry. It writes a new one.
       </p>
-    </div>
+    </details>
 
     {#if swing}
       <div class="stack stack--tight">
@@ -419,6 +437,11 @@
 </div>
 
 <style>
+  .entry {
+    display: block;
+    min-width: 0;
+    cursor: default;
+  }
   .record {
     display: flex;
     flex-direction: column;
@@ -485,6 +508,25 @@
     gap: 2px;
     min-width: 0;
   }
+  .entry__details {
+    margin: var(--s2) 0 0 calc(3.5rem + var(--s3));
+  }
+  .entry__details summary,
+  .history-help summary {
+    cursor: pointer;
+    color: var(--ink-quiet);
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
+  }
+  .entry__detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding-top: var(--s2);
+  }
+  .history-help p {
+    margin-top: var(--s2);
+  }
   /* The context figures are a footnote to the entry, not a second headline. */
   .entry__context {
     font-variant-numeric: tabular-nums;
@@ -521,10 +563,6 @@
   }
   /* Said only when the scale has changed since, so it is rare enough to read
      as a footnote rather than as a second score. */
-  .entry__was {
-    color: var(--ink-faint);
-  }
-
   .entry__acts {
     display: flex;
     flex-wrap: wrap;
@@ -559,6 +597,9 @@
   }
 
   @media (max-width: 48rem) {
+    .entry__details {
+      margin-left: calc(3rem + var(--s3));
+    }
     .entry__line {
       grid-template-columns: 3rem minmax(0, 1fr);
     }
