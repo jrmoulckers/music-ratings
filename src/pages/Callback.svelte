@@ -30,7 +30,7 @@
    * is sent there.
    */
 
-  let message = $state('Finishing the connection…');
+  let message = $state('Connecting…');
   let failed = $state(false);
   // Whether the trip that failed was started by setup, which changes what the
   // useful way out of the failure is.
@@ -134,7 +134,8 @@
 </script>
 
 <div class="landing">
-  <p class="landing__text" class:is-failed={failed}>{message}</p>
+  <h1 class="title">{failed ? 'Connection failed' : 'Connecting'}</h1>
+  <p class="landing__text" class:is-failed={failed} role={failed ? 'alert' : 'status'}>{message}</p>
   {#if failed}
     <div class="row">
       {#if fromOnboarding}

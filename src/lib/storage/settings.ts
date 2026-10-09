@@ -85,6 +85,8 @@ export interface AppSettings {
   density: DensityChoice;
   artwork: ArtworkChoice;
   highContrast: boolean;
+  /** Open supporting explanations by default, without changing scores or sync. */
+  showExplanations: boolean;
   syncEnabled: boolean;
   syncFileName: string;
   /**
@@ -160,6 +162,7 @@ export const LOCAL_SETTINGS = [
   'density',
   'artwork',
   'highContrast',
+  'showExplanations',
   'syncEnabled',
   'syncFileName',
   'onedriveFolderMode',
@@ -219,6 +222,7 @@ export function defaultSettings(): AppSettings {
     density: 'cozy',
     artwork: 'full',
     highContrast: false,
+    showExplanations: false,
     syncEnabled: false,
     syncFileName: 'music-ratings.json',
     onedriveFolderMode: 'app',
@@ -253,6 +257,7 @@ export function hydrateSettings(stored: Partial<AppSettings> | undefined): AppSe
   merged.enabledTypes = (stored.enabledTypes ?? base_.enabledTypes).filter(Boolean);
   if (merged.enabledTypes.length === 0) merged.enabledTypes = [...DEFAULT_ENABLED_TYPES];
   merged.contextEnabled = stored.contextEnabled === true;
+  merged.showExplanations = stored.showExplanations === true;
   merged.contextContribution = clampContribution(
     stored.contextContribution ?? base_.contextContribution,
   );
