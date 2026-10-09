@@ -1,6 +1,6 @@
 <script lang="ts">
   import { submitComparison } from '../lib/app/actions';
-  import { explicitRatings, rankings, scaleForType, scores } from '../lib/app/state';
+  import { explicitRatings, rankings, scaleForType, scores, settings } from '../lib/app/state';
   import { rankingConfidence } from '../lib/domain/elo';
   import { ratingWords } from '../lib/domain/phrases';
   import { denormalize, formatComputedOn } from '../lib/domain/scales';
@@ -65,8 +65,13 @@
   }
 
   function onKey(event: KeyboardEvent) {
-    const target = event.target as HTMLElement | null;
-    if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      target.closest('input, textarea, select, button, a, summary, [contenteditable]')
+    )
+      return;
     switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault();
@@ -77,7 +82,6 @@
         void judge('b');
         break;
       case '=':
-      case 'Enter':
         event.preventDefault();
         void judge('tie');
         break;
@@ -102,7 +106,7 @@
   class:tip-b={tip === 'b'}
   class:level={tip === 'level'}
 >
-  <p class="pair__reason note">{reason}</p>
+  <h2 class="pair__question title">Which do you prefer?</h2>
 
   <div class="pair__pans">
     <button
@@ -115,7 +119,7 @@
       <Artwork src={a.artworkUrl} thumb={a.artworkThumbUrl} name={a.name} size="lg" priority />
       <span class="pan__name title">{a.name}</span>
       {#if a.subtitle}<span class="note">{a.subtitle}</span>{/if}
-      <span class="label">{standing(a)} · {confidenceLine(a)}</span>
+      <span class="note note--small">{standing(a)}</span>
       <span class="pan__choose">
         <Icon name="check" size={13} />
         This one
@@ -139,7 +143,7 @@
       <Artwork src={b.artworkUrl} thumb={b.artworkThumbUrl} name={b.name} size="lg" priority />
       <span class="pan__name title">{b.name}</span>
       {#if b.subtitle}<span class="note">{b.subtitle}</span>{/if}
-      <span class="label">{standing(b)} · {confidenceLine(b)}</span>
+      <span class="note note--small">{standing(b)}</span>
       <span class="pan__choose">
         <Icon name="check" size={13} />
         This one
@@ -150,7 +154,7 @@
 
   <div class="pair__outs">
     <button type="button" class="btn" disabled={busy} onclick={() => void judge('tie')}>
-      <Icon name="versus" size={14} /> Level <kbd>=</kbd>
+      <Icon name="versus" size={14} /> Tie <kbd>=</kbd>
     </button>
     <button
       type="button"
@@ -161,9 +165,16 @@
       Don't know both <kbd>?</kbd>
     </button>
     <button type="button" class="btn btn--quiet" disabled={busy} onclick={() => void judge('skip')}>
-      Not this pair <kbd>S</kbd>
+      Skip <kbd>S</kbd>
     </button>
   </div>
+  <details class="pair__details" open={$settings.showExplanations}>
+    <summary class="note note--small">Pair details and shortcuts</summary>
+    <p class="note">{reason}</p>
+    <p class="note note--small">{a.name}: {confidenceLine(a)}</p>
+    <p class="note note--small">{b.name}: {confidenceLine(b)}</p>
+    <p class="note note--small">← / → choose · = tie · ? unfamiliar · S skip</p>
+  </details>
 </section>
 
 <style>
@@ -173,10 +184,20 @@
     gap: var(--s5);
   }
 
-  .pair__reason {
+  .pair__question {
     text-align: center;
-    max-width: 56ch;
-    margin-inline: auto;
+    font-size: 1.125rem;
+  }
+  .pair__details {
+    color: var(--ink-quiet);
+  }
+  .pair__details summary {
+    cursor: pointer;
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
+  }
+  .pair__details p {
+    margin-top: var(--s2);
   }
 
   .pair__pans {
@@ -215,6 +236,9 @@
     font-size: 1.25rem;
     margin-top: var(--s2);
   }
+  .pan .note {
+    color: var(--ink-quiet);
+  }
 
   /* The pan is the button, so it has to say so. */
   .pan__choose {
@@ -242,7 +266,7 @@
 
   /* A key cap is a lie on a device with no keys. */
   @media (hover: none) {
-    .pan__kbd {
+    kbd {
       display: none;
     }
   }

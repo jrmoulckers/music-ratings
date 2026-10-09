@@ -8,6 +8,7 @@
     entityLabelCap,
     graph,
     scaleForType,
+    settings,
     world,
   } from '../lib/app/state';
   import { checkCombine, planCombine, type CombinePlan } from '../lib/domain/canonical';
@@ -143,7 +144,7 @@
     return $graph.source(id)?.name ?? $graph.entity(id)?.name ?? id;
   }
 
-  function metaOf(id: EntityId): string {
+  function metaOf(id: EntityId, identify = false): string {
     const source = $graph.source(id);
     if (!source) return '';
     const count =
@@ -159,7 +160,7 @@
       source.releaseDate,
       count,
       duration(source.durationMs),
-      provider,
+      identify ? provider : '',
     ]
       .filter(Boolean)
       .join(' · ');
@@ -255,11 +256,18 @@
       {/each}
     </ul>
 
-    <p class="note note--small">
-      The primary is what gets played, linked and listed. Every source keeps its own Spotify link,
-      artwork and place in your library, and every rating you made on any of them is still in your
-      history.
-    </p>
+    <details class="source-details" open={$settings.showExplanations}>
+      <summary class="note note--small">Source details</summary>
+      <p class="note note--small">
+        The primary is played, linked and listed. Every source keeps its Spotify link, artwork and
+        library entry; every original rating stays in your history.
+      </p>
+      <ul>
+        {#each sources as source (source.id)}
+          <li class="note note--small">{metaOf(source.id, true)}</li>
+        {/each}
+      </ul>
+    </details>
 
     {#if group}
       <div class="row">
@@ -306,9 +314,8 @@
     <div class="work">
       {#if stage === 'pick'}
         <p class="note note--small work__help">
-          Combining tells the app that these are one {noun}. Nothing is deleted: each keeps its own
-          Spotify link and stays in your library. If two of them are rated, the two ratings are
-          averaged into one new entry and both originals stay in your history. It can be undone.
+          Treat these as one {noun}. Nothing is deleted. Multiple ratings are averaged into one new
+          entry; each original stays in your history. It can be undone.
         </p>
 
         <label class="field">
@@ -359,8 +366,13 @@
                       {VERDICT_LABEL[candidate.verdict]}
                     </span>
                   </button>
+                  <details class="cands__why" open={$settings.showExplanations}>
+                    <summary class="note note--small">Match evidence</summary>
+                    <p class="note note--small">
+                      {candidate.evidence.join(' ')}
+                    </p>
+                  </details>
                   <p class="note note--small cands__why">
-                    {candidate.evidence.join(' ')}
                     {#each candidate.uncertainty as caution (caution)}
                       <span class="cands__caution">{caution}</span>
                     {/each}
@@ -411,7 +423,8 @@
                 />
                 <span class="pick-primary__identity">
                   <span>{nameOf(id)}</span>
-                  {#if metaOf(id)}<span class="note note--small">{metaOf(id)}</span>{/if}
+                  {#if metaOf(id, true)}<span class="note note--small">{metaOf(id, true)}</span
+                    >{/if}
                 </span>
               </label>
               {#if source?.externalUrl}
@@ -496,6 +509,16 @@
   .fold--inline {
     padding-top: var(--s3);
     border-top: var(--rule-weight) solid var(--border-faint);
+  }
+  details summary {
+    cursor: pointer;
+    color: var(--ink-quiet);
+    min-height: var(--target-min, 2.875rem);
+    padding-block: var(--s2);
+  }
+  details p,
+  .source-details ul {
+    margin-top: var(--s2);
   }
 
   .fold__head {
@@ -634,7 +657,7 @@
   }
   .cands__caution {
     display: block;
-    color: var(--ink-faint);
+    color: var(--ink-quiet);
   }
 
   .pick-primary {

@@ -5,16 +5,16 @@
 
 <div class="sheet">
   <header class="head">
-    <h1 class="display">No such page</h1>
+    <h1 class="display">Page not found</h1>
   </header>
   <Empty
-    title="That address does not lead anywhere here"
-    body="The link may be from a newer version of the app, or simply mistyped. Nothing has been lost — your ratings are exactly where you left them."
+    title="This link is unavailable"
+    body="Check the address or return to your library. Your ratings are unchanged."
   >
     {#snippet action()}
       <div class="row">
-        <a class="btn btn--primary" href={href('/')}>Back to home</a>
-        <a class="btn" href={href('/library')}>Browse your library</a>
+        <a class="btn btn--primary" href={href('/')}>Home</a>
+        <a class="btn" href={href('/library')}>Library</a>
       </div>
     {/snippet}
   </Empty>
