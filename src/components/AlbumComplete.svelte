@@ -13,6 +13,7 @@
   import { formatComputedOn } from '../lib/domain/scales';
   import {
     CONFIRMED_BY,
+    DEMO_LISTENING_NOTE,
     completionSpanLine,
     heardAllLine,
     ordinalLine,
@@ -53,6 +54,7 @@
   const SNOOZE_MS = 86_400_000;
 
   const album = $derived($graph.entity(completion.albumId));
+  const isDemo = $derived(album?.provenance.via === 'demo-listening');
   const tracks = $derived(album ? albumTrackSet($graph, completion.albumId) : null);
   const rating = $derived($explicitRatings.get(completion.albumId));
   const breakdown = $derived($scores.get(completion.albumId));
@@ -175,10 +177,10 @@
       </dl>
     </details>
 
-    {#if !quiet}
+    {#if !quiet || isDemo}
       <p class="note note--small done__source">
         <Icon name="lens" size={12} />
-        {CONFIRMED_BY}
+        {isDemo ? DEMO_LISTENING_NOTE : CONFIRMED_BY}
       </p>
     {/if}
 
