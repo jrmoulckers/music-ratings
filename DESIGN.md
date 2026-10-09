@@ -148,7 +148,7 @@ Desktop uses a 13.5rem navigation column, with every section directly reachable 
 
 At ≤60rem or on a coarse-pointer touch device, show five equal destinations: **Search, Home, Rate, Library, More**. Compare, Rankings, Now playing, History, Listening, Insights, Settings, and Data health remain reachable in More. The More sheet is a native modal dialog: the browser contains focus and makes the background inert; Escape closes it; the close action restores focus to More. Route changes and returning to desktop close it.
 
-`--nav-h` is 3.5rem plus the device's bottom safe area, compatible with the existing player offset. The mini-player publishes `--player-h`; shell padding, updates, and notices clear both bands. Do not introduce fixed guessed player heights. `/` and Ctrl/Cmd+K retain global search behavior.
+`--nav-h` is 3.5rem plus the device's bottom safe area, compatible with the existing player offset. The mini-player publishes `--player-h`; shell padding, updates, and notices clear both bands. Do not introduce fixed guessed player heights. `/` and Ctrl/Cmd+K retain global search behavior outside native dialogs; while More is modal they do not open an inert Search overlay behind it.
 
 Status says only what is known: Local only, Offline, Sync connected, Syncing, Sync queued, Synced, Sync conflict, or Sync failed. Connected is not the same as synced. Errors and conflicts have words and a warning glyph, never color alone; Data health remains the recovery path.
 

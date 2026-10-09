@@ -73,7 +73,7 @@
   // Search is reachable from anywhere: "/" the way a reader jumps to find, and
   // ctrl/cmd-K the way every other tool on the mono does it.
   function onKey(event: KeyboardEvent) {
-    if (!showRail) return;
+    if (!showRail || document.querySelector('dialog[open]')) return;
     const target = event.target as HTMLElement | null;
     const typing =
       !!target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable);
