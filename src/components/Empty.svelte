@@ -44,7 +44,6 @@
     gap: var(--s3);
     align-items: flex-start;
     padding: var(--s5) 0;
-    border-top: var(--rule-weight) solid var(--border);
     max-width: var(--measure);
   }
 
@@ -52,6 +51,7 @@
     font-family: var(--display);
     font-size: 1.125rem;
     line-height: 1.3;
+    font-weight: 550;
   }
 
   .empty__body {

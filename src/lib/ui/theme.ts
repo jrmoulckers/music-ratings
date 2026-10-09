@@ -7,8 +7,6 @@ import type { AppSettings } from '../storage/settings';
  * decides what the page looks like, which is why a theme change is one write.
  */
 
-const THEME_COLOR = { light: '#f1ece2', dark: '#14140f' } as const;
-
 let systemTheme: MediaQueryList | null = null;
 let listening = false;
 
@@ -34,8 +32,11 @@ export function applyTheme(settings: AppSettings): void {
   root.dataset.contrast = settings.highContrast ? 'high' : 'normal';
   root.style.colorScheme = theme;
 
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', THEME_COLOR[theme]);
+  const surface = getComputedStyle(root).getPropertyValue('--surface').trim();
+  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+    meta.setAttribute('content', surface);
+    meta.removeAttribute('media');
+  }
 }
 
 /**

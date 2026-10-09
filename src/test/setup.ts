@@ -1,5 +1,20 @@
 import 'fake-indexeddb/auto';
 
+// Native modal behavior is delegated to the browser; jsdom has no dialog methods.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function (): void {
+    this.setAttribute('open', '');
+    this.querySelector<HTMLElement>('button, a, input, [tabindex]')?.focus();
+  };
+}
+if (!HTMLDialogElement.prototype.close) {
+  HTMLDialogElement.prototype.close = function (): void {
+    if (!this.open) return;
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  };
+}
+
 // jsdom does not implement these, and several modules touch them at import time.
 if (!globalThis.matchMedia) {
   globalThis.matchMedia = ((query: string) => ({
