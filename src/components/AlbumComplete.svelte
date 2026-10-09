@@ -140,30 +140,33 @@
       {/if}
     </p>
 
-    <dl class="done__facts">
-      <div>
-        <dt class="note note--small">Tracks rated</dt>
-        <dd class="mono">{rated.done} of {rated.total}</dd>
-      </div>
-      <div>
-        <dt class="note note--small">Observed plays</dt>
-        <dd class="mono">{plays}</dd>
-      </div>
-      <div>
-        <dt class="note note--small">{rating ? 'Your rating' : 'Computed from tracks'}</dt>
-        <dd class="mono">
-          <!-- RATING SURFACE: read-only value text. Formatter only, no rating
+    <details class="done__evidence">
+      <summary class="note note--small">Listening evidence</summary>
+      <dl class="done__facts">
+        <div>
+          <dt class="note note--small">Tracks rated</dt>
+          <dd class="figure">{rated.done} of {rated.total}</dd>
+        </div>
+        <div>
+          <dt class="note note--small">Observed plays</dt>
+          <dd class="figure">{plays}</dd>
+        </div>
+        <div>
+          <dt class="note note--small">{rating ? 'Your rating' : 'Computed from tracks'}</dt>
+          <dd class="figure">
+            <!-- RATING SURFACE: read-only value text. Formatter only, no rating
                component. Swap for the canonical inline display if one lands. -->
-          {#if rating}
-            {formatComputedOn(scale, rating.normalized)}
-          {:else if breakdown?.rollup != null}
-            <span class="done__computed">{formatComputedOn(scale, breakdown.rollup)}</span>
-          {:else}
-            —
-          {/if}
-        </dd>
-      </div>
-    </dl>
+            {#if rating}
+              {formatComputedOn(scale, rating.normalized)}
+            {:else if breakdown?.rollup != null}
+              <span class="done__computed">{formatComputedOn(scale, breakdown.rollup)}</span>
+            {:else}
+              —
+            {/if}
+          </dd>
+        </div>
+      </dl>
+    </details>
 
     {#if !quiet}
       <p class="note note--small done__source">
@@ -182,7 +185,7 @@
           onafter={rated_}
           ondetails={() => (open = !open)}
           detailsOpen={open}
-          detailsLabel="Note, confidence and context"
+          detailsLabel="Rating details"
         />
         <a class="btn btn--quiet" href="{entityHref(album.id)}?unrated=1">Review tracks</a>
         <button
@@ -210,7 +213,7 @@
             inline
             shortcuts={false}
             where="album-listening"
-            aboutSaving="Saves a rating for this record. It does not change what was observed."
+            aboutSaving="Rates the album. Listening evidence stays unchanged."
             onafter={rated_}
           />
         </div>
@@ -251,7 +254,7 @@
   }
   .done__name {
     margin: 0;
-    font-family: var(--serif);
+    font-family: var(--display);
     font-size: 1.25rem;
     font-weight: 500;
     line-height: 1.2;
@@ -290,6 +293,11 @@
     flex-wrap: wrap;
     gap: var(--s2) var(--s5);
     margin: 0;
+    margin-top: var(--s3);
+  }
+  .done__evidence summary {
+    cursor: pointer;
+    padding-block: var(--s2);
   }
   .done__facts div {
     display: grid;

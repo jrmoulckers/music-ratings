@@ -120,14 +120,12 @@
 
 <section class="find" aria-labelledby="find-head">
   <div class="head">
-    <h2 id="find-head" class="title">Find something not here yet</h2>
-    <span class="label">Spotify catalogue</span>
+    <h2 id="find-head" class="title">Search Spotify</h2>
   </div>
 
   {#if !$spotifySession.connected}
     <p class="note">
-      Connect Spotify in Settings to search the catalogue. Everything already in your library stays
-      searchable without a connection.
+      Connect Spotify in Settings to search its catalogue. Your library works offline.
     </p>
   {:else}
     <form
@@ -157,9 +155,9 @@
     {/if}
 
     {#if failure}
-      <p class="note note--warn">{failure}</p>
+      <p class="note note--warn" role="status">{failure}</p>
     {:else if searched && results.length === 0}
-      <p class="note">Spotify returned nothing for that, in the types you have enabled.</p>
+      <p class="note" role="status">No results for your enabled kinds.</p>
     {:else if results.length > 0}
       <ul class="find__rows">
         {#each results.slice(0, shown) as entity (entity.id)}
@@ -225,7 +223,7 @@
   }
   .find__rows li {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
     gap: var(--s3);
     align-items: center;
     padding: var(--s2) 0;
@@ -245,5 +243,26 @@
     align-items: center;
     gap: var(--s2);
     white-space: nowrap;
+  }
+  @media (max-width: 52rem) {
+    .find__form {
+      flex-wrap: wrap;
+    }
+    .find__rows li {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    .find__kind {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    .find__rows li > :global(.inline) {
+      grid-column: 2;
+      grid-row: 3;
+    }
+    .find__rows li > :global(.btn) {
+      grid-column: 3;
+      grid-row: 1 / 3;
+      min-height: 2.75rem;
+    }
   }
 </style>

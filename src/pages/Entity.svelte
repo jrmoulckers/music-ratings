@@ -367,7 +367,12 @@
           </p>
           <h1 class="item__name display">{entity.name}</h1>
           {#if heroSubtitle}<p class="item__sub">{heroSubtitle}</p>{/if}
-          {#if entity.description}<p class="note item__desc">{entity.description}</p>{/if}
+          {#if entity.description}
+            <details class="disclose">
+              <summary class="disclose__head">About this {entityLabel(entity.type)}</summary>
+              <p class="note item__desc">{entity.description}</p>
+            </details>
+          {/if}
           {#if arrivedByAlias}
             <p class="note note--small item__alias">
               You followed a link to {$graph.source(requested)?.name ?? 'another copy'}, which you
@@ -409,7 +414,7 @@
                 void pin(entity, annotation?.pinned === 'favorite' ? null : 'favorite')}
             >
               <Icon name="pin" size={13} />
-              {annotation?.pinned === 'favorite' ? 'Pinned as a favourite' : 'Pin as a favourite'}
+              {annotation?.pinned === 'favorite' ? 'Favourite pinned' : 'Pin favourite'}
             </button>
             <button
               type="button"
@@ -417,7 +422,7 @@
               aria-pressed={annotation?.pinned === 'avoid'}
               onclick={() => void pin(entity, annotation?.pinned === 'avoid' ? null : 'avoid')}
             >
-              {annotation?.pinned === 'avoid' ? 'Pinned to avoid' : 'Pin to avoid'}
+              {annotation?.pinned === 'avoid' ? 'Avoid pinned' : 'Pin avoid'}
             </button>
           </div>
         </div>
@@ -430,7 +435,7 @@
         </div>
         <div class="rating__marks">
           <div>
-            <p class="label">You said</p>
+            <p class="label">Your rating</p>
             <p class="rating__figure figure">
               {explicit ? formatScore(explicit.normalized, scale) : '—'}
             </p>
@@ -449,7 +454,7 @@
           </div>
           {#if position}
             <div>
-              <p class="label">Standing</p>
+              <p class="label">Rank</p>
               <p class="rating__figure figure">
                 {position.place}<span class="rating__of">/{position.of}</span>
               </p>
@@ -652,11 +657,8 @@
       <CombinePanel {entity} />
 
       {#if history.length > 0}
-        <section aria-labelledby="history-head">
-          <div class="head">
-            <h2 id="history-head" class="title">How your view changed</h2>
-            <span class="label">{history.length} entries</span>
-          </div>
+        <details class="disclose">
+          <summary class="disclose__head">Rating history · {history.length} entries</summary>
           <ol class="history">
             {#each history as event (event.id)}
               {@const source = $graph.source(event.entityId)}
@@ -681,7 +683,7 @@
               </li>
             {/each}
           </ol>
-        </section>
+        </details>
       {/if}
     </div>
 
@@ -699,35 +701,37 @@
         </div>
       {/if}
 
-      <div class="stack stack--tight">
-        <h2 class="label">Your notes and tags</h2>
-        <label class="field">
-          <span class="sr-only">A standing note about {entity.name}</span>
-          <textarea
-            class="textarea"
-            rows="3"
-            bind:value={noteDraft}
-            onblur={() => void setStandingNote(id, noteDraft)}
-            placeholder="Kept with the item, not with any one rating."
-          ></textarea>
-        </label>
-        <label class="field">
-          <span class="label">Tags</span>
-          <input
-            class="input"
-            bind:value={tagDraft}
-            onblur={() =>
-              void setTags(
-                id,
-                tagDraft
-                  .split(',')
-                  .map((t) => t.trim())
-                  .filter(Boolean),
-              )}
-            placeholder="comma, separated"
-          />
-        </label>
-      </div>
+      <details class="disclose" open={Boolean(annotation?.note || annotation?.tags?.length)}>
+        <summary class="disclose__head">Notes & tags</summary>
+        <div class="disclose__body stack stack--tight">
+          <label class="field">
+            <span class="sr-only">A standing note about {entity.name}</span>
+            <textarea
+              class="textarea"
+              rows="3"
+              bind:value={noteDraft}
+              onblur={() => void setStandingNote(id, noteDraft)}
+              placeholder="Note about this item, separate from ratings"
+            ></textarea>
+          </label>
+          <label class="field">
+            <span class="label">Tags</span>
+            <input
+              class="input"
+              bind:value={tagDraft}
+              onblur={() =>
+                void setTags(
+                  id,
+                  tagDraft
+                    .split(',')
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                )}
+              placeholder="comma, separated"
+            />
+          </label>
+        </div>
+      </details>
 
       <details class="disclose">
         <summary class="disclose__head">Details</summary>
@@ -755,7 +759,7 @@
     gap: var(--s5);
     align-items: flex-start;
     padding-bottom: var(--s5);
-    border-bottom: var(--rule-weight) solid var(--ink);
+    border-bottom: var(--rule-weight) solid var(--border);
   }
   .item__id {
     min-width: 0;
@@ -793,9 +797,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--s5);
-    padding: var(--s5);
-    background: var(--surface-raised);
-    border: var(--rule-weight) solid var(--border);
+    padding-block: var(--s4);
   }
   .rating__marks {
     display: flex;
@@ -920,11 +922,14 @@
 
   @media (max-width: 48rem) {
     .item {
-      flex-direction: column;
-      gap: var(--s4);
+      gap: var(--s3);
+    }
+    .item > :global(.art) {
+      width: 5rem;
+      height: 5rem;
     }
     .rating {
-      padding: var(--s4);
+      padding-block: var(--s3);
     }
   }
 

@@ -267,7 +267,7 @@
   }
   .mini__btn {
     padding-inline: var(--s3);
-    min-height: 44px;
+    min-height: 46px;
   }
   .mini__btn--play {
     border-color: var(--ink);
@@ -292,23 +292,29 @@
     text-overflow: ellipsis;
   }
 
-  /* Phones keep what is playing, one control and the rating; the volume, the
-     device and the second and third transport buttons are a tap away on the
-     page. The rail stays: it is the only one in the app. */
+  /* The full transport stays reachable: this is the app's only transport. */
   @media (max-width: 48rem), (hover: none) and (pointer: coarse) {
     .mini__scrub {
       padding-inline: var(--s4);
     }
     .mini__body {
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      gap: var(--s3);
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--s2) var(--s3);
       padding: var(--s2) var(--s4);
     }
     .mini__aside {
       display: none;
     }
-    .mini__transport .mini__btn:not(.mini__btn--play) {
-      display: none;
+    .mini__transport {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .mini__rate {
+      grid-column: 2;
+      grid-row: 1 / 3;
+    }
+    .mini__btn {
+      min-width: 2.875rem;
     }
   }
 </style>

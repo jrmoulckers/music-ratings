@@ -99,10 +99,7 @@
   </div>
 
   {#if devices.length === 0}
-    <p class="note">
-      Spotify does not see any devices right now. Open Spotify on a phone, computer or speaker and
-      refresh, or make this browser the device.
-    </p>
+    <p class="note">No devices found. Open Spotify and refresh, or play in this browser.</p>
   {:else}
     <ul class="picker__list">
       {#each devices as device (device.id ?? device.name)}
@@ -114,7 +111,7 @@
             <span class="note picker__meta">
               {device.type}{device.privateSession ? ' · private session' : ''}
               {#if device.restricted}
-                · will not accept remote control
+                · remote control unavailable
               {/if}
             </span>
           </span>
@@ -138,14 +135,13 @@
   {#if !demo}
     <div class="picker__browser stack">
       {#if $browserPlayer.status === 'ready'}
-        <p class="note">This browser is a Spotify device. It stops when you close the tab.</p>
+        <p class="note">Playing in this browser stops when you close the tab.</p>
         <button type="button" class="btn btn--small btn--quiet" onclick={stopBrowserPlayer}>
           Stop using this browser
         </button>
       {:else if needsStreaming}
         <p class="note">
-          Playing in this browser needs one more Spotify permission. Reconnect Spotify to grant it —
-          your ratings and library are untouched.
+          Reconnect Spotify to allow browser playback. Your library stays unchanged.
         </p>
         <div class="row">
           <button type="button" class="btn btn--small" onclick={() => void reconnect()}>
@@ -154,10 +150,7 @@
           <a class="btn btn--small btn--quiet" href={href('/settings')}>Open Settings</a>
         </div>
       {:else}
-        <p class="note">
-          This browser can become a Spotify device. It needs Spotify Premium, and sound only starts
-          after you press play here.
-        </p>
+        <p class="note">Browser playback needs Premium. Press below to start.</p>
         <button
           type="button"
           class="btn btn--small"
@@ -208,6 +201,6 @@
   }
 
   .picker__notice {
-    color: var(--danger);
+    color: var(--ink);
   }
 </style>
