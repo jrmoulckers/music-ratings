@@ -3,7 +3,7 @@
   import { topUpArtistArtwork } from '../lib/app/artwork';
   import { notify } from '../lib/app/notices';
   import { rememberSearch } from '../lib/app/recent-searches';
-  import { entityHref } from '../lib/app/router';
+  import { entityHref, href } from '../lib/app/router';
   import { closeSearch } from '../lib/app/search-overlay';
   import { entityLabelCap, explicitRatings, graph, scaleForType, settings } from '../lib/app/state';
   import { formatComputedOn } from '../lib/domain/scales';
@@ -14,6 +14,7 @@
   import { searchCatalogue } from '../lib/spotify/library';
   import { spotifyConfig, spotifySession } from '../lib/spotify/session';
   import { saveMemberships, upsertEntities } from '../lib/storage/repo';
+  import { focusTrap } from '../lib/ui/actions';
   import Icon from '../lib/ui/Icon.svelte';
   import Artwork from './Artwork.svelte';
   import EntityTypeIcon from './EntityTypeIcon.svelte';
@@ -58,6 +59,7 @@
       .filter(
         (entity) =>
           enabled.has(entity.type) &&
+          ($settings.showExplicitContent || !entity.explicitContent) &&
           (entity.name.toLowerCase().includes(needle) ||
             (entity.subtitle ?? '').toLowerCase().includes(needle)),
       )
@@ -88,7 +90,7 @@
   const freshMarks = $derived(editionMarks(fresh));
 
   async function searchSpotify() {
-    if (!needle || running) return;
+    if (!needle || running || !$spotifySession.connected) return;
     running = true;
     error = null;
     const asked = needle;
@@ -176,7 +178,7 @@
   }}
   onkeydown={() => {}}
 >
-  <div class="panel" role="dialog" aria-modal="true" aria-label="Search to rate">
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Find music" use:focusTrap>
     <form
       class="panel__bar"
       onsubmit={(event) => {
@@ -192,7 +194,7 @@
         type="search"
         bind:this={input}
         bind:value={term}
-        placeholder="Search anything to rate it…"
+        placeholder="Find music…"
         autocomplete="off"
       />
       <button type="button" class="btn btn--small btn--quiet" onclick={() => closeSearch()}>
@@ -236,7 +238,7 @@
         />
 
         <a class="panel__more" href={entityHref(picked.id)} onclick={() => closeSearch()}>
-          Open the full page for more options
+          Open details
         </a>
       </div>
     {:else}
@@ -244,8 +246,7 @@
         {#if needle.length === 0}
           <RecentSearches id="overlay-recent" onpick={rerun} />
           <p class="note panel__hint">
-            Type to find anything in your library. Press Enter to search the Spotify catalogue as
-            well.
+            Search your library{$spotifySession.connected ? ' · Enter also searches Spotify.' : '.'}
           </p>
         {:else}
           {#if mine.length > 0}
@@ -317,9 +318,7 @@
               {/each}
             </ul>
           {:else if searched}
-            <p class="note panel__group">
-              Spotify returned nothing new for that, in the types you have enabled.
-            </p>
+            <p class="note panel__group">No new Spotify results for your enabled kinds.</p>
           {:else if $spotifySession.connected}
             <button
               type="button"
@@ -332,8 +331,7 @@
             </button>
           {:else}
             <p class="note panel__group">
-              This searches what is already on this device. Connect Spotify in Settings to search
-              the full catalogue and add things from it.
+              <a href={href('/settings')}>Connect Spotify</a> to search its catalogue.
             </p>
           {/if}
         {/if}
@@ -495,6 +493,23 @@
     }
     .seat__head > :global(button) {
       grid-column: 1 / -1;
+    }
+    .row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: var(--s2);
+      min-height: 2.75rem;
+    }
+    .row__kind {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    .row__state {
+      grid-column: 3;
+      grid-row: 1 / 3;
+    }
+    .panel__bar > button {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
     }
   }
 </style>

@@ -253,15 +253,11 @@
     <p class="panel__prior note">{aboutSaving}</p>
   {:else if existing}
     <p class="panel__prior note">
-      You last rated this {relative(existing.at)}. A new rating is saved alongside the old one, not
-      over it.
+      Rated {relative(existing.at)}. Re-rating keeps your history.
     </p>
   {:else if breakdown?.rollup !== null && breakdown?.rollup !== undefined}
     <p class="panel__prior note">
-      Never rated directly. Its contents currently compute to {formatComputedOn(
-        scale,
-        breakdown.rollup,
-      )} on the {scale.label} scale.
+      Not rated directly. Computed: {formatComputedOn(scale, breakdown.rollup)} on the {scale.label} scale.
     </p>
   {/if}
 
@@ -280,34 +276,37 @@
     />
   </div>
 
-  <div class="panel__aside">
-    <label class="field">
-      <span class="label">Note (optional)</span>
-      <textarea
-        class="textarea"
-        bind:value={note}
-        rows="2"
-        placeholder="Optional. Saved with this rating."
-      ></textarea>
-    </label>
+  <details class="panel__extras" open={Boolean(seed?.note)}>
+    <summary class="note">Note & confidence</summary>
+    <div class="panel__aside">
+      <label class="field">
+        <span class="label">Note (optional)</span>
+        <textarea
+          class="textarea"
+          bind:value={note}
+          rows="2"
+          placeholder="Add a note to this rating"
+        ></textarea>
+      </label>
 
-    <fieldset class="panel__confidence">
-      <legend class="label">How sure are you?</legend>
-      <div class="row row--tight">
-        {#each ['low', 'medium', 'high'] as const as level (level)}
-          <button
-            type="button"
-            class="btn btn--small"
-            aria-pressed={confidence === level}
-            class:is-on={confidence === level}
-            onclick={() => (confidence = level)}
-          >
-            {CONFIDENCE_LABEL[level]}
-          </button>
-        {/each}
-      </div>
-    </fieldset>
-  </div>
+      <fieldset class="panel__confidence">
+        <legend class="label">Confidence</legend>
+        <div class="row row--tight">
+          {#each ['low', 'medium', 'high'] as const as level (level)}
+            <button
+              type="button"
+              class="btn btn--small"
+              aria-pressed={confidence === level}
+              class:is-on={confidence === level}
+              onclick={() => (confidence = level)}
+            >
+              {CONFIDENCE_LABEL[level]}
+            </button>
+          {/each}
+        </div>
+      </fieldset>
+    </div>
+  </details>
 
   {#if offered.length > 0}
     <section class="panel__context">
@@ -324,7 +323,7 @@
           {#if answered > 0}
             {answered} of {offered.length} answered
           {:else}
-            Optional · {offered.length} questions
+            {offered.length} optional questions
           {/if}
         </span>
       </button>
@@ -343,9 +342,9 @@
           <div class="panel__save">
             <p class="note note--small">
               {#if holding === null}
-                Choose your own rating above — context is saved with a rating, never instead of one.
+                Choose a rating above to save these answers.
               {:else}
-                Saved as one rating: your value, this note, and every answer above.
+                Saves your rating, note and answers together.
               {/if}
             </p>
             <div class="row row--tight">
@@ -373,13 +372,13 @@
         <!-- The row above already carries skip and snooze. -->
         <p class="note">
           {#if contextOpen}
-            Set a value above, answer what you like, then save. It is all recorded as one rating.
+            Choose a rating and save your answers together.
           {:else if composed}
-            Set a value above, then save it. The note and confidence are saved with it.
+            Set a value, then save.
           {:else if existing}
-            Choose a new value above to rate this again.
+            Choose a value to re-rate.
           {:else}
-            Choose a value above to rate this.
+            Choose a value to rate.
           {/if}
           {#if shortcuts}
             <kbd>S</kbd> skips, <kbd>Z</kbd> snoozes.
@@ -493,12 +492,20 @@
     grid-area: rail;
   }
 
-  .panel__aside {
+  .panel__extras {
     grid-area: aside;
+  }
+  .panel__extras summary {
+    cursor: pointer;
+    padding-block: var(--s2);
+    color: var(--ink);
+  }
+  .panel__aside {
     display: flex;
     gap: var(--s6);
     align-items: flex-end;
     flex-wrap: wrap;
+    margin-top: var(--s3);
   }
   .panel__aside > :global(.field) {
     flex: 1 1 18rem;
@@ -600,6 +607,9 @@
         'context'
         'actions';
       padding: var(--s4);
+    }
+    .panel--inline {
+      padding: 0;
     }
   }
 </style>

@@ -154,10 +154,10 @@
             aria-expanded={albumOpen}
             onclick={() => (albumOpen = !albumOpen)}
           >
-            {albumOpen ? 'Close' : 'Note, confidence and context'}
+            {albumOpen ? 'Close details' : 'Rating details'}
           </button>
           <button type="button" class="btn btn--small btn--quiet" onclick={clearAlbumSession}>
-            {finished ? 'Done' : 'Stop rating this record'}
+            {finished ? 'Done' : 'End session'}
           </button>
         </div>
       </div>
@@ -177,9 +177,9 @@
 
     {#if albumScore?.blended !== null && albumScore !== undefined && albumScale}
       <p class="note album__computed">
-        Computed from what you have rated: <span class="figure"
+        Blended score: <span class="figure"
           >{formatComputedOn(albumScale, albumScore.blended ?? 0)}</span
-        >. Your own rating of the record is never changed by this.
+        >. Your direct rating stays separate.
         <a href={entityHref(album.id)}>Why this score?</a>
       </p>
     {/if}
@@ -240,12 +240,15 @@
           </li>
         {/each}
       </ol>
-      <p class="note note--small album__legend">
-        <span class="mono">confirmed</span> means Spotify has recorded the play, which is the only
-        thing that counts towards finishing a record.
-        <span class="mono">heard here</span> means this device watched it play through and Spotify has
-        not reported it back yet — usually a matter of minutes.
-      </p>
+      <details class="album__legend">
+        <summary class="note note--small">Listening status explained</summary>
+        <p class="note note--small">
+          <span class="mono">confirmed</span> means Spotify has recorded the play, which is the only
+          thing that counts towards finishing a record.
+          <span class="mono">heard here</span> means this device watched it play through and Spotify has
+          not reported it back yet — usually a matter of minutes.
+        </p>
+      </details>
     {/if}
   </section>
 {/if}

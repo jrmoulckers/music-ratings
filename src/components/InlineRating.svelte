@@ -291,9 +291,11 @@
 <style>
   .inline {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--s2);
     min-width: 0;
+    max-width: 100%;
   }
 
   /*
@@ -331,7 +333,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--s1);
-    min-height: 2.25rem;
+    min-height: 2.875rem;
     padding: 0 var(--s3);
     border: var(--rule-weight) solid var(--border);
     border-radius: var(--radius-sm);
@@ -366,7 +368,8 @@
     flex-direction: column;
     gap: var(--s2);
     padding: var(--s3);
-    min-width: max-content;
+    width: max-content;
+    max-width: calc(100vw - 2 * var(--s4));
   }
   .inline__popname {
     max-width: 14rem;

@@ -74,6 +74,33 @@ describe('the context section in the shared editor', () => {
     expect(disclose?.getAttribute('aria-expanded')).toBe('false');
     expect(disclose?.textContent).toContain('Deeper rating');
     expect(root.querySelector('.ctx')).toBeNull();
+    expect(root.querySelector<HTMLDetailsElement>('.panel__extras')?.open).toBe(false);
+    expect(root.querySelector('.panel__extras summary')?.textContent).toContain(
+      'Note & confidence',
+    );
+  });
+
+  it('keeps a historical note visible without opening deeper questions', () => {
+    const root = panel({ seed: { normalized: 70, note: 'A quieter second listen.' } });
+    expect(root.querySelector<HTMLDetailsElement>('.panel__extras')?.open).toBe(true);
+    expect(root.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
+      'A quieter second listen.',
+    );
+    expect(root.querySelector('.ctx')).toBeNull();
+  });
+
+  it('keeps optional notes intact when their disclosure closes', () => {
+    const root = panel();
+    const extras = root.querySelector<HTMLDetailsElement>('.panel__extras')!;
+    extras.open = true;
+    const field = root.querySelector<HTMLTextAreaElement>('textarea')!;
+    field.value = 'Keep this draft';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+    extras.open = false;
+    extras.open = true;
+    flushSync();
+    expect(field.value).toBe('Keep this draft');
   });
 
   it('opens onto the questions that apply to this type, and no others', () => {
@@ -119,7 +146,7 @@ describe('the context section in the shared editor', () => {
     const save = root.querySelector<HTMLButtonElement>('.panel__save .btn--primary')!;
     expect(save.disabled).toBe(true);
     expect(root.querySelector('.panel__save .note')?.textContent).toContain(
-      'context is saved with a rating, never instead of one',
+      'Choose a rating above to save these answers',
     );
   });
 
@@ -138,7 +165,9 @@ describe('the context section in the shared editor', () => {
     expect(root.querySelector<HTMLButtonElement>('.panel__save .btn--primary')!.disabled).toBe(
       false,
     );
-    expect(root.querySelector('.panel__save .note')?.textContent).toContain('Saved as one rating');
+    expect(root.querySelector('.panel__save .note')?.textContent).toContain(
+      'Saves your rating, note and answers together',
+    );
   });
 
   it('reopens on the answers an entry was saved with, not on a blank sheet', () => {
