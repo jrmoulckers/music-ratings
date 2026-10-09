@@ -1,10 +1,4 @@
-/*
-  Music Ratings — the built world.
-
-  A plain, legible product surface: neutral greys, one accent, one typeface.
-  Nothing here is decorative for its own sake. State is shown by weight and
-  fill rather than by ornament, and every page says what it is for.
-*/
+/* Studio-aligned primitives feed compatible semantic roles and shared controls. */
 
 /* -------------------------------------------------------------------------- */
 /* Tokens                                                                     */
@@ -13,61 +7,87 @@
 :root {
   color-scheme: light;
 
-  /* Surfaces and text. */
-  --surface: #f5f5f7;
-  --surface-sunk: #eaeaee;
-  --surface-raised: #ffffff;
-  --ink: #17171b;
-  --ink-quiet: #54545e;
-  --ink-faint: #7a7a86;
-  --border: #d5d5dc;
-  --border-faint: #e6e6eb;
+  --palette-light-ground: #f4f4fb;
+  --palette-light-secondary: #f1f1f9;
+  --palette-light-elevated: #ffffff;
+  --palette-light-ink: #1c1d2e;
+  --palette-light-muted: #5b5e7e;
+  --palette-light-border: #dcdcea;
+  --palette-light-control-border: #7d809b;
+  --palette-light-action: #6b46f0;
+  --palette-light-action-ink: #5632c8;
+  --palette-light-action-wash: #ebe7fc;
+  --palette-dark-ground: #0f1020;
+  --palette-dark-secondary: #24263f;
+  --palette-dark-elevated: #1a1b2e;
+  --palette-dark-ink: #e9e9f4;
+  --palette-dark-muted: #a3a6cb;
+  --palette-dark-border: #313357;
+  --palette-dark-control-border: #72769e;
+  /* sRGB equivalent of the studio's oklch(0.71 0.16 285) action. */
+  --palette-dark-action: #9990ff;
+  --palette-dark-action-ink: #b9adff;
+  --palette-dark-action-wash: #24213f;
+  --palette-white: #ffffff;
+  --palette-gold-light: #806600;
+  --palette-gold-dark: #ffd166;
+
+  --surface: var(--palette-light-ground);
+  --surface-sunk: var(--palette-light-secondary);
+  --surface-raised: var(--palette-light-elevated);
+  --ink: var(--palette-light-ink);
+  --ink-quiet: var(--palette-light-muted);
+  --ink-faint: var(--ink-quiet);
+  --border: var(--palette-light-border);
+  --border-faint: var(--border);
+  --control-border: var(--palette-light-control-border);
   /* Always dark, in both themes: a scrim built from --ink would go pale in
      dark mode and wash the page out instead of pushing it back. */
   --scrim: rgb(0 0 0 / 0.45);
 
   /* The one accent. Fills and marks use --accent; text uses --accent-ink,
      which is darkened so small text still clears 4.5:1 on the surface. */
-  --accent: #cf3f26;
-  --accent-ink: #b23319;
-  --accent-wash: #fbeae6;
+  --accent: var(--palette-light-action);
+  --accent-ink: var(--palette-light-action-ink);
+  --accent-wash: var(--palette-light-action-wash);
   /* What can be set on a solid accent fill and still clear 4.5:1. */
-  --on-accent: #ffffff;
+  --on-accent: var(--palette-white);
 
   /* Stars are warm, and only stars are. Not a second brand hue — the one
      colour a star has always been, kept out of everything that is not one. */
-  --star: #e0a01a;
-  --star-edge: #9a6d08;
+  --star: var(--palette-gold-light);
+  --star-edge: var(--star);
 
   /* One device pixel, whatever the display. */
   --hairline: 1px;
   --rule-weight: 1px;
-  --radius: 5px;
-  --radius-sm: 3px;
+  --radius: 8px;
+  --radius-sm: var(--radius);
 
   /* Spacing is a set, not a scale generator. */
   --s1: 0.25rem;
   --s2: 0.5rem;
   --s3: 0.75rem;
   --s4: 1rem;
-  --s5: 1.5rem;
-  --s6: 2rem;
-  --s7: 3rem;
-  --s8: 4.5rem;
+  --s5: 1.25rem;
+  --s6: 1.5rem;
+  --s7: 2rem;
+  --s8: 3rem;
 
   --measure: 68ch;
   --margin-col: 13rem;
-  --rail-w: 15rem;
+  --rail-w: 13.5rem;
+  --nav-h: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  --target-min: 2.875rem;
 
   --sans:
-    'Libre Franklin Variable', 'Libre Franklin', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, Helvetica, Arial, sans-serif;
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --display: var(--sans);
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
-  --dur-1: 90ms;
-  --dur-2: 160ms;
-  --dur-3: 260ms;
+  --dur-1: 150ms;
+  --dur-2: 150ms;
+  --dur-3: 250ms;
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   --z-rail: 20;
@@ -89,36 +109,35 @@
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --surface: #141417;
-  --surface-sunk: #0e0e10;
-  --surface-raised: #1c1c21;
-  --ink: #e9e9ee;
-  --ink-quiet: #a2a2ae;
-  --ink-faint: #787883;
-  --border: #35353d;
-  --border-faint: #26262c;
+  --surface: var(--palette-dark-ground);
+  --surface-sunk: var(--palette-dark-secondary);
+  --surface-raised: var(--palette-dark-elevated);
+  --ink: var(--palette-dark-ink);
+  --ink-quiet: var(--palette-dark-muted);
+  --border: var(--palette-dark-border);
+  --control-border: var(--palette-dark-control-border);
   --scrim: rgb(0 0 0 / 0.68);
-  --accent: #f4634a;
-  --accent-ink: #ff8b74;
-  --accent-wash: #2c1a16;
-  --on-accent: #16100e;
-  --star: #f2b53e;
-  --star-edge: #c0871d;
+  --accent: var(--palette-dark-action);
+  --accent-ink: var(--palette-dark-action-ink);
+  --accent-wash: var(--palette-dark-action-wash);
+  --on-accent: var(--palette-dark-ground);
+  --star: var(--palette-gold-dark);
 }
 
 [data-density='compact'] {
   --s4: 0.75rem;
   --s5: 1rem;
-  --s6: 1.5rem;
-  --s7: 2rem;
-  --s8: 3rem;
+  --s6: 1.25rem;
+  --s7: 1.5rem;
+  --s8: 2rem;
 }
 
 [data-contrast='high'] {
   --ink-quiet: var(--ink);
-  --ink-faint: #45454e;
+  --ink-faint: var(--ink);
   --border: #6c6c78;
-  --border-faint: #8c8c97;
+  --border-faint: #777782;
+  --control-border: var(--ink);
 }
 [data-theme='dark'][data-contrast='high'] {
   --ink-faint: #d0d0d8;
@@ -147,27 +166,11 @@ body {
   color: var(--ink);
   font-family: var(--display);
   font-size: 1rem;
-  line-height: 1.62;
+  line-height: 1.5;
   font-synthesis-weight: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   overflow-wrap: break-word;
-}
-
-/* The paper has a tooth. It is barely there, and it never sits under text at a
-   strength that could reduce contrast. */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.4;
-  background-image: radial-gradient(circle at 1px 1px, var(--border-faint) 0.5px, transparent 0);
-  background-size: 4px 4px;
-}
-[data-theme='dark'] body::before {
-  opacity: 0.22;
 }
 
 h1,
@@ -230,23 +233,23 @@ table {
 /* Motion                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/* 0.001ms rather than 0 so transitionend still fires and nothing waits forever. */
+/* Nonzero so transitionend still fires for consumers that wait for it. */
 @media (prefers-reduced-motion: reduce) {
   [data-motion='system'] *,
   [data-motion='system'] *::before,
   [data-motion='system'] *::after {
-    animation-duration: 0.001ms !important;
+    animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
 }
 [data-motion='reduce'] *,
 [data-motion='reduce'] *::before,
 [data-motion='reduce'] *::after {
-  animation-duration: 0.001ms !important;
+  animation-duration: 1ms !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
+  transition-duration: 1ms !important;
   scroll-behavior: auto !important;
 }
 
@@ -256,18 +259,18 @@ table {
 
 .display {
   font-family: var(--display);
-  font-weight: 400;
-  font-size: clamp(2rem, 1.3rem + 3vw, 3.4rem);
-  line-height: 1.06;
+  font-weight: 700;
+  font-size: 1.6rem;
+  line-height: 1.2;
   letter-spacing: -0.018em;
   text-wrap: balance;
 }
 
 .title {
   font-family: var(--display);
-  font-weight: 400;
-  font-size: clamp(1.4rem, 1.1rem + 1.3vw, 2rem);
-  line-height: 1.16;
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.2;
   letter-spacing: -0.012em;
   text-wrap: balance;
 }
@@ -287,15 +290,12 @@ table {
   margin-top: var(--s4);
 }
 
-/* The label: everything that labels, keys, or annotates. Small caps in the
-   grotesque, never used for running text. */
 .label {
   font-family: var(--sans);
-  font-size: 0.6875rem;
-  font-weight: 550;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  line-height: 1.3;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.4;
   color: var(--ink-quiet);
 }
 .label--accent {
@@ -374,10 +374,14 @@ table {
   padding-bottom: var(--player-h, 0px);
 }
 
+.shell > main {
+  min-width: 0;
+}
+
 @media (max-width: 60rem), (hover: none) and (pointer: coarse) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
-    padding-bottom: calc(4.25rem + var(--player-h, 0px));
+    padding-bottom: calc(var(--nav-h) + var(--player-h, 0px));
   }
 }
 
@@ -485,7 +489,7 @@ table {
 
 .btn {
   --btn-ink: var(--ink);
-  --btn-edge: var(--ink);
+  --btn-edge: var(--control-border);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -494,14 +498,13 @@ table {
   padding: 0.55rem 1.1rem;
   min-height: 2.5rem;
   border: var(--rule-weight) solid var(--btn-edge);
-  border-radius: 0;
-  background: transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   color: var(--btn-ink);
   font-family: var(--sans);
-  font-size: 0.6875rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  letter-spacing: normal;
   text-decoration: none;
   cursor: pointer;
   transition:
@@ -510,7 +513,8 @@ table {
     border-color var(--dur-1) var(--ease);
 }
 .btn:hover:not(:disabled) {
-  background: var(--accent-wash);
+  background: var(--surface-sunk);
+  border-color: var(--ink-quiet);
 }
 /* Pressed is a filled impression, the way a hand press leaves one. */
 .btn:active:not(:disabled) {
@@ -519,6 +523,7 @@ table {
   border-color: var(--ink);
 }
 .btn:disabled {
+  background: var(--surface-sunk);
   color: var(--ink-faint);
   border-color: var(--border-faint);
   cursor: not-allowed;
@@ -526,10 +531,12 @@ table {
 
 .btn--primary {
   --btn-edge: var(--accent);
-  --btn-ink: var(--accent-ink);
+  --btn-ink: var(--on-accent);
+  background: var(--accent);
 }
 .btn--primary:hover:not(:disabled) {
-  background: var(--accent-wash);
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
 }
 .btn--primary:active:not(:disabled),
 .btn--primary[aria-pressed='true'] {
@@ -540,6 +547,7 @@ table {
 
 .btn--quiet {
   border-color: transparent;
+  background: transparent;
   padding-inline: var(--s2);
 }
 .btn--quiet:hover:not(:disabled) {
@@ -566,7 +574,7 @@ table {
 .btn--small {
   min-height: 2rem;
   padding: 0.3rem 0.7rem;
-  font-size: 0.625rem;
+  font-size: 0.8125rem;
 }
 
 .btn--wide {
@@ -586,8 +594,8 @@ table {
   padding: 0.55rem 0.7rem;
   min-height: 2.5rem;
   background: var(--surface-raised);
-  border: var(--rule-weight) solid var(--border);
-  border-radius: 0;
+  border: var(--rule-weight) solid var(--control-border);
+  border-radius: var(--radius-sm);
   font-family: var(--display);
   font-size: 0.9375rem;
   color: var(--ink);
@@ -624,10 +632,8 @@ table {
   border-color: var(--ink-quiet);
 }
 
-/* Focus is bracketed, not glowing: two rules stand off the element like the
-   square brackets a compositor sets around a correction. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: var(--rule-weight) solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .bracketed:focus-visible,
@@ -774,7 +780,7 @@ table {
   flex: none;
   background: var(--surface-sunk);
   border: var(--rule-weight) solid var(--border);
-  padding: 3px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 .art img {
@@ -863,7 +869,7 @@ table {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Panels: bounded by rules and corner marks, never by shadow or radius       */
+/* Panels                                                                     */
 /* -------------------------------------------------------------------------- */
 
 .panel {
@@ -871,34 +877,13 @@ table {
   border: var(--rule-weight) solid var(--border);
   background: var(--surface-raised);
   padding: var(--s4);
+  border-radius: var(--radius);
 }
 .panel--sunk {
   background: var(--surface-sunk);
 }
 .panel--accent {
   border-color: var(--accent);
-}
-
-.corner-marks::before,
-.corner-marks::after {
-  content: '';
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border: var(--rule-weight) solid var(--accent);
-  pointer-events: none;
-}
-.corner-marks::before {
-  top: -1px;
-  left: -1px;
-  border-right: 0;
-  border-bottom: 0;
-}
-.corner-marks::after {
-  bottom: -1px;
-  right: -1px;
-  border-left: 0;
-  border-top: 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -953,14 +938,22 @@ table {
 
 .tag {
   font-family: var(--sans);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
+  font-size: 0.75rem;
   padding: 0.1rem 0.4rem;
   border: var(--rule-weight) solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--ink-quiet);
   white-space: nowrap;
 }
 .tag--accent {
   border-color: var(--accent);
   color: var(--accent-ink);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .btn,
+  .input,
+  .select {
+    min-height: var(--target-min);
+  }
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onMount } from 'svelte';
 
   import { href, isActive, type Route } from '../lib/app/router';
   import { settings, suggestions } from '../lib/app/state';
@@ -7,12 +7,6 @@
   import Icon from '../lib/ui/Icon.svelte';
   import type { IconName } from '../lib/ui/icons';
   import { openSearch } from '../lib/app/search-overlay';
-
-  /**
-   * The centre rail. On a wide screen it is the app's contents column; on a
-   * narrow one it becomes the bottom bar, carrying the same five primary stops
-   * so muscle memory survives the change of shape.
-   */
 
   interface Props {
     route: Route;
@@ -31,103 +25,93 @@
   const stops: Stop[] = [
     { path: '/', label: 'Home', icon: 'home', primary: true },
     { path: '/rate', label: 'Rate', icon: 'queue', primary: true },
-    { path: '/compare', label: 'Compare', icon: 'versus', primary: true },
     { path: '/library', label: 'Library', icon: 'library', primary: true },
-    { path: '/rankings', label: 'Rankings', icon: 'ranks', primary: true },
-    { path: '/now-playing', label: 'Now Playing', icon: 'play', primary: false },
+    { path: '/compare', label: 'Compare', icon: 'versus', primary: false },
+    { path: '/rankings', label: 'Rankings', icon: 'ranks', primary: false },
+    { path: '/now-playing', label: 'Now playing', icon: 'play', primary: false },
     { path: '/history', label: 'History', icon: 'timeline', primary: false },
     { path: '/listening', label: 'Listening', icon: 'speaker', primary: false },
     { path: '/insights', label: 'Insights', icon: 'lens', primary: false },
     { path: '/settings', label: 'Settings', icon: 'settings', primary: false },
   ];
 
-  /**
-   * On phones the bar can only hold so many stops, so the secondary ones move
-   * into a sheet. Nothing becomes unreachable; it just takes one more tap.
-   */
   let moreOpen = $state(false);
-  let moreButton = $state<HTMLButtonElement | null>(null);
-  let moreSheet = $state<HTMLDivElement | null>(null);
+  let moreButton = $state<HTMLButtonElement>();
+  let moreSheet = $state<HTMLDialogElement>();
   const secondary = stops.filter((stop) => !stop.primary);
   const inSecondary = $derived(secondary.some((stop) => isActive(route, stop.path)));
+  const waiting = $derived($suggestions.length);
 
   $effect(() => {
     void route;
+    moreSheet?.close();
     moreOpen = false;
   });
 
-  async function toggleMore() {
-    if (moreOpen) {
-      moreOpen = false;
-      return;
-    }
+  onMount(() => {
+    const mobile = matchMedia('(max-width: 60rem), (hover: none) and (pointer: coarse)');
+    const onChange = () => {
+      if (!mobile.matches) moreSheet?.close();
+    };
+    mobile.addEventListener('change', onChange);
+    return () => mobile.removeEventListener('change', onChange);
+  });
+
+  function openMore() {
+    moreSheet?.showModal();
     moreOpen = true;
-    await tick();
-    moreSheet?.querySelector<HTMLElement>('a')?.focus();
   }
 
   function closeMore() {
-    moreOpen = false;
+    moreSheet?.close();
     moreButton?.focus();
   }
 
-  function onWindowKey(event: KeyboardEvent) {
-    if (!moreOpen || event.key !== 'Escape') return;
-    event.preventDefault();
-    closeMore();
-  }
-
-  function onSheetKey(event: KeyboardEvent) {
-    if (event.key !== 'Tab' || !moreSheet) return;
-    const links = [...moreSheet.querySelectorAll<HTMLElement>('a')];
-    const first = links.at(0);
-    const last = links.at(-1);
-    if (!first || !last) return;
-
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  const waiting = $derived($suggestions.length);
-
   const syncWord = $derived.by(() => {
-    if (!online) return 'offline';
-    if (!$settings.syncEnabled) return 'on this device';
+    if (!online) return 'Offline';
+    if (!$settings.syncEnabled) return 'Local only';
     switch ($syncState.status) {
       case 'syncing':
-        return 'syncing';
+        return 'Syncing…';
       case 'pending':
-        return 'changes waiting';
+        return 'Sync queued';
       case 'conflict':
-        return 'conflict';
+        return 'Sync conflict';
       case 'error':
-        return 'sync failed';
+        return 'Sync failed';
+      case 'offline':
+        return 'Offline';
       case 'synced':
+        return 'Synced';
       case 'idle':
-        return 'synced';
+        return 'Sync connected';
       default:
-        return 'on this device';
+        return 'Local only';
     }
   });
+  const syncWarning = $derived(
+    online &&
+      $settings.syncEnabled &&
+      ($syncState.status === 'conflict' || $syncState.status === 'error'),
+  );
+  const statusIcon = $derived<IconName>(
+    syncWarning
+      ? 'warning'
+      : !online || ($settings.syncEnabled && $syncState.status === 'offline')
+        ? 'offline'
+        : $settings.syncEnabled
+          ? 'cloud'
+          : 'device',
+  );
 </script>
 
-<svelte:window onkeydown={onWindowKey} />
-
-<nav class="rail" class:is-menu-open={moreOpen} aria-label="Sections">
-  <a class="rail__mast" href={href('/')}>
-    <span class="rail__wordmark">Music Ratings</span>
-  </a>
+<nav class="rail" aria-label="Main navigation">
+  <a class="rail__mast" href={href('/')}>Music Ratings</a>
 
   <button type="button" class="rail__search" onclick={() => openSearch()}>
-    <Icon name="search" size={16} />
-    <span class="rail__search-label">Search to rate</span>
-    <span class="rail__search-short">Search</span>
-    <kbd class="rail__key">/</kbd>
+    <Icon name="search" size={18} />
+    <span class="rail__search-label">Search</span>
+    <kbd class="rail__key" aria-hidden="true">/</kbd>
   </button>
 
   <ul class="rail__stops">
@@ -139,10 +123,10 @@
           href={href(stop.path)}
           aria-current={isActive(route, stop.path) ? 'page' : undefined}
         >
-          <Icon name={stop.icon} size={17} />
+          <Icon name={stop.icon} size={18} />
           <span class="stop__label">{stop.label}</span>
           {#if stop.path === '/rate' && waiting > 0}
-            <span class="stop__count figure" aria-label="{waiting} waiting">{waiting}</span>
+            <span class="stop__count figure" aria-label="{waiting} queued">{waiting}</span>
           {/if}
         </a>
       </li>
@@ -157,54 +141,55 @@
     aria-controls="more-sections"
     aria-expanded={moreOpen}
     aria-haspopup="dialog"
-    onclick={toggleMore}
+    onclick={openMore}
   >
-    <Icon name="menu" size={17} />
+    <Icon name="menu" size={18} />
     <span class="stop__label">More</span>
   </button>
 
-  <a class="rail__state" href={href('/diagnostics')}>
-    <Icon name={online ? ($settings.syncEnabled ? 'cloud' : 'home') : 'offline'} size={14} />
-    <span class="label">{syncWord}</span>
+  <a class="rail__state" class:is-warning={syncWarning} href={href('/diagnostics')}>
+    <Icon name={statusIcon} size={16} />
+    <span>{syncWord}</span>
+    <span class="sr-only"> · Data health</span>
   </a>
 </nav>
 
-{#if moreOpen}
-  <button type="button" class="rail__scrim" aria-label="Close menu" onclick={closeMore}></button>
-  <div
-    id="more-sections"
-    class="rail__sheet"
-    bind:this={moreSheet}
-    role="dialog"
-    tabindex="-1"
-    aria-modal="true"
-    aria-labelledby="more-sections-title"
-    onkeydown={onSheetKey}
-  >
-    <h2 id="more-sections-title" class="sr-only">More sections</h2>
-    <ul>
-      {#each secondary as stop (stop.path)}
-        <li>
-          <a
-            class="sheet-stop"
-            class:is-current={isActive(route, stop.path)}
-            href={href(stop.path)}
-            aria-current={isActive(route, stop.path) ? 'page' : undefined}
-          >
-            <Icon name={stop.icon} size={17} />
-            {stop.label}
-          </a>
-        </li>
-      {/each}
+<dialog
+  id="more-sections"
+  class="rail__sheet"
+  bind:this={moreSheet}
+  aria-labelledby="more-sections-title"
+  onclose={() => (moreOpen = false)}
+>
+  <div class="rail__sheet-head">
+    <h2 id="more-sections-title" class="subtitle">More</h2>
+    <button type="button" class="btn btn--quiet" onclick={closeMore} aria-label="Close menu">
+      <Icon name="close" size={18} />
+    </button>
+  </div>
+  <ul>
+    {#each secondary as stop (stop.path)}
       <li>
-        <a class="sheet-stop" href={href('/diagnostics')}>
-          <Icon name={online ? ($settings.syncEnabled ? 'cloud' : 'home') : 'offline'} size={17} />
-          Data health · {syncWord}
+        <a
+          class="sheet-stop"
+          class:is-current={isActive(route, stop.path)}
+          href={href(stop.path)}
+          aria-current={isActive(route, stop.path) ? 'page' : undefined}
+        >
+          <Icon name={stop.icon} size={18} />
+          {stop.label}
         </a>
       </li>
-    </ul>
-  </div>
-{/if}
+    {/each}
+    <li>
+      <a class="sheet-stop sheet-stop--status" href={href('/diagnostics')}>
+        <Icon name={statusIcon} size={18} />
+        Data health
+        <span class="note">{syncWord}</span>
+      </a>
+    </li>
+  </ul>
+</dialog>
 
 <style>
   .rail {
@@ -212,46 +197,58 @@
     top: 0;
     align-self: start;
     height: 100dvh;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: var(--s5);
-    padding: var(--s5) var(--s4);
-    border-right: var(--rule-weight) solid var(--border);
+    padding: var(--s5) var(--s3);
+    border-right: var(--rule-weight) solid var(--border-faint);
     background: var(--surface);
     z-index: var(--z-rail);
   }
 
   .rail__mast {
-    display: flex;
-    align-items: center;
-    gap: var(--s2);
+    padding: var(--s2);
     text-decoration: none;
-    color: var(--accent-ink);
-  }
-  .rail__wordmark {
-    font-family: var(--display);
-    font-size: 1.375rem;
-    letter-spacing: -0.01em;
-    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
   }
 
-  .rail__search-short {
-    display: none;
+  .rail__search {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    min-height: var(--target-min);
+    padding: var(--s2) var(--s3);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    color: var(--ink-quiet);
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .rail__search:hover {
+    color: var(--ink);
+    border-color: var(--ink-quiet);
+  }
+
+  .rail__key {
+    margin-left: auto;
+    font-family: var(--sans);
+    color: var(--ink-faint);
   }
 
   .rail__stops {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: var(--s1);
     flex: 1;
   }
 
-  /* The secondary stops sit below a rule, the way a contents page separates
-     front matter from the body. */
-  .rail__stops li.is-secondary:first-of-type {
-    margin-top: var(--s4);
-    padding-top: var(--s3);
-    border-top: var(--rule-weight) solid var(--border-faint);
+  .rail__stops li:not(.is-secondary) + li.is-secondary {
+    margin-top: var(--s3);
   }
 
   .stop {
@@ -259,200 +256,193 @@
     display: flex;
     align-items: center;
     gap: var(--s3);
-    padding: 0.45rem var(--s2);
+    min-height: var(--target-min);
+    padding: var(--s2) var(--s3);
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
     text-decoration: none;
     color: var(--ink-quiet);
-    border-left: 2px solid transparent;
     transition:
       color var(--dur-1) var(--ease),
       background-color var(--dur-1) var(--ease);
   }
+
   .stop:hover {
     color: var(--ink);
     background: var(--surface-raised);
   }
-  /* A served stop stays lit: the current section is inked, not tinted. */
+
   .stop.is-current {
     color: var(--ink);
-    border-left-color: var(--accent);
+    background: var(--surface-sunk);
   }
 
   .stop__label {
-    font-family: var(--sans);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    letter-spacing: 0.01em;
+    font-size: 0.875rem;
+    font-weight: 450;
   }
+
   .stop.is-current .stop__label {
     font-weight: 650;
   }
 
   .stop__count {
     margin-left: auto;
-    font-size: 0.6875rem;
-    font-variant-numeric: tabular-nums;
-    color: var(--accent-ink);
+    font-size: 0.75rem;
+    color: var(--ink-quiet);
   }
 
   .rail__state {
     display: flex;
     align-items: center;
     gap: var(--s2);
-    padding-top: var(--s3);
-    border-top: var(--rule-weight) solid var(--border-faint);
+    min-height: var(--target-min);
+    padding: var(--s2) var(--s3);
     text-decoration: none;
-    color: var(--ink-faint);
+    color: var(--ink-quiet);
+    font-size: 0.8125rem;
   }
+
   .rail__state:hover {
     color: var(--ink);
   }
 
-  /* Desktop keeps every stop in the rail, so the phone-only "More" tab and its
-     sheet stay out of the way until the bar cannot hold everything. */
-  .rail__more,
-  .rail__scrim,
-  .rail__sheet {
+  .rail__state.is-warning {
+    color: var(--accent-ink);
+  }
+
+  .rail__more {
     display: none;
+  }
+
+  .rail__sheet {
+    position: fixed;
+    inset: auto 0 0;
+    margin: 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - var(--s6));
+    padding: var(--s3) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface-raised);
+    color: var(--ink);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .rail__sheet::backdrop {
+    background: var(--scrim);
+  }
+
+  .rail__sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--s2);
+  }
+
+  .sheet-stop {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    min-height: var(--target-min);
+    padding: var(--s3);
+    border-radius: var(--radius);
+    color: var(--ink-quiet);
+    text-decoration: none;
+  }
+
+  .sheet-stop:hover,
+  .sheet-stop.is-current {
+    background: var(--surface-sunk);
+    color: var(--ink);
+  }
+
+  .sheet-stop.is-current {
+    font-weight: 650;
+  }
+
+  .sheet-stop--status {
+    margin-top: var(--s2);
+  }
+
+  .sheet-stop--status .note {
+    margin-left: auto;
   }
 
   @media (max-width: 60rem), (hover: none) and (pointer: coarse) {
     .rail {
       position: fixed;
-      inset: auto 0 0 0;
-      height: auto;
+      inset: auto 0 0;
+      height: var(--nav-h);
       flex-direction: row;
       align-items: stretch;
       gap: 0;
-      padding: 0;
+      padding: 0 0 env(safe-area-inset-bottom, 0px);
       border-right: 0;
       border-top: var(--rule-weight) solid var(--border);
-      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--surface-raised);
+      overflow: visible;
     }
-    .rail.is-menu-open {
-      z-index: var(--z-overlay);
-    }
+
     .rail__mast,
     .rail__state,
+    .rail__key,
     .rail__stops li.is-secondary {
       display: none;
     }
+
     .rail__stops {
       flex-direction: row;
-      flex: 5 1 0;
+      flex: 3 1 0;
       min-width: 0;
-      width: auto;
       gap: 0;
     }
+
     .rail__stops li {
       flex: 1;
-    }
-    /* Search is the way into anything not already queued, so it earns a tab of
-       its own rather than hiding behind the overflow sheet. */
-    .rail__search {
-      display: flex;
-      flex: 1 1 0;
       min-width: 0;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      margin: 0;
-      padding: 0.5rem 0.25rem;
-      border: 0;
-      border-top: 2px solid transparent;
-      border-radius: 0;
-      background: none;
-      min-height: 3.5rem;
-      justify-content: center;
-      text-align: center;
     }
-    .rail__search-label {
-      display: none;
-    }
-    .rail__search-short {
-      display: block;
-      font-size: 0.625rem;
-      letter-spacing: 0.04em;
-      color: var(--ink-quiet);
-    }
-    .rail__key {
-      display: none;
-    }
+
+    .rail__search,
     .rail__more {
-      display: flex;
       flex: 1 1 0;
       min-width: 0;
-      background: none;
-      border: 0;
-      border-top: 2px solid transparent;
-      font: inherit;
       cursor: pointer;
-      color: var(--ink-quiet);
     }
-    .rail__more.is-current {
-      color: var(--ink);
-      border-top-color: var(--accent);
-    }
+
+    .rail__search,
     .stop {
+      display: flex;
       flex-direction: column;
-      gap: 2px;
-      padding: 0.5rem 0.25rem;
-      border-left: 0;
-      border-top: 2px solid transparent;
       justify-content: center;
-      min-height: 3.5rem;
+      gap: var(--s1);
+      height: 100%;
+      padding: var(--s2) var(--s1);
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
+
     .stop.is-current {
-      border-left-color: transparent;
-      border-top-color: var(--accent);
+      background: var(--surface-sunk);
     }
+
+    .rail__search-label,
     .stop__label {
-      font-size: 0.625rem;
-      letter-spacing: 0.04em;
-    }
-    /* Clear of the icon rather than printed over it: the count is an
-       annotation on the stop, not part of its symbol. */
-    .stop__count {
-      position: absolute;
-      top: 0.3rem;
-      left: 50%;
-      margin: 0 0 0 0.55rem;
-      padding: 0 0.15rem;
-      background: var(--surface);
-      font-size: 0.625rem;
+      font-size: 0.75rem;
       line-height: 1.2;
     }
 
-    .rail__scrim {
-      display: block;
-      position: fixed;
-      inset: 0;
-      border: 0;
-      background: var(--scrim);
-      z-index: calc(var(--z-overlay) - 2);
-    }
-    .rail__sheet {
-      display: block;
-      position: fixed;
-      inset: auto 0 calc(3.5rem + env(safe-area-inset-bottom)) 0;
-      background: var(--surface);
-      border-top: var(--rule-weight) solid var(--border);
-      max-height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom));
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      z-index: calc(var(--z-overlay) - 1);
-    }
-    .sheet-stop {
-      display: flex;
-      align-items: center;
-      gap: var(--s3);
-      padding: var(--s4);
-      color: var(--ink-dim);
-      text-decoration: none;
-      border-bottom: var(--rule-weight) solid var(--border-faint);
-    }
-    .sheet-stop.is-current {
-      color: var(--ink);
-      box-shadow: inset 2px 0 0 var(--accent);
+    .stop__count {
+      position: absolute;
+      top: var(--s1);
+      left: calc(50% + 0.6rem);
+      margin: 0;
+      font-size: 0.625rem;
+      line-height: 1.2;
     }
   }
 </style>

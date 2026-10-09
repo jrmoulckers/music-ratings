@@ -1,16 +1,18 @@
 <script lang="ts">
   import { dismiss, notices } from '../lib/app/notices';
   import Icon from '../lib/ui/Icon.svelte';
-
-  /**
-   * Notices are set as slips: a bordered strip with the message and, where an
-   * action can still be taken back, the way to take it back.
-   */
 </script>
 
 <div class="slips" role="region" aria-label="Notices">
   {#each $notices as notice (notice.id)}
-    <div class="slip" class:slip--warn={notice.tone === 'warn'}>
+    <div
+      class="slip"
+      class:slip--warn={notice.tone === 'warn'}
+      role={notice.tone === 'warn' ? 'alert' : undefined}
+    >
+      {#if notice.tone === 'warn'}
+        <Icon name="warning" size={17} label="Warning" />
+      {/if}
       <p class="slip__text">{notice.message}</p>
       {#if notice.action}
         <button
@@ -38,15 +40,10 @@
 
 <style>
   .slips {
-    position: fixed;
-    left: 50%;
-    bottom: calc(var(--s5) + var(--player-h, 0px));
-    transform: translateX(-50%);
-    z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: var(--s2);
-    width: min(30rem, calc(100vw - 2rem));
+    width: 100%;
     pointer-events: none;
   }
 
@@ -56,9 +53,9 @@
     gap: var(--s3);
     padding: var(--s3);
     background: var(--surface-raised);
-    border: var(--rule-weight) solid var(--ink);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
     pointer-events: auto;
-    box-shadow: 3px 3px 0 0 var(--surface-sunk);
   }
   .slip--warn {
     border-color: var(--accent);
@@ -75,16 +72,14 @@
     background: transparent;
     border: 0;
     padding: var(--s1);
+    min-width: var(--target-min);
+    min-height: var(--target-min);
+    display: grid;
+    place-items: center;
     color: var(--ink-quiet);
     cursor: pointer;
   }
   .slip__close:hover {
     color: var(--ink);
-  }
-
-  @media (max-width: 60rem) {
-    .slips {
-      bottom: calc(4.75rem + var(--player-h, 0px));
-    }
   }
 </style>

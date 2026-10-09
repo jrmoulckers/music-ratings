@@ -102,7 +102,7 @@
   <main id="main" tabindex="-1">
     {#if $bootFailure}
       <div class="booting booting--failed" role="alert">
-        <p class="title">Your ratings could not be opened</p>
+        <p class="title">Couldn’t open your ratings</p>
         <p class="note booting__why">{$bootFailure}</p>
         <button type="button" class="btn btn--small" onclick={() => location.reload()}>
           Try again
@@ -110,7 +110,7 @@
       </div>
     {:else if !$ready}
       <div class="booting" role="status">
-        <span class="label">Loading your ratings…</span>
+        <span class="note">Opening ratings…</span>
       </div>
     {:else if $route.name === 'onboarding'}
       <Onboarding />
@@ -153,26 +153,25 @@
 {#if showRail && $searchOpen}
   <SearchOverlay />
 {/if}
-{#if $pwa.updateReady}
-  <div class="update" role="status">
-    <p class="update__text">A newer version is ready. Reloading keeps everything you have saved.</p>
-    <button
-      type="button"
-      class="btn btn--small btn--primary"
-      onclick={() => void reloadForUpdate()}
-    >
-      Reload
-    </button>
-    <button type="button" class="btn btn--small btn--quiet" onclick={dismissUpdate}>Later</button>
-  </div>
-{/if}
-
-<Notices />
+<div class="feedback">
+  {#if $pwa.updateReady}
+    <div class="update" role="status">
+      <p class="update__text">Update ready. Saved ratings stay safe.</p>
+      <button
+        type="button"
+        class="btn btn--small btn--primary"
+        onclick={() => void reloadForUpdate()}
+      >
+        Reload
+      </button>
+      <button type="button" class="btn btn--small btn--quiet" onclick={dismissUpdate}>Later</button>
+    </div>
+  {/if}
+  <Notices />
+</div>
 
 {#if libraryChanging}
-  <div class="library-reset" role="alert">
-    This ratings library changed in another tab. Reloading when it is ready…
-  </div>
+  <div class="library-reset" role="alert">Library changed in another tab. Reloading…</div>
 {/if}
 
 <!-- One polite region for the whole app; every screen speaks through it. -->
@@ -211,28 +210,38 @@
     margin: 0;
   }
 
-  .update {
+  .feedback {
     position: fixed;
     inset: auto var(--s5) calc(var(--s5) + var(--player-h, 0px)) auto;
     z-index: var(--z-toast);
     display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    width: min(30rem, calc(100vw - 2rem));
+    pointer-events: none;
+  }
+
+  .update {
+    display: flex;
     align-items: center;
     gap: var(--s3);
-    max-width: min(28rem, calc(100vw - 2rem));
     padding: var(--s3) var(--s4);
     background: var(--surface-raised);
-    border: var(--rule-weight) solid var(--ink);
-    box-shadow: 3px 3px 0 0 var(--surface-sunk);
+    border: var(--rule-weight) solid var(--border);
+    border-radius: var(--radius);
+    flex-wrap: wrap;
+    pointer-events: auto;
   }
   .update__text {
+    flex: 1 1 12rem;
     font-size: 0.875rem;
     line-height: 1.35;
   }
 
-  @media (max-width: 60rem) {
-    .update {
-      inset: auto var(--s3) calc(4.75rem + var(--player-h, 0px)) var(--s3);
-      max-width: none;
+  @media (max-width: 60rem), (hover: none) and (pointer: coarse) {
+    .feedback {
+      inset: auto var(--s3) calc(var(--nav-h) + var(--s3) + var(--player-h, 0px)) var(--s3);
+      width: auto;
     }
   }
 </style>

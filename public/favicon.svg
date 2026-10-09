@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Music Ratings">
-  <rect width="64" height="64" rx="8" fill="#17171b" />
+  <rect width="64" height="64" rx="8" fill="#0f1020" />
   <g shape-rendering="crispEdges">
-    <rect x="31" y="12" width="2" height="40" fill="#5a5a66" />
-    <g fill="#e9e9ee">
+    <rect x="31" y="12" width="2" height="40" fill="#a3a6cb" />
+    <g fill="#e9e9f4">
       <rect x="22" y="14" width="20" height="2" />
       <rect x="24" y="24" width="16" height="2" />
       <rect x="24" y="40" width="16" height="2" />
       <rect x="22" y="50" width="20" height="2" />
     </g>
-    <rect x="16" y="30" width="32" height="5" fill="#cf3f26" />
+    <rect x="16" y="30" width="32" height="5" fill="#9990ff" />
   </g>
 </svg>
