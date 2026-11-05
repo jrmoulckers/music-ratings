@@ -98,6 +98,8 @@ describe('router', () => {
     expect(routeNameFor('/')).toBe('home');
     expect(routeNameFor('/rankings')).toBe('rankings');
     expect(routeNameFor('/rankings/')).toBe('rankings');
+    expect(routeNameFor('/playlists')).toBe('playlists');
+    expect(routeNameFor('/playlists/')).toBe('playlists');
     expect(routeNameFor('/settings')).toBe('settings');
     expect(routeNameFor('/e/album/demo/abc')).toBe('entity');
   });

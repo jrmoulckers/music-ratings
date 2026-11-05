@@ -12,6 +12,7 @@ import {
   PLAYBACK_SCOPES,
   STREAMING_SCOPE,
   BASE_SCOPES,
+  PLAYLIST_WRITE_SCOPE,
   type SpotifyConfig,
 } from './auth';
 import { SpotifyApiError, SpotifyClient } from './client';
@@ -129,6 +130,7 @@ export function spotifyConfig(): SpotifyConfig {
   const extra = [
     ...(wantsPodcasts ? [PODCAST_SCOPE] : []),
     ...(current.browserPlayer ? [STREAMING_SCOPE] : []),
+    ...(hasScopes(storedTokens(), [PLAYLIST_WRITE_SCOPE]) ? [PLAYLIST_WRITE_SCOPE] : []),
   ];
   return {
     clientId: resolveSpotifyClientId(current.spotifyClientId),
@@ -144,6 +146,18 @@ export function requestedScopes(): string[] {
 
 export async function connectSpotify(returnTo = '/settings'): Promise<void> {
   await beginSignIn(spotifyConfig(), returnTo);
+}
+
+export function spotifyAccountId(): string | null {
+  return localStorage.getItem(PROFILE_ID_KEY);
+}
+
+export async function connectSpotifyPlaylists(): Promise<void> {
+  const config = spotifyConfig();
+  await beginSignIn(
+    { ...config, extraScopes: [...new Set([...(config.extraScopes ?? []), PLAYLIST_WRITE_SCOPE])] },
+    '/playlists',
+  );
 }
 
 /** Keep the ratings and play log, but stop presenting another account's signals. */

@@ -14,12 +14,14 @@ import type {
   RatingScale,
 } from '../domain/types';
 import type { AlbumCompletion, PlayEvent } from '../domain/listening';
+import { isManagedPlaylist, type ManagedPlaylist } from '../domain/playlists';
 
 export const SNAPSHOT_KIND = 'music-ratings/snapshot';
 /** What the kind field said before the app was renamed; still restorable. */
 const LEGACY_SNAPSHOT_KIND = 'music-ratings/ledger';
 /**
- * 2 added `canonicalGroups`; 3 unifies canonical groups with listening records.
+ * 2 added `canonicalGroups`; 3 unifies canonical groups with listening records;
+ * 4 adds the durable Spotify playlist connections.
  *
  * The bump is deliberate rather than incidental. The store list is read from
  * the running app, so a device still on format 1 would merge a file it did not
@@ -28,7 +30,7 @@ const LEGACY_SNAPSHOT_KIND = 'music-ratings/ledger';
  * does, is the honest failure: that device says the backup is newer than it is
  * and stops, instead of quietly undoing work.
  */
-export const SNAPSHOT_VERSION = 3;
+export const SNAPSHOT_VERSION = 4;
 
 /**
  * The file that travels: to OneDrive, to a download, to another browser.
@@ -55,6 +57,7 @@ export interface Snapshot {
   plays: PlayEvent[];
   completions: AlbumCompletion[];
   canonicalGroups: CanonicalGroup[];
+  spotifyPlaylists: ManagedPlaylist[];
 }
 
 export const SNAPSHOT_COLLECTIONS = SYNCED_STORES;
@@ -95,6 +98,7 @@ export function emptySnapshot(device = 'unknown'): Snapshot {
     plays: [],
     completions: [],
     canonicalGroups: [],
+    spotifyPlaylists: [],
   };
 }
 
@@ -189,6 +193,13 @@ export function validateSnapshot(data: unknown): Snapshot {
     );
   }
   const snapshot = { ...emptySnapshot(candidate.deviceId ?? 'unknown'), ...candidate } as Snapshot;
+  if (
+    candidate.spotifyPlaylists !== undefined &&
+    (!Array.isArray(candidate.spotifyPlaylists) ||
+      !candidate.spotifyPlaylists.every(isManagedPlaylist))
+  ) {
+    throw new SnapshotError('That backup contains invalid Spotify playlist connections.');
+  }
   for (const store of SYNCED_STORES) {
     const rows = rowsFor(snapshot, store);
     (snapshot as unknown as Record<string, unknown[]>)[store] = rows.filter(
@@ -219,6 +230,10 @@ export function migrateSnapshot(snapshot: Snapshot): Snapshot {
     out.canonicalGroups = out.canonicalGroups ?? [];
     out.version = 3;
   }
+  if (out.version < 4) {
+    out.spotifyPlaylists = out.spotifyPlaylists ?? [];
+    out.version = 4;
+  }
   out.version = SNAPSHOT_VERSION;
   return out;
 }
@@ -245,6 +260,7 @@ export function snapshotCounts(snapshot: Snapshot): { label: string; count: numb
     plays: 'confirmed plays',
     completions: 'albums completed',
     canonicalGroups: 'combined items',
+    spotifyPlaylists: 'managed Spotify playlists',
   };
   return SYNCED_STORES.map((store) => ({
     label: label[store],

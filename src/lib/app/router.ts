@@ -15,6 +15,7 @@ export type RouteName =
   | 'library'
   | 'entity'
   | 'rankings'
+  | 'playlists'
   | 'history'
   | 'insights'
   | 'listening'
@@ -43,6 +44,7 @@ const PATTERNS: { name: RouteName; pattern: RegExp; keys: string[] }[] = [
     keys: ['type', 'provider', 'id'],
   },
   { name: 'rankings', pattern: /^\/rankings\/?$/, keys: [] },
+  { name: 'playlists', pattern: /^\/playlists\/?$/, keys: [] },
   { name: 'history', pattern: /^\/history\/?$/, keys: [] },
   { name: 'insights', pattern: /^\/insights\/?$/, keys: [] },
   { name: 'listening', pattern: /^\/listening\/?$/, keys: [] },

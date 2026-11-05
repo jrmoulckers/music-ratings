@@ -381,10 +381,20 @@ export interface Collection {
   deleted?: number;
 }
 
+/** An independent category judgement; null withdraws it without erasing history. */
+export interface CategoryRating {
+  id: string;
+  category: string;
+  normalized: number | null;
+  at: number;
+}
+
 export interface EntityAnnotation {
   id: EntityId;
   tags: string[];
   note?: string;
+  /** Append-only, independent of direct ratings and rollups. Always on a 0–100 scale. */
+  categoryRatings?: CategoryRating[];
   /**
    * @deprecated Superseded by `CanonicalGroup`. Kept so a record written by an
    * older version — or synced from a device still running one — keeps meaning

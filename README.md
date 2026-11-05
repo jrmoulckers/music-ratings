@@ -25,6 +25,31 @@ belonging to anyone but you.
   ordinal scale.
 - **Compare** two items head-to-head when a score is not decisive. Comparisons
   drive a per-type Elo ladder that reports its own uncertainty.
+- **Make ranked Spotify playlists.** Open the dedicated **Playlists** page and
+  choose your Top 10, 25, 50, 100, 250 or 500 songs and a score view. Preview the
+  songs, then create a private playlist in best-first order. Local-only and
+  unavailable tracks are excluded; shorter lists are not padded. Equal scores
+  use a stable order. By default, songs are ordered by your direct ratings;
+  other score views are available under **Scoring options**. Playlist creation
+  and management are independent of the **Rankings** page and its filters.
+- **Manage playlists across sessions.** New playlists automatically stay in sync
+  with your ratings. Their Spotify IDs, ordering choices and update preferences
+  are library records, included in JSON exports and OneDrive backup/sync. Restore
+  your library on another device and reconnect the owning Spotify account to
+  continue managing the same playlists—no duplicate creation. Spotify credentials
+  never travel in backups. **Sync with ratings** can be disabled per playlist.
+  Updates resume when you reopen the app, change ratings, or sync library changes.
+  Sending changes requires an open, online app; there is no hosted background
+  scheduler. Backup status is shown separately from Spotify update status. An update
+  replaces the playlist's contents, including any manual Spotify edits.
+  Failed updates are visibly paused and can be retried without creating a
+  duplicate playlist.
+- **Rate particular parts independently.** On an item's detail page, use
+  **Category ratings** to enter a category such as Drums and a whole-number
+  score from 0 to 100. An overall rating is not required. Re-rating and
+  withdrawal retain category history, which is included in backups and OneDrive
+  sync. Category scores never affect overall scores or rankings; they are
+  separate from the optional weighted Deeper rating questions.
 - **Roll up** child ratings into parents through a transparent, deterministic
   engine. Every computed score can explain itself, channel by channel, including
   what it excluded and why.

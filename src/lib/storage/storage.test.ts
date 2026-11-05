@@ -135,6 +135,7 @@ describe('database shape', () => {
       'queueStates',
       'ratings',
       'scales',
+      'spotifyPlaylists',
     ]);
   });
 

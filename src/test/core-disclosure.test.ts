@@ -75,6 +75,9 @@ describe('concise core surfaces', () => {
     world.set({ ...get(world), entities: [album], ratings: [rate(album, 80)] });
     app = mount(Rankings, { target: host, props: { query: new URLSearchParams() } });
     flushSync();
+    expect(host.querySelector('h1')?.textContent).toBe('Rankings');
+    expect(host.querySelector('.playlists')).toBeNull();
+    expect(host.textContent).not.toContain('Create playlist');
     const filters = [...host.querySelectorAll('details')].find((details) =>
       details.querySelector('summary')?.textContent?.includes('More filters'),
     );

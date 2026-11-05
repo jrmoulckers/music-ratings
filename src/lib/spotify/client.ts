@@ -105,6 +105,8 @@ function playerRefusal(reason: string | undefined) {
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  /** Non-idempotent playlist writes must not be replayed after an ambiguous 5xx. */
+  retryServerErrors?: boolean;
   /** Called when Spotify asks us to wait, so the UI can say so honestly. */
   onBackoff?: (seconds: number) => void;
 }
@@ -249,7 +251,7 @@ export class SpotifyClient {
       );
     }
     if (response.status >= 500) {
-      if (attempt < 3) {
+      if (attempt < 3 && options.retryServerErrors !== false) {
         await sleep(2 ** attempt * 700, options.signal);
         return this.request<T>(url, options, call, attempt + 1);
       }
@@ -325,6 +327,43 @@ export class SpotifyClient {
 
   profile(options?: RequestOptions) {
     return this.get<SpotifyUser>('/me', {}, options);
+  }
+
+  createRankedPlaylist(name: string, options: RequestOptions = {}) {
+    return this.send<SpotifyPlaylist>(
+      'POST',
+      '/me/playlists',
+      {},
+      {
+        name,
+        public: false,
+        description: 'Your music-ratings ranking, best first. Managed by music-ratings.',
+      },
+      { ...options, retryServerErrors: false },
+    );
+  }
+
+  replacePlaylistItems(id: string, uris: readonly string[], options: RequestOptions = {}) {
+    if (uris.length > 100) throw new Error('Spotify accepts at most 100 items per request.');
+    return this.send<{ snapshot_id: string }>(
+      'PUT',
+      `/playlists/${encodeURIComponent(id)}/items`,
+      {},
+      { uris },
+      options,
+    );
+  }
+
+  appendPlaylistItems(id: string, uris: readonly string[], options: RequestOptions = {}) {
+    if (uris.length === 0 || uris.length > 100)
+      throw new Error('Spotify accepts between 1 and 100 items per append.');
+    return this.send<{ snapshot_id: string }>(
+      'POST',
+      `/playlists/${encodeURIComponent(id)}/items`,
+      {},
+      { uris },
+      { ...options, retryServerErrors: false },
+    );
   }
 
   /**

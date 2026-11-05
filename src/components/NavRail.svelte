@@ -28,6 +28,7 @@
     { path: '/library', label: 'Library', icon: 'library', primary: true },
     { path: '/compare', label: 'Compare', icon: 'versus', primary: false },
     { path: '/rankings', label: 'Rankings', icon: 'ranks', primary: false },
+    { path: '/playlists', label: 'Playlists', icon: 'playlist', primary: false },
     { path: '/now-playing', label: 'Now playing', icon: 'play', primary: false },
     { path: '/history', label: 'History', icon: 'timeline', primary: false },
     { path: '/listening', label: 'Listening', icon: 'speaker', primary: false },
