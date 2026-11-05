@@ -70,7 +70,7 @@ describe('shared navigation', () => {
     expect(host.querySelector('dialog a[aria-current="page"]')?.getAttribute('href')).toBe(
       '/compare',
     );
-    expect(host.querySelectorAll('dialog a')).toHaveLength(8);
+    expect(host.querySelectorAll('dialog a')).toHaveLength(9);
     expect(host.querySelector('.rail__search')?.textContent?.trim()).toBe('Search /');
     host.querySelector<HTMLButtonElement>('.rail__search')?.click();
     expect(get(searchOpen)).toBe(true);

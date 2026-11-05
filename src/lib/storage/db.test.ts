@@ -3,6 +3,7 @@ import type { IDBPDatabase } from 'idb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DB_NAME, DB_VERSION, type AppDB } from './db';
+import { LEGACY_PLAYLISTS_KEY } from '../domain/playlists';
 
 /**
  * A device that has seen a newer build.
@@ -210,6 +211,55 @@ describe('opening data that predates the merged features', () => {
     ]);
     expect(await opened.get('ratings', 'r1')).toMatchObject({ value: 80 });
     expect(await opened.get('meta', 'settings')).toMatchObject({ onboarded: true });
+  });
+
+  async function seedPlaylistLinks(value: unknown): Promise<void> {
+    await seedAt(5, [...V3_STORES, 'plays', 'completions', 'canonicalGroups'], OWNED_ROWS);
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 5);
+      request.onsuccess = () => {
+        const database = request.result;
+        const tx = database.transaction('meta', 'readwrite');
+        tx.objectStore('meta').put(value, LEGACY_PLAYLISTS_KEY);
+        tx.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  describe('durable Spotify playlist migration', () => {
+    it('moves existing device-local links into library records without changing the playlist or opt-in', async () => {
+      const entry = {
+        id: 'existingplaylist',
+        accountId: 'owner',
+        size: 25,
+        view: 'explicit',
+        live: false,
+        lastUris: ['spotify:track:song1'],
+        syncedAt: 123,
+        error: null,
+      };
+      await seedPlaylistLinks([entry]);
+      const opened = await (await import('./db')).db();
+      openDb = opened;
+      expect(await opened.getAll('spotifyPlaylists')).toEqual([{ ...entry, updatedAt: 0 }]);
+      expect(await opened.get('meta', LEGACY_PLAYLISTS_KEY)).toBeUndefined();
+      expect(await opened.count('ratings')).toBe(2);
+    });
+
+    it('preserves unreadable legacy links rather than silently discarding them', async () => {
+      const broken = [{ id: 'existingplaylist', live: true }];
+      await seedPlaylistLinks(broken);
+      const opened = await (await import('./db')).db();
+      openDb = opened;
+      expect(await opened.get('meta', LEGACY_PLAYLISTS_KEY)).toEqual(broken);
+      expect(await opened.getAll('spotifyPlaylists')).toEqual([]);
+      expect(await opened.count('ratings')).toBe(2);
+    });
   });
 
   it('does not mistake a real library for the sample catalogue it once purged', async () => {

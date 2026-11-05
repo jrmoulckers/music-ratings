@@ -1,4 +1,7 @@
 import { SYNCED_STORES, type SyncedStore } from './db';
+import { mergeCategoryRatings } from '../domain/categories';
+import type { ManagedPlaylist } from '../domain/playlists';
+import type { EntityAnnotation } from '../domain/types';
 import { mergeSettings, type AppSettings } from './settings';
 import { SNAPSHOT_KIND, SNAPSHOT_VERSION, emptySnapshot, type Snapshot } from './snapshot';
 
@@ -61,6 +64,7 @@ export function pickWinner<T extends SyncRecord>(a: T, b: T): T {
 export function mergeById<T extends SyncRecord>(
   local: readonly T[],
   remote: readonly T[],
+  resolve: (a: T, b: T) => T = pickWinner,
 ): { merged: T[]; changedLocally: boolean; changedRemotely: boolean } {
   const byId = new Map<string, T>();
   for (const item of local) byId.set(item.id, item);
@@ -75,13 +79,10 @@ export function mergeById<T extends SyncRecord>(
       changedLocally = true;
       continue;
     }
-    const winner = pickWinner(mine, item);
-    if (winner !== mine) {
-      byId.set(item.id, winner);
-      changedLocally = true;
-    } else if (JSON.stringify(mine) !== JSON.stringify(item)) {
-      changedRemotely = true;
-    }
+    const winner = resolve(mine, item);
+    byId.set(item.id, winner);
+    if (JSON.stringify(winner) !== JSON.stringify(mine)) changedLocally = true;
+    if (JSON.stringify(winner) !== JSON.stringify(item)) changedRemotely = true;
   }
 
   const remoteIds = new Set(remote.map((r) => r.id));
@@ -103,6 +104,25 @@ export interface MergeResult {
   detail: { store: SyncedStore; added: number; updated: number }[];
 }
 
+function mergeAnnotation(a: EntityAnnotation, b: EntityAnnotation): EntityAnnotation {
+  const winner = pickWinner(a, b);
+  if (winner.deleted) return winner;
+  const categoryRatings = mergeCategoryRatings(a.categoryRatings ?? [], b.categoryRatings ?? []);
+  return categoryRatings.length ? { ...winner, categoryRatings } : winner;
+}
+
+function mergePlaylist(a: ManagedPlaylist, b: ManagedPlaylist): ManagedPlaylist {
+  const winner = pickWinner(a, b);
+  if (winner.deleted) return winner;
+  if (a.preferenceUpdatedAt === undefined && b.preferenceUpdatedAt === undefined) return winner;
+  // A background track update must not undo a later decision to pause syncing.
+  const preference = pickWinner(
+    { id: a.id, updatedAt: a.preferenceUpdatedAt ?? 0, live: a.live },
+    { id: b.id, updatedAt: b.preferenceUpdatedAt ?? 0, live: b.live },
+  );
+  return { ...winner, live: preference.live, preferenceUpdatedAt: preference.updatedAt };
+}
+
 export function mergeSnapshots(
   local: Snapshot,
   remote: Snapshot,
@@ -120,7 +140,12 @@ export function mergeSnapshots(
   for (const store of SYNCED_STORES) {
     const localRows = rows(local, store);
     const remoteRows = rows(remote, store);
-    const result = mergeById(localRows, remoteRows);
+    const result =
+      store === 'annotations'
+        ? mergeById(local.annotations, remote.annotations, mergeAnnotation)
+        : store === 'spotifyPlaylists'
+          ? mergeById(local.spotifyPlaylists, remote.spotifyPlaylists, mergePlaylist)
+          : mergeById(localRows, remoteRows);
     (merged as unknown as Record<string, unknown[]>)[store] = result.merged;
     changedLocally ||= result.changedLocally;
     changedRemotely ||= result.changedRemotely;

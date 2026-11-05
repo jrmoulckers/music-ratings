@@ -9,6 +9,7 @@
   import { bootFailure, ready, settings, startStateSync } from './lib/app/state';
   import { startSyncController } from './lib/app/sync';
   import { watchListening } from './lib/listening/watch';
+  import { watchRankedPlaylists } from './lib/spotify/ranked-playlists';
   import { watchLibraryReset } from './lib/storage/library-revision';
   import NavRail from './components/NavRail.svelte';
   import MiniPlayer from './components/MiniPlayer.svelte';
@@ -27,6 +28,7 @@
   import NowPlaying from './pages/NowPlaying.svelte';
   import Onboarding from './pages/Onboarding.svelte';
   import Rankings from './pages/Rankings.svelte';
+  import Playlists from './pages/Playlists.svelte';
   import Rate from './pages/Rate.svelte';
   import Settings from './pages/Settings.svelte';
 
@@ -38,6 +40,7 @@
     const stopState = startStateSync();
     const stopSync = startSyncController();
     const stopListening = watchListening();
+    const stopPlaylists = watchRankedPlaylists();
     const stopLibraryReset = watchLibraryReset((pending) => {
       if (pending) libraryChanging = true;
       else location.reload();
@@ -53,6 +56,7 @@
       stopState();
       stopSync();
       stopListening();
+      stopPlaylists();
       stopLibraryReset();
       removeEventListener('online', up);
       removeEventListener('offline', down);
@@ -128,6 +132,8 @@
       <Entity params={$route.params} />
     {:else if $route.name === 'rankings'}
       <Rankings query={$route.query} />
+    {:else if $route.name === 'playlists'}
+      <Playlists />
     {:else if $route.name === 'history'}
       <History />
     {:else if $route.name === 'insights'}

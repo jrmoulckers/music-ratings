@@ -48,6 +48,9 @@ export const PODCAST_SCOPE = 'user-read-playback-position';
  */
 export const STREAMING_SCOPE = 'streaming';
 
+/** Requested only when the user chooses to create a ranked playlist. */
+export const PLAYLIST_WRITE_SCOPE = 'playlist-modify-private';
+
 export interface SpotifyTokens {
   accessToken: string;
   refreshToken: string;

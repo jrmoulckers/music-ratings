@@ -4,7 +4,12 @@ import { defaultSettings, hydrateSettings, localSettings, type AppSettings } fro
 import { beginLibraryReset } from './library-revision';
 
 export const LIBRARY_ACCOUNT_KEY = 'onedrive-library-account';
-const DEVICE_META = ['spotify-signals', 'listening-coverage', META_CURSORS] as const;
+const DEVICE_META = [
+  'spotify-signals',
+  'listening-coverage',
+  'ranked-spotify-playlists',
+  META_CURSORS,
+] as const;
 
 export async function libraryAccountId(): Promise<string | undefined> {
   const database = await db();

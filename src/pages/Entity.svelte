@@ -51,6 +51,7 @@
   import Icon from '../lib/ui/Icon.svelte';
   import AutoLoad from '../components/AutoLoad.svelte';
   import CombinePanel from '../components/CombinePanel.svelte';
+  import CategoryRatings from '../components/CategoryRatings.svelte';
   import Empty from '../components/Empty.svelte';
   import EntityTypeIcon from '../components/EntityTypeIcon.svelte';
   import EntityListening from '../components/EntityListening.svelte';
@@ -477,6 +478,8 @@
           {/if}
         </div>
       </section>
+
+      <CategoryRatings {entity} />
 
       {#if relations.length > 0}
         <div class="rel">

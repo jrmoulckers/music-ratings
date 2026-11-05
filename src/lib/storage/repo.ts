@@ -15,6 +15,7 @@ import {
 } from '../domain/canonical';
 import type {
   CanonicalGroup,
+  CategoryRating,
   Collection,
   Comparison,
   ContextSnapshot,
@@ -331,6 +332,47 @@ export async function patchCanonicalAnnotation(
 
 export async function listAnnotations(): Promise<EntityAnnotation[]> {
   return allLive('annotations');
+}
+
+export async function recordCategoryRating(
+  entityId: EntityId,
+  category: string,
+  normalized: number | null,
+): Promise<CategoryRating> {
+  const label = category.trim().replace(/\s+/g, ' ');
+  if (!label || label.length > 80)
+    throw new Error('Give the category a name between 1 and 80 characters.');
+  if (
+    normalized !== null &&
+    (!Number.isInteger(normalized) || normalized < 0 || normalized > 100)
+  ) {
+    throw new Error('Category ratings must be whole numbers from 0 to 100.');
+  }
+  const now = Date.now();
+  const index = await canonicalIndex();
+  entityId = index.resolve(entityId);
+  const database = await db();
+  const tx = database.transaction('annotations', 'readwrite');
+  const existing = (await tx.store.get(entityId)) ?? { id: entityId, tags: [], updatedAt: 0 };
+  let at = now;
+  for (const id of index.members(entityId)) {
+    const annotation = id === entityId ? existing : await tx.store.get(id);
+    at = (annotation?.categoryRatings ?? []).reduce(
+      (latest, rating) => Math.max(latest, rating.at + 1),
+      at,
+    );
+  }
+  const event: CategoryRating = { id: uid('category'), category: label, normalized, at };
+  await tx.store.put(
+    raw({
+      ...existing,
+      categoryRatings: [...(existing.categoryRatings ?? []), event],
+      updatedAt: now,
+    }),
+  );
+  await tx.done;
+  markDataChanged();
+  return event;
 }
 
 export async function saveCollection(collection: Collection): Promise<void> {

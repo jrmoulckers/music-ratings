@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SNAPSHOT_VERSION } from './snapshot';
 
 /**
  * Where an account round trip comes back to.
@@ -242,7 +243,7 @@ describe('the folder the backup lives in', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(createOneDriveAdapter(CONFIG).read()).resolves.toEqual({
-        snapshot,
+        snapshot: { ...snapshot, version: SNAPSHOT_VERSION, spotifyPlaylists: [] },
         etag: '"etag-1"',
       });
       expect(fetchMock).toHaveBeenNthCalledWith(
@@ -288,7 +289,7 @@ describe('the folder the backup lives in', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(createOneDriveAdapter(CONFIG).read()).resolves.toEqual({
-        snapshot,
+        snapshot: { ...snapshot, version: SNAPSHOT_VERSION, spotifyPlaylists: [] },
         etag: '"etag-1"',
       });
       expect(fetchMock.mock.calls[1]?.[0]).toBe(

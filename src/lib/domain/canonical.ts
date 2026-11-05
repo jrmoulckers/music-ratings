@@ -1,4 +1,5 @@
 import { currentRating, isLiveRating, type ExplicitRating } from './ratings';
+import { mergeCategoryRatings } from './categories';
 import { clampNormalized, denormalize, normalize } from './scales';
 import type {
   CanonicalGroup,
@@ -324,6 +325,8 @@ export function resolveAnnotations(
     if (note) merged.note = note;
     const pinned = ordered.find((a) => a.pinned)?.pinned;
     if (pinned) merged.pinned = pinned;
+    const categoryRatings = mergeCategoryRatings(...ordered.map((a) => a.categoryRatings ?? []));
+    if (categoryRatings.length) merged.categoryRatings = categoryRatings;
     out.set(id, merged);
   }
   return out;

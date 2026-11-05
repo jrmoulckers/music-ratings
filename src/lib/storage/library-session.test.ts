@@ -64,6 +64,18 @@ describe('OneDrive library boundary', () => {
     });
     await bindLibraryAccount('account-a');
     await writeMeta('spotify-signals', { recentlyPlayed: ['old'] });
+    await writeMeta('ranked-spotify-playlists', [{ id: 'old-account-playlist', live: true }]);
+    await database.put('spotifyPlaylists', {
+      id: 'savedplaylist',
+      accountId: 'spotify-owner',
+      size: 25,
+      view: 'explicit',
+      live: true,
+      lastUris: [],
+      syncedAt: null,
+      error: null,
+      updatedAt: 1,
+    });
     const oldBackup = await buildSnapshot(current);
 
     await clearLocalLibrary(current);
@@ -72,7 +84,9 @@ describe('OneDrive library boundary', () => {
     expect((await buildSnapshot()).ratings).toEqual([]);
     expect((await buildSnapshot()).plays).toEqual([]);
     expect((await buildSnapshot()).entities).toEqual([]);
+    expect((await buildSnapshot()).spotifyPlaylists).toEqual([]);
     expect(await readMeta('spotify-signals')).toBeUndefined();
+    expect(await readMeta('ranked-spotify-playlists')).toBeUndefined();
     expect(await readMeta<typeof current>(META_SETTINGS)).toMatchObject({
       theme: 'dark',
       onboarded: true,
@@ -81,6 +95,7 @@ describe('OneDrive library boundary', () => {
       preferredDeviceId: '',
     });
     expect(oldBackup.ratings).toHaveLength(1);
+    expect(oldBackup.spotifyPlaylists).toHaveLength(1);
     await bindLibraryAccount('account-b');
     expect(await libraryAccountId()).toBe('account-b');
   });

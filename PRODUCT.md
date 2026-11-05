@@ -42,6 +42,8 @@ The data is the user's own: local-first, offline-capable, synced to the user's o
 
 - Entity types: artist, album, track, playlist, and — only where the current Spotify API genuinely supports them — show/episode and audiobook/chapter. Entity types are user-configurable and degrade to "unavailable" rather than being faked.
 - Ratings are **temporal events**, not fields. Each carries a value, the scale it was entered on, an optional note, tags, context and confidence. History is retained; edit and undo are supported.
+- Independent **category ratings** let the user judge a named part of any item, such as drums or vocals, on a whole-number 0–100 scale without an overall rating. Their event history, including withdrawals, is backed up and synced. They never feed overall ratings, rollups or ranking order, and are distinct from optional weighted contextual facets.
+- **Ranked Spotify playlists** contain the user's Top 10, 25, 50, 100, 250 or 500 available Spotify tracks in the chosen score view, best first, using the same stable tie order as Rankings. Creation is explicit, private and requests playlist-writing permission only on opt-in. Each new playlist is an ongoing managed connection with automatic updates enabled by default. Playlist IDs, score choices and update preferences belong to the ratings library and travel in JSON exports and OneDrive backup/sync; Spotify credentials remain device-local. Restoring a library and reconnecting its owning Spotify account resumes management of the same playlist. Users can turn off automatic updates per playlist. Sending changes requires an open, online app; there is no hosted background scheduler. Library backup status is separate from Spotify update status. Updates replace manual Spotify edits; failures are surfaced and paused for explicit retry.
 - All rating scales normalise internally to 0–100: stars, half-stars, integers 1–3 / 1–5 / 1–10 / 1–100, decimal, thumbs, and custom labelled ordinal scales. Original scale values remain visible. Changing scale must not lose normalised history.
 - Head-to-head comparisons feed a per-entity-type Elo rating carrying uncertainty and comparison count. Cross-type comparison is off by default.
 - Explicit ratings and computed rollups are stored separately and never overwrite each other. Explicit-only, rollup-only, and blended views are all available.
@@ -80,6 +82,8 @@ The data is the user's own: local-first, offline-capable, synced to the user's o
 - **Architectural reference (read-only, not a content source):** `C:\Users\jrmou\src\score-king` — local-first IndexedDB plus optional OneDrive/MSAL/Graph app-folder JSON sync.
 
 ## Product Principles
+
+Rankings and playlist management are independent destinations. Rankings remains its own page for reviewing ordering; the dedicated Playlists page owns Spotify playlist creation, saved lists and live updates. Sharing score calculations is not a reason to combine their interfaces. Category ratings remain independent judgements on an item's detail page.
 
 1. **The user's judgement is the only authority.** Spotify supplies catalogue and relevance signals; it never supplies an opinion. Popularity is never an input to a score.
 2. **Explain every number.** Any computed score can be opened and traced to the evidence and weights that produced it. If it cannot be explained, it should not be shown.

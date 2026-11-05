@@ -37,6 +37,15 @@ afterEach(() => {
 });
 
 describe('responsive section navigation', () => {
+  it('keeps Playlists and Rankings as separate destinations on desktop and in More', () => {
+    render();
+    const rail = host!.querySelector('nav')!;
+    const more = host!.querySelector('#more-sections')!;
+    for (const navigation of [rail, more]) {
+      expect(navigation.querySelector('a[href="/rankings"]')?.textContent).toContain('Rankings');
+      expect(navigation.querySelector('a[href="/playlists"]')?.textContent).toContain('Playlists');
+    }
+  });
   it('opens More as a labelled modal and moves focus into it', async () => {
     render();
     const button = moreButton();

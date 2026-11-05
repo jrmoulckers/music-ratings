@@ -7,6 +7,7 @@ import {
 } from 'idb';
 
 import { uid } from '../domain/ids';
+import { isManagedPlaylist, LEGACY_PLAYLISTS_KEY, type ManagedPlaylist } from '../domain/playlists';
 import type {
   CanonicalGroup,
   Collection,
@@ -25,7 +26,7 @@ import type { AppSettings } from './settings';
 import { assertLibraryRevision } from './library-revision';
 
 export const DB_NAME = 'music-ratings';
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 /**
  * Everything the app knows lives here, on this device, in the user's browser.
@@ -84,6 +85,7 @@ export interface AppDB extends DBSchema {
     value: CanonicalGroup;
     indexes: { byType: EntityType };
   };
+  spotifyPlaylists: { key: string; value: ManagedPlaylist };
   /** Free-form singletons: settings, sync bookkeeping, provider cursors. */
   meta: { key: string; value: unknown };
 }
@@ -100,6 +102,7 @@ export type StoreName =
   | 'plays'
   | 'completions'
   | 'canonicalGroups'
+  | 'spotifyPlaylists'
   | 'meta';
 
 /** Stores whose records take part in sync. `meta` is handled separately. */
@@ -115,6 +118,7 @@ export const SYNCED_STORES = [
   'plays',
   'completions',
   'canonicalGroups',
+  'spotifyPlaylists',
 ] as const satisfies readonly StoreName[];
 
 export type SyncedStore = (typeof SYNCED_STORES)[number];
@@ -228,6 +232,22 @@ function openAt(version: number | undefined): Promise<IDBPDatabase<AppDB>> {
         purgeSeededSampleData(transaction);
       }
       if (oldVersion < 5) ensureIntegratedStores(database, transaction);
+      if (oldVersion < 6) {
+        const playlists = database.createObjectStore('spotifyPlaylists', { keyPath: 'id' });
+        const meta = transaction.objectStore('meta');
+        void meta.get(LEGACY_PLAYLISTS_KEY).then((stored) => {
+          if (stored === undefined) return;
+          const entries = Array.isArray(stored)
+            ? stored.map((entry: unknown) =>
+                entry && typeof entry === 'object' ? { ...entry, updatedAt: 0 } : entry,
+              )
+            : null;
+          // Keep unreadable legacy data intact so the playlist screen can explain the failure.
+          if (!entries || !entries.every(isManagedPlaylist)) return;
+          for (const entry of entries) void playlists.put(entry);
+          void meta.delete(LEGACY_PLAYLISTS_KEY);
+        });
+      }
     },
     blocked() {
       blockedNotice?.(
